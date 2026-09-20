@@ -1,0 +1,12 @@
+.DS_Store
+
+# XcodeGen 生成物：project.yml 是唯一事实来源
+*.xcodeproj
+
+# SwiftPM / Xcode 构建产物
+.build/
+.swiftpm/
+DerivedData/
+
+# dev-kit 轮次工作区
+.dev-kit/worktrees/
