@@ -28,6 +28,8 @@ context:
   - "任务 2 留给后续任务的约束（其返回所报，已由全量通过佐证）：.hitTarget() 只挂在 Button 上——模拟器实测在按钮外加 frame/contentShape 不会扩大落点，所以后续界面的一切可点元素都须是 Button，不得用 onTapGesture/Toggle/Picker 绕开（否则要改 AgentreDesign，而那不在任何后续任务的写入集内）；需要真实钥匙串的测试只能跑在宿主 App 的 AgentreHostedTests 里，其源码限于 Tests/AgentreAuthTests/Hosted，后续任务用 TokenStore 端口的替身即可"
   - "AgentreWire（Vendor/agentre/pkg/wire/swift）只含 protobuf 生成消息：protocolVersion 只是握手消息上的字段（wire.pb.swift:775 等），文件选项里的 0.2.0 不进 Swift 产物；中继信封也不在其中，是 Go 手写的 agentre/pkg/wire/relayenvelope/relayenvelope.go（2 字节大端长度 + UTF-8 通道 ID + 载荷，MaxChannelIDBytes 128，读上限 = 载荷上限 + MaxEnvelopeBytes），。**更正（2026-09-21，任务 3 核出）**：relayenvelope.go:24-27 那句「客户端不自己造通道 ID」的注释已过时——服务端契约是客户端在自己连接的命名空间里自选通道号，未知号上第一个非空帧即开通道（agentre-server/internal/controller/relay_ctr/channel.go:22-30,72-80），TS 客户端铸 c<n>（relayConnection.ts:241）；只有保留的信号通道号归服务端，客户端只收不写"
   - "任务 3 交付的中继面（e8cb28d，全量 78 条过）：公开 API 在 Sources/AgentreRelay/（RelayConnection、RelayChannel、RelayTypes 等）与 Sources/AgentreDomain/Ports/Relay.swift；通道由 channel(for:) 取得，同一目标复用同一通道；状态经 statusUpdates 推出；重连后按 seq 游标补齐并去重，补齐期间的实时帧先缓冲；服务端关闭的通道变 .closed 不自动重开，由消费方再调 channel(for:)"
+  - "2026-09-21 用户批准重切：应用入口 Sources/AgentreApp/ 在任务 2 之后只归任务 12「装配」所有。任务 4–10 的每一屏以构造参数接收领域端口，交付可独立测试的视图与视图模型，不接进 App、不写 AgentreApp；中继 → 本地库的那一行转换（RelayNotification → IncomingFrame）也归任务 12，因为 AgentreStore 不能 import AgentreRelay"
+  - "手机上一切会话通道按 machine:<指纹> 寻址：服务端只对保存名单里的对话解析 conversation: 目标（agentre-server/internal/service/relay_svc/target.go:8-12）；本地库存了每条会话的承载机器指纹（任务 11，5d913cc），RPC 以 conversation_id 参数指明对话"
   - "编排决定（不在规格内，为并发而设）：每个功能自成一个 SwiftPM target，自带目录、自带 <Feature>.xcstrings 与自带测试目标；Package.swift 与 project.yml 由任务 2 一次性声明全部 target 后即冻结，其余任务只在自己的目录内写。没有这条，Localizable.xcstrings 与清单会成为所有界面任务的共享写入，并发就不存在"
 
 tasks:
@@ -64,18 +66,18 @@ tasks:
     files: [agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDomain/Session/, agentre-ios/Tests/AgentreStoreTests/]
     model: strong
     interfaces: "任务 3 的 RelayClient.attach/pull 与帧投递；AgentreWire 的 SessionSummary / DurableNotification"
-    status: doing
-    commit: null
+    status: done
+    commit: 5d913cc
     note: "与服务端 mirror_svc 同构，规则逐条对照而不是另立一套（见 context）。"
   - id: 4
-    goal: "消息列表读本地库：冷启动无网络即出内容；按最后活动倒序、等你处理者置顶并抬高；未读判据是最后活动时刻晚于本机已读位、从未读过判为未读，已读后乐观改写；运行中会话预览呈现为「正在输入…」；待批准的命令或待回答的问题在不进入对话的前提下可读；连接建立后已保存会话各自补齐，新帧落库并就地反映到列表；角标两个数由本地库现算；该屏过命中区断言。"
+    goal: "消息列表读本地库：冷启动无网络即出内容；按最后活动倒序、等你处理者置顶并抬高；未读判据是最后活动时刻晚于本机已读位、从未读过判为未读，已读后乐观改写；运行中会话预览呈现为「正在输入…」；待批准的命令或待回答的问题在不进入对话的前提下可读；连接建立后已保存会话各自补齐，新帧落库并就地反映到列表；帧到达时本地库按服务端 mirror_svc 的 follow 同一规则更新该会话的摘要（生命周期、是否等待输入、最后活动时刻），使等你处理与未读在实时流量下随之变化；角标两个数由本地库现算；该屏过命中区断言。"
     deps: [11]
-    files: [agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Tests/AgentreMessagesTests/]
+    files: [agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Tests/AgentreMessagesTests/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDomain/Session/]
     model: mid
     interfaces: "任务 11 的 SessionStore（列表读取、已读位、补齐驱动）；任务 2 的 L10n、HitTarget/assertHitTargets"
-    status: todo
+    status: doing
     commit: null
-    note: null
+    note: "2026-09-21 随重切加宽到本地库（用户批准）与 AgentreDomain/Session/（同属任务 11 的产物，任务 4 独占一批，无并发写）。follow 规则原件：agentre-server/internal/service/mirror_svc/mirror.go:544-667（follow / followTurn / followWaiter）。"
   - id: 5
     goal: "机器名册与在线态取自 REST 工作区端点；机器详情现问机器要会话（sessionList），游标翻页不重不漏、改搜索词即回到起点、界面只承诺匹配标题；每行分得清已保存与未保存，未保存者给出「保存到手机」——保存即 attach 并按游标 pull 进本地库，此后它出现在消息列表；顶部三个计数取自 sessionCounts；机器离线时该屏无会话可列且呈现为「不在线」，已保存的会话不受影响。"
     deps: [4]
@@ -130,6 +132,16 @@ tasks:
     status: todo
     commit: null
     note: null
+
+  - id: 12
+    goal: "装配：应用入口组装全部具体实现——中继帧经那一行转换接进本地库，任务 4–10 的各屏接进三标签骨架与导航，一切会话通道按 machine: 寻址；机器侧最高 seq 低于本机游标时游标回退（对照服务端 dropCursorAboveHighWater）；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
+    deps: [5, 6, 7, 8, 9, 10]
+    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
+    model: strong
+    interfaces: "任务 4–10 各屏的公开视图与其构造参数；任务 3 的 RelayConnection/RelayChannel；任务 11 的 SessionStore 与 IncomingFrame"
+    status: todo
+    commit: null
+    note: "2026-09-21 用户批准新增。任务 11 返回揭出：AgentreApp 在任务 2 之后无人拥有，中继 → 本地库的转换只存在于测试里；不设此任务则测试全绿而 App 里只有登录与三个空标签。"
 
 review:
   status: pending
