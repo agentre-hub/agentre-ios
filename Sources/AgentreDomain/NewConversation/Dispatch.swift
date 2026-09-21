@@ -1,0 +1,91 @@
+import Foundation
+
+/// 发出第一条消息：经 `machine:<指纹>` 通道在选中的那台机器上开一条新会话（runtime.run）。
+public struct DispatchRequest: Sendable, Equatable {
+    /// 由手机自己铸的会话号。
+    public var conversationID: String
+    public var title: String
+    public var userText: String
+    public var agentSyncID: String
+    /// nil = 不指定项目。
+    public var projectSyncID: String?
+    /// 派发落到的那一档（机器指纹、后端、工作目录）。
+    public var target: DispatchChoice
+
+    public init(conversationID: String, title: String, userText: String, agentSyncID: String, projectSyncID: String?, target: DispatchChoice) {
+        self.conversationID = conversationID
+        self.title = title
+        self.userText = userText
+        self.agentSyncID = agentSyncID
+        self.projectSyncID = projectSyncID
+        self.target = target
+    }
+}
+
+/// 派发没成：界面据此用自己的话说，不贴对端原串。
+public enum DispatchFailure: Error, Sendable, Equatable {
+    /// 连不上那台机器。
+    case unreachable
+    /// 连上了，但那台机器没能开起这条会话。
+    case rejected
+}
+
+/// 中继上的派发（适配器在装配层）。失败以 `DispatchFailure` 抛出；别的错误按 `rejected` 对待。
+public protocol NewConversationDispatching: Sendable {
+    func dispatch(_ request: DispatchRequest) async throws
+}
+
+/// 已经在机器上跑起来的一条新对话：要落进本地库的那一份。
+public struct StartedConversation: Sendable, Equatable {
+    public var conversationID: String
+    /// 承载它的机器。
+    public var machineFingerprint: String
+    public var machineName: String
+    public var title: String
+    public var agentSyncID: String
+    public var projectSyncID: String
+    public var cwd: String
+    public var backendType: String
+
+    public init(request: DispatchRequest) {
+        conversationID = request.conversationID
+        machineFingerprint = request.target.deviceFingerprint
+        machineName = request.target.deviceName
+        title = request.title
+        agentSyncID = request.agentSyncID
+        projectSyncID = request.projectSyncID ?? ""
+        cwd = request.target.cwd
+        backendType = request.target.backendType
+    }
+}
+
+/// 把手机上新建的对话落进本地库（规格决策 16；适配器在装配层，落到 `LocalConversationStore`）。
+public protocol StartedConversationRecording: Sendable {
+    /// 落库并交回它在本地库里的键。
+    func record(_ conversation: StartedConversation) async throws -> ConversationKey
+}
+
+/// 会话号在发起端铸：UUIDv7（前 48 位 Unix 毫秒，其余取自系统 CSPRNG），规范小写带连字符。
+public enum ConversationIDs {
+    public static func mint(now: Date = Date()) -> String {
+        var generator = SystemRandomNumberGenerator()
+        var bytes = (0..<16).map { _ in UInt8.random(in: .min ... .max, using: &generator) }
+        let milliseconds = UInt64(max(0, (now.timeIntervalSince1970 * 1000).rounded()))
+        for index in 0..<6 {
+            bytes[index] = UInt8(truncatingIfNeeded: milliseconds >> (8 * UInt64(5 - index)))
+        }
+        bytes[6] = (bytes[6] & 0x0F) | 0x70
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        let hex = bytes.map { String(format: "%02x", $0) }.joined()
+        return [hex.prefix(8), hex.dropFirst(8).prefix(4), hex.dropFirst(12).prefix(4), hex.dropFirst(16).prefix(4), hex.dropFirst(20)]
+            .joined(separator: "-")
+    }
+}
+
+/// 对话标题：第一句话的首行，超过 60 个字符截断加省略号（与控制台、桌面端同一条规矩）。
+public func conversationTitle(from text: String) -> String {
+    let firstLine = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        .split(separator: "\n", omittingEmptySubsequences: false).first
+        .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+    return firstLine.count > 60 ? "\(firstLine.prefix(60))…" : firstLine
+}
