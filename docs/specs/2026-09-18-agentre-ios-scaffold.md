@@ -207,7 +207,7 @@ payload 的编解码使用由同一份 schema 生成的 Swift 消息类型，帧
 | 接缝 | 验证什么 | 现有对照 |
 |---|---|---|
 | wire 消息编解码 | Swift 侧与 Go 侧对同一批帧同解同编：Go 产出一批**二进制金向量**与各自的期望字段值，Swift 解码后字段逐一相等；Swift 再编码回去，Go 解得到与原消息相等的消息。**判据不是字节逐一相等**——protobuf 不保证跨实现的字节级一致（map 序、未知字段的位置），把那个当判据会得到一条随实现升级而红的测试 | 本轮新建。**既有的 `agentre-wire/fixtures/` 那 23 份 JSON 不能用作本接缝的判据**：它们与 `src/codec.gen.ts` 由同一个 Go 生成器产出（`golden_test.go` / `tsgen_test.go`），是那层**手写 JSON 领域 codec** 的金样本，而那层是 TS 宿主为自己的 UI 而设的一层，iOS 直接消费 protobuf 结构、根本不经过它。实测 `protojson` 往返只有 5/23 结构相同，差异来自 64 位整数的字符串化、`DurableNotification` 的形状不同、`json.RawMessage` 透传字段，以及两份专门证明未知字段往返不丢的样本——最后一类 protobuf 消息永远做不到 |
-| 中继客户端（注入伪传输） | 一条通道上并发请求按 id 路由不串道；断线重连后 attach→按游标 pull→按 `seq` 去重，重复帧只应用一次；握手版本不等即拒且不重试 | Go 侧 `internal/daemon/client/client_test.go`，TS 侧 `frontend/src/__tests__/relay-client-*.test.ts` |
+| 中继客户端（注入伪传输） | 一条通道上并发请求按 id 路由不串道；断线重连后 attach→按游标 pull→按 `seq` 去重，重复帧只应用一次；握手版本不等即拒且不重试 | Go 侧（daemon 一端）`agentre/internal/daemon/relaytransport/multiplexer_test.go`，TS 侧（客户端一端，最近的同形参照）`agentre-server/frontend/src/lib/relayConnection.ts` 及 `frontend/src/__tests__/relay-*.test.ts` |
 | 设备流（注入伪 HTTP） | 授权中、授权过期、被拒、成功各自的收场；令牌刷新的单次性 | `agentre-server` 侧 `internal/service/device_svc/device_test.go` 的状态机 |
 | 领域层状态（注入伪仓储） | 消息列表的排序与置顶、未读判定、一轮从发起到收场的状态迁移 | 无 |
 | 机器详情的发现与保存（注入伪中继 + 真实数据库） | 按游标翻页不重不漏；改搜索词时游标回到起点；每行的已保存／未保存状态与本地库一致；保存一条会话后它出现在消息列表且转录已落库；机器离线时该屏无会话可列而已保存的会话不受影响 | 无 |
