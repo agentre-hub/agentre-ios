@@ -14,13 +14,14 @@
 import PackageDescription
 
 let wire = Target.Dependency.product(name: "AgentreWire", package: "swift")
+let protobuf = Target.Dependency.product(name: "SwiftProtobuf", package: "swift-protobuf")
 
 let libraries: [Target.Dependency] = [
     "AgentreDomain", "AgentreDesign", "AgentreREST", "AgentreRelay", "AgentreStore", "AgentreUI",
 ]
 
 func testTarget(_ name: String, exclude: [String] = []) -> Target {
-    .testTarget(name: name, dependencies: ["AgentreTestSupport", wire] + libraries, exclude: exclude)
+    .testTarget(name: name, dependencies: ["AgentreTestSupport", wire, protobuf] + libraries, exclude: exclude)
 }
 
 let package = Package(
@@ -32,13 +33,14 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "Vendor/agentre/pkg/wire/swift"),
+        .package(url: "https://github.com/apple/swift-protobuf.git", exact: "1.38.1"),
     ],
     targets: [
         .target(name: "AgentreDomain"),
         .target(name: "AgentreDesign"),
         .target(name: "AgentreREST", dependencies: ["AgentreDomain"]),
-        .target(name: "AgentreRelay", dependencies: ["AgentreDomain", wire]),
-        .target(name: "AgentreStore", dependencies: ["AgentreDomain", wire]),
+        .target(name: "AgentreRelay", dependencies: ["AgentreDomain", wire, protobuf]),
+        .target(name: "AgentreStore", dependencies: ["AgentreDomain", wire, protobuf]),
         .target(name: "AgentreUI", dependencies: ["AgentreDomain", "AgentreDesign"]),
         .target(name: "AgentreTestSupport", dependencies: ["AgentreDomain", "AgentreDesign"]),
         // Hosted/ 要真实钥匙串：无宿主的包测试进程没有钥匙串权限（-34018），
