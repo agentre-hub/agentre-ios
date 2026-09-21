@@ -37,15 +37,29 @@ struct ReducerTests {
         let doc = TranscriptReducer.reduce(entries([
             .permissionRequest(PermissionRequest(requestID: "r1", toolCallID: "t1", toolName: "Bash")),
             .permissionResolved(requestID: "r1", allowed: true),
-            .questionRequest(QuestionRequest(requestID: "q1", toolCallID: "", questions: ["?"])),
+            .questionRequest(QuestionRequest(requestID: "q1", toolCallID: "", questions: [AskQuestion(question: "?")])),
             .questionResolved(requestID: "q1"),
         ]))
         var permission = PermissionRequest(requestID: "r1", toolCallID: "t1", toolName: "Bash")
         permission.resolved = true
         permission.allowed = true
-        var question = QuestionRequest(requestID: "q1", toolCallID: "", questions: ["?"])
+        var question = QuestionRequest(requestID: "q1", toolCallID: "", questions: [AskQuestion(question: "?")])
         question.answered = true
         #expect(doc.messages.single?.blocks == [.permission(permission), .question(question)])
+    }
+
+    @Test("提问带着选项、单选 / 多选与标题原样进卡片，决议只改作答位")
+    func questionOptionsSurvive() {
+        let asked = QuestionRequest(requestID: "q1", toolCallID: "t1", questions: [
+            AskQuestion(id: "branch", question: "用哪个分支？", header: "分支", options: [AskOption(label: "main", description: "主干"), AskOption(label: "dev")]),
+            AskQuestion(question: "跑哪些检查？", multiSelect: true, isSecret: false, options: [AskOption(label: "lint"), AskOption(label: "test")]),
+        ])
+        let open = TranscriptReducer.reduce(entries([.questionRequest(asked)]))
+        #expect(open.messages.single?.blocks == [.question(asked)])
+        let resolved = TranscriptReducer.reduce(entries([.questionRequest(asked), .questionResolved(requestID: "q1")]))
+        var answered = asked
+        answered.answered = true
+        #expect(resolved.messages.single?.blocks == [.question(answered)])
     }
 
     @Test("Subagent 的开始 / 进度 / 结束落到派生它的那次调用上")

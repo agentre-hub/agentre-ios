@@ -1,7 +1,8 @@
 import AgentreDomain
-import AgentreStore
+@testable import AgentreStore
 import AgentreWire
 import Foundation
+import SwiftData
 import Testing
 
 /// 钥匙串端口的替身（真实钥匙串只在宿主目标 AgentreHostedTests 里测）。
@@ -105,8 +106,12 @@ final class TemporaryDirectory: @unchecked Sendable {
 }
 
 /// 在临时目录上开一个真实的本地会话库，并存进上一个账号的两条会话（各带一帧转录）。
-func storeWithPreviousAccountRows(_ directory: TemporaryDirectory) async throws -> LocalConversationStore {
-    let store = try LocalConversationStore(directory: directory.url)
+/// `clearRows` 给出时，库删行这一步换成它（模拟删不掉）。
+func storeWithPreviousAccountRows(
+    _ directory: TemporaryDirectory, clearRows: (@Sendable (ModelContext) throws -> Void)? = nil
+) async throws -> LocalConversationStore {
+    let store = try clearRows.map { try LocalConversationStore(directory: directory.url, clearRows: $0) }
+        ?? LocalConversationStore(directory: directory.url)
     for id in ["conv-a", "conv-b"] {
         var summary = Agentre_Wire_SessionSummary()
         summary.conversationID = id

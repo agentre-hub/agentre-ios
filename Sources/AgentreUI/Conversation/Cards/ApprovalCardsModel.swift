@@ -20,6 +20,14 @@ public enum ApprovalQuestionState: Sendable, Equatable {
     case expired
 }
 
+/// 提问卡提交前的核对没过（宿主 canonical.userAsk.errors 的两句）。
+public enum QuestionInputError: Sendable, Equatable {
+    /// 有一问一个选项都没选。
+    case optionRequired
+    /// 选了自定义答案却没填字。
+    case otherRequired
+}
+
 /// 一条会话里全部审批与提问卡片的本地状态：作答经端口发出，送达后卡片落定。
 /// 由装配层按会话建一个，交给转录的卡片插入点；卡片行被列表回收重建也不丢状态。
 @MainActor
@@ -29,7 +37,11 @@ public final class ApprovalCardsModel {
     @ObservationIgnored private let answering: any ApprovalAnswering
     private var permissions: [String: PermissionProgress] = [:]
     private var questions: [String: QuestionProgress] = [:]
+    /// 每问选中的 label（含自定义答案的 `QuestionAnswer.otherLabel`），按点选次序。
+    private var selections: [String: [Int: [String]]] = [:]
+    /// 每问自定义答案的字。
     private var drafts: [String: [Int: String]] = [:]
+    private var inputErrors: [String: QuestionInputError] = [:]
     private var expanded: Set<String> = []
 
     public init(conversation: SavedConversation, answering: any ApprovalAnswering) {
@@ -85,27 +97,70 @@ public final class ApprovalCardsModel {
         }
     }
 
+    public func selectedLabels(_ index: Int, of request: QuestionRequest) -> [String] {
+        selections[request.requestID]?[index] ?? []
+    }
+
+    /// 点一个选项，规则与宿主同：多选时加入或移出；单选时换成它，点的正是已选的那个则取消。
+    public func toggleOption(_ label: String, at index: Int, of request: QuestionRequest) {
+        let multi = request.questions.indices.contains(index) && request.questions[index].multiSelect
+        var labels = selectedLabels(index, of: request)
+        if multi {
+            if let at = labels.firstIndex(of: label) { labels.remove(at: at) } else { labels.append(label) }
+        } else {
+            labels = labels.first == label ? [] : [label]
+        }
+        selections[request.requestID, default: [:]][index] = labels
+    }
+
+    /// 自定义答案的字。
     public func answer(_ index: Int, of request: QuestionRequest) -> String {
         drafts[request.requestID]?[index] ?? ""
     }
 
+    /// 填自定义答案，与宿主同：填了字即选中自定义，清空即取消。
     public func setAnswer(_ text: String, at index: Int, of request: QuestionRequest) {
         drafts[request.requestID, default: [:]][index] = text
+        let chosen = selectedLabels(index, of: request).contains(QuestionAnswer.otherLabel)
+        let wanted = !text.isEmpty
+        if wanted != chosen {
+            toggleOption(QuestionAnswer.otherLabel, at: index, of: request)
+        }
     }
 
-    /// 每一问都填了（去掉首尾空白后非空）才能提交。
+    /// 上一次提交没过核对的原因；没有或已改对提交后为 nil。
+    public func inputError(of request: QuestionRequest) -> QuestionInputError? {
+        inputErrors[request.requestID]
+    }
+
+    /// 可以提交：待作答，且每一问都选了，选了自定义答案的填了字。
     public func canSubmit(_ request: QuestionRequest) -> Bool {
-        guard state(of: request) == .open(submitting: false) else { return false }
-        return request.questions.indices.allSatisfy { !answer($0, of: request).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        state(of: request) == .open(submitting: false) && validate(request) == nil
     }
 
-    /// 以自填答案作答（宿主的 __other__ 标签）。
+    /// 以每问选中的 label 作答；核对没过则不发出，只记下原因（宿主的两句报错）。
     public func submitAnswers(for request: QuestionRequest) async {
-        guard canSubmit(request) else { return }
+        guard state(of: request) == .open(submitting: false) else { return }
+        if let error = validate(request) {
+            inputErrors[request.requestID] = error
+            return
+        }
+        inputErrors[request.requestID] = nil
         let answers = request.questions.indices.map { index in
-            QuestionAnswer(questionIndex: index, labels: [QuestionAnswer.otherLabel], otherText: answer(index, of: request))
+            QuestionAnswer(questionIndex: index, labels: selectedLabels(index, of: request), otherText: answer(index, of: request))
         }
         await send(request, answers: answers, skipped: false)
+    }
+
+    private func validate(_ request: QuestionRequest) -> QuestionInputError? {
+        for index in request.questions.indices {
+            let labels = selectedLabels(index, of: request)
+            if labels.isEmpty { return .optionRequired }
+            if labels.contains(QuestionAnswer.otherLabel), answer(index, of: request).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return .otherRequired
+            }
+        }
+        return nil
     }
 
     public func skip(_ request: QuestionRequest) async {
@@ -119,10 +174,12 @@ public final class ApprovalCardsModel {
         do {
             try await answering.submitAnswer(QuestionReply(
                 conversation: conversation.key, peerFingerprint: conversation.peerFingerprint,
-                requestID: request.requestID, questions: request.questions, answers: answers, skipped: skipped
+                requestID: request.requestID, questions: request.questions.map(\.question), answers: answers, skipped: skipped
             ))
             questions[request.requestID] = .delivered(skipped: skipped)
             drafts[request.requestID] = nil
+            selections[request.requestID] = nil
+            inputErrors[request.requestID] = nil
         } catch {
             questions[request.requestID] = .expired
         }

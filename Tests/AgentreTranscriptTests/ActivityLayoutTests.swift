@@ -205,7 +205,7 @@ struct TranscriptRowsTests {
         let doc = document([
             .text("我要删掉 build"),
             .permission(PermissionRequest(requestID: "r1", toolCallID: "", toolName: "Bash")),
-            .question(QuestionRequest(requestID: "q1", toolCallID: "", questions: ["继续吗？"])),
+            .question(QuestionRequest(requestID: "q1", toolCallID: "", questions: [AskQuestion(question: "继续吗？")])),
         ], running: true)
         #expect(names(TranscriptRows.build(doc)) == ["user", "agent", "text", "card", "card"])
     }

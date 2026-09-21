@@ -38,13 +38,16 @@ public struct IncomingFrame: Sendable {
 ///   请求与落定改「等你处理」。与帧号正交——线上的轮次边界帧不带号，照样跟随。
 ///
 /// 实时帧与补齐帧只有 `record` 这一个入口。
-public actor LocalConversationStore: ConversationStore, ModelActor {
+public actor LocalConversationStore: ConversationStore {
     public static let fileName = "Conversations.store"
     static let schema = Schema([ConversationRecord.self, FrameRecord.self])
 
-    public nonisolated let modelContainer: ModelContainer
-    public nonisolated let modelExecutor: any ModelExecutor
+    private let directory: URL
+    /// 库文件的上下文（它持有自己的容器）。删库文件重开时整个换掉。
+    private var modelContext: ModelContext
     private let now: @Sendable () -> Int64
+    /// 退出登录时删掉全部行的那一步。只有测试会换掉它（模拟删不掉）。
+    private let clearRows: @Sendable (ModelContext) throws -> Void
     /// 从实时帧上看见、此刻还没落定的待决请求标识（mirror_svc 的 trackedSession.waiters）。
     /// 没有条目 = 帧还没就「等你处理」说过话，清单快照仍是权威；空集合 = 帧说过话，此刻一个待决都没有。
     /// 待决是机器进程内、按轮的，所以这张表只在内存里：冷启动后重新由快照说了算。
@@ -56,13 +59,25 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
         directory: URL,
         now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
     ) throws {
-        let configuration = ModelConfiguration(
-            schema: Self.schema, url: directory.appending(path: Self.fileName), cloudKitDatabase: .none
-        )
-        let container = try ModelContainer(for: Self.schema, configurations: configuration)
-        modelContainer = container
-        modelExecutor = DefaultSerialModelExecutor(modelContext: ModelContext(container))
+        try self.init(directory: directory, now: now, clearRows: Self.deleteAllRows)
+    }
+
+    init(
+        directory: URL,
+        now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
+        clearRows: @escaping @Sendable (ModelContext) throws -> Void
+    ) throws {
+        self.directory = directory
+        modelContext = ModelContext(try Self.openContainer(in: directory))
         self.now = now
+        self.clearRows = clearRows
+    }
+
+    private static func openContainer(in directory: URL) throws -> ModelContainer {
+        let configuration = ModelConfiguration(
+            schema: schema, url: directory.appending(path: fileName), cloudKitDatabase: .none
+        )
+        return try ModelContainer(for: schema, configurations: configuration)
     }
 
     // MARK: 写入（认得 wire 的一侧）
@@ -174,11 +189,34 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
         try commit(force: true)
     }
 
+    /// 行删不掉时退到删库文件：库里只有上一个账号的会话，没有别的要留，
+    /// 把库文件连同日志一起删掉、在原处重开一个空库，此后本实例与冷启动都读不到那些行。
     public func removeAll() throws {
         waiters.removeAll()
-        try modelContext.delete(model: FrameRecord.self)
-        try modelContext.delete(model: ConversationRecord.self)
-        try commit(force: true)
+        do {
+            try clearRows(modelContext)
+            try commit(force: true)
+        } catch {
+            modelContext.rollback()
+            try recreate()
+            notifyObservers()
+        }
+    }
+
+    private static func deleteAllRows(_ context: ModelContext) throws {
+        try context.delete(model: FrameRecord.self)
+        try context.delete(model: ConversationRecord.self)
+    }
+
+    /// 删掉库文件（主文件、-wal、-shm 与外置数据目录）并在原处重开一个空库。
+    private func recreate() throws {
+        let stem = (Self.fileName as NSString).deletingPathExtension
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(Self.fileName) || $0.lastPathComponent == ".\(stem)_SUPPORT" }
+        for file in files {
+            try FileManager.default.removeItem(at: file)
+        }
+        modelContext = ModelContext(try Self.openContainer(in: directory))
     }
 
     public func changes() -> AsyncStream<Void> {
@@ -197,6 +235,10 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
     private func commit(force: Bool = false) throws {
         guard force || modelContext.hasChanges else { return }
         try modelContext.save()
+        notifyObservers()
+    }
+
+    private func notifyObservers() {
         for observer in observers.values { observer.yield() }
     }
 

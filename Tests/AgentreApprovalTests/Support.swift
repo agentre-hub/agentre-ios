@@ -15,9 +15,24 @@ func permission(_ id: String = "p1", tool: String = "Bash", input: [String: JSON
 }
 
 func question(_ id: String = "q1", _ questions: [String] = ["用哪个分支？"], answered: Bool = false) -> QuestionRequest {
-    var request = QuestionRequest(requestID: id, toolCallID: "t-\(id)", questions: questions)
+    var request = QuestionRequest(requestID: id, toolCallID: "t-\(id)", questions: questions.map { AskQuestion(question: $0) })
     request.answered = answered
     return request
+}
+
+/// 带选项的提问：第一问单选（两个选项），`multi` 时再加一问多选（三个选项）。
+func optionQuestion(_ id: String = "q1", multi: Bool = false) -> QuestionRequest {
+    var questions = [AskQuestion(
+        question: "用哪个分支？", header: "分支",
+        options: [AskOption(label: "main", description: "主干"), AskOption(label: "dev", description: "开发分支")]
+    )]
+    if multi {
+        questions.append(AskQuestion(
+            question: "跑哪些检查？", header: "检查", multiSelect: true,
+            options: [AskOption(label: "lint"), AskOption(label: "test"), AskOption(label: "e2e")]
+        ))
+    }
+    return QuestionRequest(requestID: id, toolCallID: "t-\(id)", questions: questions)
 }
 
 /// 伪作答端口：记下每次作答；`failing` 为真时抛错；`gate` 在时作答挂起直到放行。

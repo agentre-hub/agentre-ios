@@ -152,6 +152,42 @@ struct ApprovalCardScreenTests {
         #expect(report.targets.count == 3, "跳过、提交回复、作答框：\(report.targets)")
     }
 
+    @Test("提问卡给出宿主的选项：问题、单选标记、各选项与说明，其后是跳过与提交回复", arguments: ["zh-Hans", "en"])
+    func questionOptions(language: String) async throws {
+        let seen = await labels([.questionRequest(optionQuestion())], cards: cards(), language: language)
+        // 一个选项是一枚按钮：选项与说明读作同一个元素。
+        let main = try #require(seen.firstIndex { $0.hasPrefix("main") && $0.hasSuffix("主干") }, "\(seen)")
+        let dev = try #require(seen.firstIndex { $0.hasPrefix("dev") && $0.hasSuffix("开发分支") }, "\(seen)")
+        #expect(inOrder(["用哪个分支？", try text("question.single", language)], in: Array(seen[..<main])), "\(seen)")
+        #expect(main < dev)
+        #expect(inOrder([try text("question.skip", language), try text("question.submit", language)], in: Array(seen[(dev + 1)...])), "\(seen)")
+    }
+
+    @Test("多选的一问标为多选")
+    func multiSelectBadge() async throws {
+        let seen = await labels([.questionRequest(optionQuestion(multi: true))], cards: cards())
+        #expect(inOrder(["用哪个分支？", try text("question.single", "zh-Hans"), "跑哪些检查？", try text("question.multi", "zh-Hans"), "lint", "test", "e2e"], in: seen), "\(seen)")
+    }
+
+    @Test("一个选项都没选就提交：不发出，卡片给出宿主那句「请先选择一个选项再提交」")
+    func submitWithoutOption() async throws {
+        let model = cards()
+        await model.submitAnswers(for: optionQuestion())
+        #expect(await port.answers.isEmpty)
+        let seen = await labels([.questionRequest(optionQuestion())], cards: model)
+        #expect(try text("question.errors.optionRequired", "zh-Hans") == "请先选择一个选项再提交")
+        #expect(try text("question.errors.otherRequired", "zh-Hans") == "已选「自定义答案」请填写内容")
+        #expect(seen.contains(try text("question.errors.optionRequired", "zh-Hans")), "\(seen)")
+    }
+
+    @Test("带选项的提问卡：每个选项、作答框与两枚按钮各补满 44×44、互不重叠；发现数 = 放置数")
+    func optionHitTargets() async throws {
+        let model = await transcript(ending: [.questionRequest(optionQuestion())])
+        let report = await hitTargetReport(of: screen(model, cards: cards(), language: "zh-Hans"))
+        #expect(report.violations.isEmpty, "\(report.violations)")
+        #expect(report.targets.count == 5, "两个选项、作答框、跳过、提交回复：\(report.targets)")
+    }
+
     @Test("提问落定后只标出结果", arguments: [(true, "question.skipped"), (false, "question.answered")])
     func settledQuestion(skipped: Bool, label: String) async throws {
         let model = cards()

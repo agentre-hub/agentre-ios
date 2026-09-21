@@ -142,18 +142,46 @@ private struct ApprovalQuestionCard: View {
                 }
             }
             ForEach(Array(request.questions.enumerated()), id: \.offset) { index, question in
-                Text(verbatim: question)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.token(.textPrimary))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if case .open = state {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(verbatim: question.question)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.token(.textPrimary))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !question.header.isEmpty {
+                        Text(verbatim: question.header)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.token(.accent))
+                    }
+                    Text(question.multiSelect ? "question.multi" : "question.single", tableName: "Cards", bundle: .module)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.token(.textSecondary))
+                }
+                if case .open(let submitting) = state {
+                    let selected = model.selectedLabels(index, of: request)
+                    ForEach(Array(question.options.enumerated()), id: \.offset) { _, option in
+                        ApprovalOptionButton(option: option, multiSelect: question.multiSelect, selected: selected.contains(option.label)) {
+                            model.toggleOption(option.label, at: index, of: request)
+                        }
+                        .disabled(submitting)
+                    }
                     ApprovalAnswerField(
                         text: Binding(get: { model.answer(index, of: request) }, set: { model.setAnswer($0, at: index, of: request) }),
-                        placeholder: String(localized: "question.placeholder", table: "Cards", bundle: .module)
+                        placeholder: String(localized: "question.placeholder", table: "Cards", bundle: .module),
+                        isSecure: question.isSecret
                     )
                     .padding(.horizontal, 10)
                     .background(.token(.surface2), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(.token(.accent).opacity(selected.contains(QuestionAnswer.otherLabel) ? 0.6 : 0), lineWidth: 1)
+                    }
                 }
+            }
+            if case .open = state, let error = model.inputError(of: request) {
+                Text(error.messageKey, tableName: "Cards", bundle: .module)
+                    .font(.footnote)
+                    .foregroundStyle(.token(.failure))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             if state == .expired {
                 Text("question.expiredDetail", tableName: "Cards", bundle: .module)
@@ -166,13 +194,60 @@ private struct ApprovalQuestionCard: View {
                         Task { await model.skip(request) }
                     }
                     .disabled(submitting)
+                    // 与宿主同：不因没答完而禁用，点了由核对给出那句报错。
                     ApprovalButton(key: "question.submit", weight: .solid) {
                         Task { await model.submitAnswers(for: request) }
                     }
-                    .disabled(!model.canSubmit(request))
+                    .disabled(submitting)
                 }
             }
         }
+    }
+}
+
+/// 一个选项：整行可点，单选画圆点、多选画方框，选中时铺主色浅底。
+private struct ApprovalOptionButton: View {
+    let option: AskOption
+    let multiSelect: Bool
+    let selected: Bool
+    let action: () -> Void
+
+    private var symbol: String {
+        switch (multiSelect, selected) {
+        case (true, true): "checkmark.square.fill"
+        case (true, false): "square"
+        case (false, true): "largecircle.fill.circle"
+        case (false, false): "circle"
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: symbol)
+                    .foregroundStyle(.token(selected ? .accent : .textSecondary))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: option.label)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.token(selected ? .accent : .textPrimary))
+                    if !option.description.isEmpty {
+                        Text(verbatim: option.description)
+                            .font(.footnote)
+                            .foregroundStyle(.token(.textSecondary))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.token(selected ? .accent : .surface2).opacity(selected ? 0.14 : 1), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8).strokeBorder(.token(selected ? .accent : .textSecondary).opacity(selected ? 0.6 : 0.25), lineWidth: 1)
+            }
+        }
+        .hitTarget()
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -181,9 +256,11 @@ private struct ApprovalQuestionCard: View {
 private struct ApprovalAnswerField: UIViewRepresentable {
     @Binding var text: String
     let placeholder: String
+    var isSecure = false
 
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
+        field.isSecureTextEntry = isSecure
         field.font = .preferredFont(forTextStyle: .subheadline)
         field.adjustsFontForContentSizeCategory = true
         field.textColor = ColorToken.textPrimary.uiColor
@@ -344,6 +421,16 @@ extension ApprovalPermissionState {
         case .allowed: "permission.allowed"
         case .allowedForSession: "permission.allowedForSession"
         case .denied: "permission.denied"
+        }
+    }
+}
+
+extension QuestionInputError {
+    /// 宿主原文：canonical.userAsk.errors.optionRequired / otherRequired。
+    fileprivate var messageKey: LocalizedStringKey {
+        switch self {
+        case .optionRequired: "question.errors.optionRequired"
+        case .otherRequired: "question.errors.otherRequired"
         }
     }
 }

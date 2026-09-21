@@ -134,14 +134,49 @@ public struct PermissionRequest: Sendable, Equatable {
     }
 }
 
+/// 提问里的一个选项（线上的 AskOption）。
+public struct AskOption: Sendable, Equatable {
+    /// 选中后原样作为答案的 label 发回。
+    public var label: String
+    public var description: String
+
+    public init(label: String, description: String = "") {
+        self.label = label
+        self.description = description
+    }
+}
+
+/// 提问里的一问（线上的 AskQuestion）。选项之外总可以自填答案（`QuestionAnswer.otherLabel`），
+/// 与宿主的提问卡片同。
+public struct AskQuestion: Sendable, Equatable {
+    public var id: String
+    public var question: String
+    /// 短标题；空 = 没给。
+    public var header: String
+    /// 可多选；否则单选。
+    public var multiSelect: Bool
+    /// 自填答案按密码输入。
+    public var isSecret: Bool
+    public var options: [AskOption]
+
+    public init(id: String = "", question: String, header: String = "", multiSelect: Bool = false, isSecret: Bool = false, options: [AskOption] = []) {
+        self.id = id
+        self.question = question
+        self.header = header
+        self.multiSelect = multiSelect
+        self.isSecret = isSecret
+        self.options = options
+    }
+}
+
 /// agent 的提问。
 public struct QuestionRequest: Sendable, Equatable {
     public var requestID: String
     public var toolCallID: String
-    public var questions: [String]
+    public var questions: [AskQuestion]
     public var answered = false
 
-    public init(requestID: String, toolCallID: String, questions: [String]) {
+    public init(requestID: String, toolCallID: String, questions: [AskQuestion]) {
         self.requestID = requestID
         self.toolCallID = toolCallID
         self.questions = questions

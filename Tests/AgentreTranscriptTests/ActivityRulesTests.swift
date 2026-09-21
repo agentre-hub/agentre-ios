@@ -167,7 +167,7 @@ struct ActivityRulesTests {
     @Test("四类出组项（审批 / 提问 / 计划审批 / Subagent 派生）不进活动块，打断聚合并各自独立")
     func fourCardKindsStayOut() throws {
         let pending = PermissionRequest(requestID: "req-1", toolCallID: "", toolName: "Bash")
-        let question = QuestionRequest(requestID: "q-1", toolCallID: "", questions: ["用哪个分支？"])
+        let question = QuestionRequest(requestID: "q-1", toolCallID: "", questions: [AskQuestion(question: "用哪个分支？")])
         let plan = use("toolu-plan", "ExitPlanMode2", input: ["plan": "x"], canonical: Canonical(kind: "plan.approve_request", fields: ["requestId": "p1"]))
         let spawn = use("toolu-spawn", "Task", input: ["prompt": "go"], canonical: Canonical(kind: "agent.spawn", fields: ["taskDescription": "查日志"]))
         let items = TranscriptItems.build(messageID: "m1", blocks: [

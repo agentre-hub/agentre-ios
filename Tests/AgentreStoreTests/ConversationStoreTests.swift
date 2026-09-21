@@ -241,6 +241,35 @@ struct ConversationStoreTests {
         #expect(counts.frames == 0)
     }
 
+    @Test("退出登录时删行失败：库文件整个删掉重开——本实例与冷启动都读不到上一个账号的行，库照常可用")
+    func removeAllFallsBackToAFreshStore() async throws {
+        struct ClearFailed: Error {}
+        let directory = try TemporaryDirectory()
+        do {
+            let store = try LocalConversationStore(directory: directory.url, now: { fixedNow }, clearRows: { _ in throw ClearFailed() })
+            for id in ["conv-1", "conv-2"] {
+                try await store.save(summary(id, lastMessageAt: 10), via: machine)
+                try await store.record((1...5).map { live(id, seq: $0) }, via: machine)
+                try await store.markRead(key(id))
+            }
+            await #expect(throws: Never.self) { try await store.removeAll() }
+            #expect(try await store.conversations().isEmpty)
+            #expect(try await store.conversation(key("conv-1")) == nil)
+            #expect(try await store.transcript(key("conv-1")).isEmpty)
+            #expect(try await store.latestSeq(key("conv-2")) == 0)
+
+            // 重开的是一个能用的库：下一个账号保存的会话照常落盘。
+            try await store.save(summary("conv-3", lastMessageAt: 20), via: machine)
+            try await store.record([live("conv-3", seq: 1)], via: machine)
+            #expect(try await store.conversations().map(\.key.conversationID) == ["conv-3"])
+        }
+        let reopened = try openStore(directory)
+        #expect(try await reopened.conversations().map(\.key.conversationID) == ["conv-3"])
+        let counts = try await reopened.rowCounts()
+        #expect(counts.conversations == 1)
+        #expect(counts.frames == 1)
+    }
+
     @Test("批量追加带去重在 SwiftData 上的代价（决策 18 的逃生口判据）")
     func bulkAppendCost() async throws {
         let directory = try TemporaryDirectory()

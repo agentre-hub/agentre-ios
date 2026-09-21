@@ -40,19 +40,14 @@ public struct LoginView: View {
 
     @ViewBuilder private var server: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("login.server", tableName: "Login", bundle: .module)
-                .font(.footnote)
-                .foregroundStyle(.token(.textSecondary))
-            if isEditingServer {
-                serverEditor
-            } else {
-                HStack(spacing: 8) {
-                    Text(verbatim: flow.serverAddress.url.absoluteString)
-                        .font(.body.monospaced())
-                        .foregroundStyle(.token(.textPrimary))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // 改地址的按钮与标题同一行，地址独占整行宽：默认地址在默认字号下一行排下，
+            // 更长的地址或更大的字号换行而不截断——地址是要被核对的，不能只露两头。
+            HStack(spacing: 8) {
+                Text("login.server", tableName: "Login", bundle: .module)
+                    .font(.footnote)
+                    .foregroundStyle(.token(.textSecondary))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !isEditingServer {
                     Button {
                         draftAddress = flow.serverAddress.url.absoluteString
                         draftIsInvalid = false
@@ -65,6 +60,15 @@ public struct LoginView: View {
                     .disabled(isAwaiting)
                     .accessibilityLabel(Text("login.server.edit", tableName: "Login", bundle: .module))
                 }
+            }
+            if isEditingServer {
+                serverEditor
+            } else {
+                Text(verbatim: flow.serverAddress.url.absoluteString)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.token(.textPrimary))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(16)

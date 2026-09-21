@@ -19,8 +19,11 @@ No Apple team is configured (`DEVELOPMENT_TEAM` is left unset), so builds and te
 This single command runs every test in the repository: all package test targets plus the app-hosted Keychain tests.
 
 ```bash
-git submodule update --init && xcodegen generate && xcodebuild test -project Agentre.xcodeproj -scheme Agentre -destination 'platform=iOS Simulator,name=iPhone 17' -collect-test-diagnostics never DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR
+rm -rf /tmp/agentre-dd && git submodule update --init && xcodegen generate && xcodebuild test -project Agentre.xcodeproj -scheme Agentre -derivedDataPath /tmp/agentre-dd -destination 'platform=iOS Simulator,name=iPhone 17' -collect-test-diagnostics never DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR
 ```
+
+- `-derivedDataPath` points at a directory the command has just deleted, so every run builds from scratch.
+  Reusing a build directory has been observed not to pick up newly added `.xcstrings` files, which gives false reds and can just as well give false greens.
 
 - `DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR` makes importing a module that `Package.swift` does not declare a build error.
   Without it, an incremental Xcode build can quietly resolve an undeclared module that happens to be built already.

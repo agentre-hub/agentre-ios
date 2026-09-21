@@ -171,6 +171,40 @@
         }
       }
     },
+    "question.errors.optionRequired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select an option before submitting"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先选择一个选项再提交"
+          }
+        }
+      }
+    },
+    "question.errors.otherRequired": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fill in the custom answer you selected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已选「自定义答案」请填写内容"
+          }
+        }
+      }
+    },
     "question.expired": {
       "extractionState": "manual",
       "localizations": {
@@ -205,6 +239,23 @@
         }
       }
     },
+    "question.multi": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multiple"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "多选"
+          }
+        }
+      }
+    },
     "question.placeholder": {
       "extractionState": "manual",
       "localizations": {
@@ -218,6 +269,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "自定义答案 — 输入你自己的方案…"
+          }
+        }
+      }
+    },
+    "question.single": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Single"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "单选"
           }
         }
       }

@@ -66,6 +66,26 @@ struct SignOutTests {
         #expect(model.failure == .signedOut)
     }
 
+    @Test("本地库删行失败：上一个账号的行在本实例与冷启动重开后都读不到，令牌照样清掉")
+    func clearFailureLeavesNothingReadable() async throws {
+        struct ClearFailed: Error {}
+        let directory = try TemporaryDirectory()
+        let store = try await storeWithPreviousAccountRows(directory, clearRows: { _ in throw ClearFailed() })
+        let credentials = InMemoryCredentialStore(credentials: signedInCredentials)
+        let session = AppSession(credentials: credentials)
+
+        await SignOut(session: session, store: store).run()
+
+        #expect(session.phase == .signedOut)
+        #expect(credentials.stored == nil)
+        let key = ConversationKey(machineFingerprint: "mac-fingerprint-0009", conversationID: "conv-a")
+        #expect(try await store.conversations().isEmpty)
+        #expect(try await store.transcript(key).isEmpty)
+        let reopened = try LocalConversationStore(directory: directory.url)
+        #expect(try await reopened.conversations().isEmpty)
+        #expect(try await reopened.transcript(key).isEmpty)
+    }
+
     @Test("本地库清不掉时登出也不停在半路：令牌照样清掉、照样回到登录屏")
     func storeFailureStillSignsOut() async throws {
         let store = FailingConversationStore()

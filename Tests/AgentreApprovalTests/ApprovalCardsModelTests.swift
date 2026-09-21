@@ -121,6 +121,93 @@ struct ApprovalCardsModelTests {
         #expect(await port.answers.count == 1)
     }
 
+    @Test("单选：点一个即选它、点另一个即换成它、再点已选的即取消")
+    func singleSelect() {
+        let cards = model
+        let request = optionQuestion()
+        cards.toggleOption("main", at: 0, of: request)
+        #expect(cards.selectedLabels(0, of: request) == ["main"])
+        cards.toggleOption("dev", at: 0, of: request)
+        #expect(cards.selectedLabels(0, of: request) == ["dev"])
+        cards.toggleOption("dev", at: 0, of: request)
+        #expect(cards.selectedLabels(0, of: request).isEmpty)
+    }
+
+    @Test("多选：逐个加入、按点选次序排列，再点即移出")
+    func multiSelect() {
+        let cards = model
+        let request = optionQuestion(multi: true)
+        cards.toggleOption("test", at: 1, of: request)
+        cards.toggleOption("lint", at: 1, of: request)
+        #expect(cards.selectedLabels(1, of: request) == ["test", "lint"])
+        cards.toggleOption("test", at: 1, of: request)
+        #expect(cards.selectedLabels(1, of: request) == ["lint"])
+        #expect(cards.selectedLabels(0, of: request).isEmpty, "两问各记各的")
+    }
+
+    @Test("自定义答案：填了字即选中自定义（单选时顶替已选的选项），清空即取消")
+    func customAnswer() {
+        let cards = model
+        let request = optionQuestion(multi: true)
+        cards.toggleOption("main", at: 0, of: request)
+        cards.setAnswer("release", at: 0, of: request)
+        #expect(cards.selectedLabels(0, of: request) == [QuestionAnswer.otherLabel])
+        cards.setAnswer("", at: 0, of: request)
+        #expect(cards.selectedLabels(0, of: request).isEmpty)
+
+        cards.toggleOption("lint", at: 1, of: request)
+        cards.setAnswer("typecheck", at: 1, of: request)
+        #expect(cards.selectedLabels(1, of: request) == ["lint", QuestionAnswer.otherLabel])
+    }
+
+    @Test("提交前逐问核对：一问没选即「请先选择一个选项」，选了自定义却没填字即「请填写自定义答案」；都不发出")
+    func submitValidation() async {
+        let cards = model
+        let request = optionQuestion(multi: true)
+        cards.toggleOption("main", at: 0, of: request)
+        await cards.submitAnswers(for: request)
+        #expect(cards.inputError(of: request) == .optionRequired)
+
+        cards.setAnswer("   ", at: 1, of: request)
+        await cards.submitAnswers(for: request)
+        #expect(cards.inputError(of: request) == .otherRequired)
+        #expect(await port.answers.isEmpty)
+        #expect(cards.state(of: request) == .open(submitting: false))
+    }
+
+    @Test("选中的 label 经作答端口发出：每问一条、按问题次序，自定义答案带上填的字")
+    func selectedLabelsGoThroughThePort() async {
+        let cards = model
+        let request = optionQuestion(multi: true)
+        cards.toggleOption("dev", at: 0, of: request)
+        cards.toggleOption("e2e", at: 1, of: request)
+        cards.setAnswer("typecheck", at: 1, of: request)
+        await cards.submitAnswers(for: optionQuestion(multi: true))
+        #expect(cards.inputError(of: request) == nil)
+        #expect(await port.answers == [QuestionReply(
+            conversation: conversationKey, peerFingerprint: "peer-1", requestID: "q1",
+            questions: ["用哪个分支？", "跑哪些检查？"],
+            answers: [
+                QuestionAnswer(questionIndex: 0, labels: ["dev"], otherText: ""),
+                QuestionAnswer(questionIndex: 1, labels: ["e2e", QuestionAnswer.otherLabel], otherText: "typecheck"),
+            ],
+            skipped: false
+        )])
+        #expect(cards.state(of: request) == .answered)
+    }
+
+    @Test("核对不过之后改对再提交：报错消失并发出")
+    func errorClearsOnValidSubmit() async {
+        let cards = model
+        let request = optionQuestion()
+        await cards.submitAnswers(for: request)
+        #expect(cards.inputError(of: request) == .optionRequired)
+        cards.toggleOption("main", at: 0, of: request)
+        await cards.submitAnswers(for: request)
+        #expect(cards.inputError(of: request) == nil)
+        #expect(await port.answers.map(\.answers) == [[QuestionAnswer(questionIndex: 0, labels: ["main"], otherText: "")]])
+    }
+
     @Test("长输入默认收起，逐张展开、收起")
     func expansion() {
         let cards = model
