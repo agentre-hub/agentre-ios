@@ -168,10 +168,10 @@ tasks:
     note: "2026-09-21 由任务 12 拆出（用户批准）。交付 65 条中继测试（含任务 3 原 23 条），全量 470 条过。已实现：RelayMachineSessions、RelayTranscript、WireTranscriptDecoder、RelayDispatcher、RelayApprovalAnswering、RelayComposer，RelayChannel 新增 subscribe(conversationID:)。留给任务 12 的四件：(1) 会话键里的机器是发起端而非承载端，各适配器收一个 carrier 查找，任务 12 必须以本地库的 viaFingerprint 供给，否则他端发起的会话会发往错误的机器；(2) FailureFact(presenting:) 不认 RelayFailure，屏上会得到 .unknown，装配处用 RelayFailure.fact；(3) 游标回退后须在同一步删掉本地库里高于高水位的旧帧，否则重拉的帧被当重复丢弃（本地库现无此操作，用户批准任务 12 加宽到本地库补上）；(4) ComposerSettingsSource 的模型列表与后端力度来自 REST 引擎目录，ComposerMentionSource 走 REST。"
 
 review:
-  status: pending
-  axis: none
-  head: null
-  receipt: null
+  status: running
+  axis: spec
+  head: 37c78c9
+  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/spec.md
   fixes: []
   note: null
 
