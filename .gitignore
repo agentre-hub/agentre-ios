@@ -10,3 +10,7 @@ DerivedData/
 
 # dev-kit 轮次工作区
 .dev-kit/worktrees/
+
+# dev-kit 收尾：审查回执与运行验证证据只留本地
+.dev-kit/reviews/
+e2e/scratch/
