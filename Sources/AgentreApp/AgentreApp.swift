@@ -1,33 +1,19 @@
-import AgentreDesign
-import AgentreUI
 import SwiftUI
 
 @main
 struct AgentreApp: App {
-    @State private var environment = AppEnvironment()
+    @State private var environment: AppEnvironment = {
+        do {
+            return try AppEnvironment(.live())
+        } catch {
+            // 库目录建不起来（沙盒不可写）时应用无从运转；这不是用户能处理的情形。
+            fatalError("local store unavailable")
+        }
+    }()
 
     var body: some Scene {
         WindowGroup {
-            RootView(session: environment.session) {
-                LoginView(flow: environment.loginFlow)
-            } shell: {
-                // 三个目的地的内容由后续任务各自接入；这里先是空白页。
-                ShellView {
-                    EmptyDestination()
-                } machines: {
-                    EmptyDestination()
-                } me: {
-                    EmptyDestination()
-                }
-            }
+            AppRootView(environment: environment)
         }
-    }
-}
-
-private struct EmptyDestination: View {
-    var body: some View {
-        Rectangle()
-            .fill(.token(.bg))
-            .ignoresSafeArea(edges: .top)
     }
 }

@@ -168,6 +168,31 @@ public actor LocalConversationStore: ConversationStore {
         try fetchConversation(key)?.latestSeq ?? 0
     }
 
+    /// 这条会话经哪台机器保存、跟随的（承载机）。会话键里的是发起端，二者不可互相代替：
+    /// 打开、补齐、回应审批都走承载机的 `machine:` 通道。不在库里时为 nil。
+    public func carrier(of key: ConversationKey) throws -> String? {
+        try fetchConversation(key)?.viaFingerprint
+    }
+
+    /// attach 报来的机器最高帧号低于本机游标：那边的帧号重新起算了（整条会话被删、会话号被复用）。
+    /// 在同一步里把旧编号下落过的帧整段丢掉、游标归零（mirror_svc.dropCursorAboveHighWater）——
+    /// 重拉的帧与旧帧落在同一个 (发起端, 会话, seq) 上，旧行不走就会把新帧当重复挡掉，
+    /// 而低于最高帧号的那几行同样属于旧编号。摘要与已读位不动。交回是否回退了。
+    @discardableResult
+    public func rewind(_ key: ConversationKey, highWater: Int64) throws -> Bool {
+        guard let row = try fetchConversation(key), row.latestSeq > highWater else { return false }
+        let owner = key.machineFingerprint
+        let id = key.conversationID
+        try modelContext.delete(
+            model: FrameRecord.self,
+            where: #Predicate { $0.machineFingerprint == owner && $0.conversationID == id }
+        )
+        row.latestSeq = 0
+        waiters[key] = nil
+        try commit(force: true)
+        return true
+    }
+
     public func markRead(_ key: ConversationKey) throws {
         guard let row = try fetchConversation(key) else { return }
         row.readMarker = row.lastMessageAt
