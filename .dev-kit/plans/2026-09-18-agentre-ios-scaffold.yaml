@@ -26,7 +26,8 @@ context:
   - "模拟器：2026-09-21 经用户同意删除唯一的 iOS 18.3.1 运行时（对部署目标 26.0 无用），改装 iOS 27 运行时；数据卷此前 99% 满、仅余 7.5 GiB。Mac 上 swift test 的 data-protection 钥匙串返回 -34018（缺授权），故钥匙串与命中区的无障碍树检查必须跑在模拟器上"
   - "全仓测试命令（任务 2 立，README.md）：git submodule update --init && xcodegen generate && xcodebuild test -project Agentre.xcodeproj -scheme Agentre -destination 'platform=iOS Simulator,name=iPhone 17' -collect-test-diagnostics never DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR；2026-09-21 主会话在 6759111 上跑：退出 0，55 条全过。DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR 不可省——没有它，热构建会放过 AgentreUI 里越层的 import"
   - "任务 2 留给后续任务的约束（其返回所报，已由全量通过佐证）：.hitTarget() 只挂在 Button 上——模拟器实测在按钮外加 frame/contentShape 不会扩大落点，所以后续界面的一切可点元素都须是 Button，不得用 onTapGesture/Toggle/Picker 绕开（否则要改 AgentreDesign，而那不在任何后续任务的写入集内）；需要真实钥匙串的测试只能跑在宿主 App 的 AgentreHostedTests 里，其源码限于 Tests/AgentreAuthTests/Hosted，后续任务用 TokenStore 端口的替身即可"
-  - "AgentreWire（Vendor/agentre/pkg/wire/swift）只含 protobuf 生成消息：protocolVersion 只是握手消息上的字段（wire.pb.swift:775 等），文件选项里的 0.2.0 不进 Swift 产物；中继信封也不在其中，是 Go 手写的 agentre/pkg/wire/relayenvelope/relayenvelope.go（2 字节大端长度 + UTF-8 通道 ID + 载荷，MaxChannelIDBytes 128，读上限 = 载荷上限 + MaxEnvelopeBytes），且其注释写明客户端一个通道 ID 都不自己造、只回送服务端发来的那个（:24-27）"
+  - "AgentreWire（Vendor/agentre/pkg/wire/swift）只含 protobuf 生成消息：protocolVersion 只是握手消息上的字段（wire.pb.swift:775 等），文件选项里的 0.2.0 不进 Swift 产物；中继信封也不在其中，是 Go 手写的 agentre/pkg/wire/relayenvelope/relayenvelope.go（2 字节大端长度 + UTF-8 通道 ID + 载荷，MaxChannelIDBytes 128，读上限 = 载荷上限 + MaxEnvelopeBytes），。**更正（2026-09-21，任务 3 核出）**：relayenvelope.go:24-27 那句「客户端不自己造通道 ID」的注释已过时——服务端契约是客户端在自己连接的命名空间里自选通道号，未知号上第一个非空帧即开通道（agentre-server/internal/controller/relay_ctr/channel.go:22-30,72-80），TS 客户端铸 c<n>（relayConnection.ts:241）；只有保留的信号通道号归服务端，客户端只收不写"
+  - "任务 3 交付的中继面（e8cb28d，全量 78 条过）：公开 API 在 Sources/AgentreRelay/（RelayConnection、RelayChannel、RelayTypes 等）与 Sources/AgentreDomain/Ports/Relay.swift；通道由 channel(for:) 取得，同一目标复用同一通道；状态经 statusUpdates 推出；重连后按 seq 游标补齐并去重，补齐期间的实时帧先缓冲；服务端关闭的通道变 .closed 不自动重开，由消费方再调 channel(for:)"
   - "编排决定（不在规格内，为并发而设）：每个功能自成一个 SwiftPM target，自带目录、自带 <Feature>.xcstrings 与自带测试目标；Package.swift 与 project.yml 由任务 2 一次性声明全部 target 后即冻结，其余任务只在自己的目录内写。没有这条，Localizable.xcstrings 与清单会成为所有界面任务的共享写入，并发就不存在"
 
 tasks:
@@ -51,19 +52,19 @@ tasks:
   - id: 3
     goal: "注入伪传输下：一条通道上的并发请求按 id 路由互不串道；conversation: 与 machine: 两条通道共存于一条物理连接；逐通道握手出示设备 access token；断线后重握手、重 attach、按 seq 游标 pull，重复帧只应用一次；版本不等即停止重试该通道并给出「更新 App」这一事实而非错误码；重拨指数退让、封顶、带抖动；无人应答的 RPC 到期收场。"
     deps: [2]
-    files: [agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreDomain/Ports/Relay.swift, agentre-ios/Tests/AgentreRelayTests/]
+    files: [agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreDomain/Ports/Relay.swift, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Package.swift, agentre-ios/Package.resolved]
     model: strong
     interfaces: "AgentreWire 消息类型与 RelayEnvelope；任务 2 的 AuthSession（取当前 access token）、TransportPort"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: e8cb28d
+    note: "2026-09-21 首派 stuck：冻结的 Package.swift 缺 SwiftProtobuf 直接依赖，Xcode 下任何编解码都链接失败（Undefined symbols: SwiftProtobuf.Message.serializedData）。用户批准一次性解冻：只加 swift-protobuf 1.38.1 exact，挂到 AgentreRelay、AgentreStore 与全部测试 target，其后清单重新冻结。"
   - id: 11
     goal: "本地会话库：保存一条会话后其摘要与帧落盘，冷启动在无网络下读出同一份内容；同一 seq 重复到达只落一行；补齐从本机已有的最大 seq 起而不从头重放；attach 后的实时帧与 pull 回来的历史帧经同一条路径落库；已读位随会话记录并在冷启动后仍生效；删除会话与退出登录后库中不残留任何会话行。用真实数据库跑在临时目录上，不用内存替身——要验的正是落盘这件事。"
     deps: [3]
     files: [agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDomain/Session/, agentre-ios/Tests/AgentreStoreTests/]
     model: strong
     interfaces: "任务 3 的 RelayClient.attach/pull 与帧投递；AgentreWire 的 SessionSummary / DurableNotification"
-    status: todo
+    status: doing
     commit: null
     note: "与服务端 mirror_svc 同构，规则逐条对照而不是另立一套（见 context）。"
   - id: 4
