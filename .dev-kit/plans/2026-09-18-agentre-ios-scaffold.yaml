@@ -1,0 +1,140 @@
+spec: docs/specs/2026-09-18-agentre-ios-scaffold.md
+status: ready
+mode: subagent
+worktree: "none: 用户选择在当前 checkout 上开专用分支 2026-09-18-agentre-ios-scaffold"
+
+goal: "真机上完成一整条闭环：设备流登录 → 连上中继 → 在机器详情页把一条会话保存到手机 → 消息列表（读本地库）看到它等你处理 → 打开它读完转录 → 就地批准一次工具权限并发一句话；断网后重开应用，已保存会话的历史照常可读。且规格中十四屏全部实现，两套主题与 44×44pt 命中区各有守卫。"
+
+context:
+  - "buf 没有 Makefile 入口，唯一入口是 pnpm 脚本：proto:generate = `cd ../../../pkg/wire && buf generate`，proto:check 额外跑 lint/breaking 并 `git diff --exit-code -- . ../../frontend/packages/agentre-wire/src/gen`——新增 Swift 产物目录落在 pkg/wire 下即自动被那个 `.` 覆盖（agentre/frontend/packages/agentre-wire/package.json:20-21）"
+  - "buf 是 devDependency @bufbuild/buf 1.72.0，不在 PATH 上（agentre/frontend/packages/agentre-wire/package.json:29）"
+  - "buf.gen.yaml 带 clean: true，任何新 out: 目录只能放生成物，手写 Swift 必须在它之外（agentre/pkg/wire/buf.gen.yaml:2；既有先例 protocolversion/ eventkind/ guard/ 都在 agentrewire/ 之外）"
+  - "跨语言金样本 23 份 JSON 在 agentre/frontend/packages/agentre-wire/fixtures/，由 `WIRE_GOLDEN_WRITE=1 go test ./internal/pkg/agentruntime/runtimes/remote/wire/ -run TestWriteGoldenSamples` 产出、TestGoldenFixturesFresh 冻结；TS 侧消费方是 src/__tests__/wire-codec.test.ts:54-72（ls 计数 = 23）"
+  - "「全工作区只有一份 wire.pb.go」的守卫是 agentre-server/internal/pkg/relaywire/single_source_test.go:38-70 与 agentre/pkg/wire/guard/schema_home_test.go:23-52；两者都只认 *.pb.go，没有任何守卫约束第二份生成的 Swift"
+  - "agentre/Makefile:188 以 `go test -C pkg/wire ./...` 单独一行跑该 module；嵌在其下的 Swift 包不会被现有目标覆盖"
+  - "/v1/relay/client 直接接受原生端设备 access token，浏览器票据只是并行的第二条路（agentre-server/internal/api/router.go:381-385）；该端点还承载一条保留信号通道 relay_svc.SignalChannelID，推 sync_version / mirror_changed / device_presence（同处注释）——规格未提及，列表新鲜度可据此实现而不必轮询"
+  - "通道目标由该通道的第一帧给出，形式为 conversation:<id> / machine:<fingerprint>（agentre-server/frontend/src/lib/relayConnection.ts:275-282、frontend/src/lib/relayTarget.ts:20-32）；信封 = 2 字节大端通道 ID 长度 + UTF-8 id + payload，MaxChannelIDBytes 128（agentre/pkg/wire/relayenvelope/relayenvelope.go:21-31）"
+  - "RPC 方法表 65 条、各带固定数字 id（`grep -c 'method(' agentre/frontend/packages/agentre-wire/src/rpc-methods.ts` → 65）；协议版本取自 proto 文件选项而非字面量（agentre/pkg/wire/protocolversion/protocolversion.go:33-40）"
+  - "待移植的纯函数原件：agentre-ui/src/transcript/activity-block/facts.ts(197)、canonical-tool/tier.ts(98)+tier.test.ts(198)、composer/context-usage.ts(49)、agentre-server/frontend/src/components/session/newconv/projectMembers.ts（用例 src/__tests__/project-members.test.ts）"
+  - "REST 面形状（均在 agentre-server/internal/api/）：agentsession/session.go:28-108 列表（Groups/Items 互斥，每项同时带 peer_fingerprint 与 device_fingerprint）、:118 已读、:142-190 转录（direction=forward|backward）、:194-215 待处理计数（无任何参数）；device/device.go:5-15 设备授权（device_kind 已收 mobile）、:25-37 取令牌、:84-93 刷新、:95-101 设备列表与撤销；workspace/workspace.go:15-47 agents、:52-100 dispatch-target（availability ∈ available|offline|unpaired|no_device|project_path_missing）、:154-190 项目树、:106-128 设备详情"
+  - "工具链：macOS 27.0 / Xcode 27.0 / Swift 6.4，仅 iOS 27 SDK，brew 与 protoc 在（`sw_vers`、`xcodebuild -version`、`swift --version`、`xcodebuild -showsdks`）；xcodegen、buf、protoc-gen-swift、swiftlint、swiftformat 均未安装（`command -v`）——任务 1 与任务 2 开工前须先征得用户同意再安装"
+  - "服务端的会话镜像只覆盖账号「保存过」的对话（agentre-server/internal/model/entity/agent_session_entity/save.go:11，守卫 internal/api/savedsession/guard_test.go:33），那是控制台自己的一份记录；本轮手机自有一套本地库，因此 /v1/agent-sessions/* 与 /v1/saved-sessions 一次都不调（规格决策 8/14）"
+  - "中继侧会话取材的形状：SessionListRequest{keyword,limit,cursor,conversation_ids}→{sessions,cursor,has_more,total}（新到旧）、SessionCountsResponse{total,running,waiting}、SessionAttachResponse{latest_seq}、SessionPullResponse{notifications,cursor,has_more,oldest_seq}，SessionSummary 带 waiting_for_input/latest_seq/last_message_at/lifecycle_state，DurableNotification 带 seq 与源端 createtime（agentre/pkg/wire/proto/agentre/wire/wire.proto:500,537,548,615,627,641）"
+  - "账号可见性：daemon 在调用方账号等于自己登录账号时列出全部会话，不限发起端（agentre/internal/daemon/handlers/session_catchup.go:58-59,367-380）；waiting_for_input 由 backend 现算、从不落库（同文件:382-387）——机器详情页因此能列出桌面端上开的会话供保存"
+  - "服务端 mirror_svc 就是「认领机器 → attach → pull → 落自己的库」这一形状的既有先例，手机侧的本地库与它同构（agentre-server/internal/service/mirror_svc/）"
+  - "编排决定（不在规格内，为并发而设）：每个功能自成一个 SwiftPM target，自带目录、自带 <Feature>.xcstrings 与自带测试目标；Package.swift 与 project.yml 由任务 2 一次性声明全部 target 后即冻结，其余任务只在自己的目录内写。没有这条，Localizable.xcstrings 与清单会成为所有界面任务的共享写入，并发就不存在"
+
+tasks:
+  - id: 1
+    goal: "agentre 仓内：一份 Swift 测试把 23 份 fixtures/*.json 解码再编码得到与 Go/TS 同样的字节；新鲜度守卫在签入的 Swift 与重跑 buf generate 不一致时失败；仓内出现第二份生成的 wire Swift 时守卫失败；重新生成不得改动 wire.pb.go / wire_pb.ts / fixtures 任何一个字节。产物与其构建声明推送到 origin，供本仓钉 revision。"
+    deps: []
+    files: [agentre/pkg/wire/buf.gen.yaml, agentre/pkg/wire/swift/, agentre/pkg/wire/guard/, agentre/frontend/packages/agentre-wire/package.json, agentre/frontend/packages/agentre-wire/src/__tests__/public-boundary.test.ts, agentre/frontend/pnpm-lock.yaml, agentre/Makefile, agentre/pkg/wire/README.md, agentre/go.sum, agentre/pkg/wire/go.sum]
+    model: strong
+    interfaces: null
+    status: todo
+    commit: null
+    note: "跨仓：提交只落在 agentre 仓，与本仓分开。必须推送后本仓才能钉 revision（规格「形态与边界」）。"
+  - id: 2
+    goal: "登录屏发起设备流（注入伪 HTTP）：授权中 / 过期 / 被拒 / 成功四种收场各有断言，成功后令牌与本地生成的持久指纹进钥匙串并落到三标签骨架；刷新同一时刻只进行一次。同时立起后续任务全部消费的地基：project.yml、按层分模块且依赖方向由清单结构性强制的本地包（并一次性声明全部 target）、设计 token 层（深浅两套齐全、引用未定义 token 是构建期错误、视图源码无硬编码色值、每个前景 token 在 bg/surface/surface-2 上过对比度阈值）、字符串目录及其缺语言与拼接守卫、44×44pt 命中区修饰符与逐屏不重叠断言。"
+    deps: [1]
+    files: [agentre-ios/project.yml, agentre-ios/Package.swift, agentre-ios/Package.resolved, agentre-ios/Sources/AgentreDomain/Core/, agentre-ios/Sources/AgentreDomain/Ports/Http.swift, agentre-ios/Sources/AgentreDomain/Ports/Auth.swift, agentre-ios/Sources/AgentreREST/Core/, agentre-ios/Sources/AgentreREST/Auth/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDesign/, agentre-ios/Sources/AgentreUI/Login/, agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/Tests/AgentreDesignTests/, agentre-ios/README.md, agentre-ios/.gitignore]
+    model: strong
+    interfaces: "任务 1 的 SPM product AgentreWire（模块名与仓内 Package.swift 路径）、ProtocolVersion.current、RelayEnvelope.wrap/unwrap、RPC 方法表"
+    status: todo
+    commit: null
+    note: null
+  - id: 3
+    goal: "注入伪传输下：一条通道上的并发请求按 id 路由互不串道；conversation: 与 machine: 两条通道共存于一条物理连接；逐通道握手出示设备 access token；断线后重握手、重 attach、按 seq 游标 pull，重复帧只应用一次；版本不等即停止重试该通道并给出「更新 App」这一事实而非错误码；重拨指数退让、封顶、带抖动；无人应答的 RPC 到期收场。"
+    deps: [2]
+    files: [agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreDomain/Ports/Relay.swift, agentre-ios/Tests/AgentreRelayTests/]
+    model: strong
+    interfaces: "AgentreWire 消息类型与 RelayEnvelope；任务 2 的 AuthSession（取当前 access token）、TransportPort"
+    status: todo
+    commit: null
+    note: null
+  - id: 11
+    goal: "本地会话库：保存一条会话后其摘要与帧落盘，冷启动在无网络下读出同一份内容；同一 seq 重复到达只落一行；补齐从本机已有的最大 seq 起而不从头重放；attach 后的实时帧与 pull 回来的历史帧经同一条路径落库；已读位随会话记录并在冷启动后仍生效；删除会话与退出登录后库中不残留任何会话行。用真实数据库跑在临时目录上，不用内存替身——要验的正是落盘这件事。"
+    deps: [3]
+    files: [agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDomain/Session/, agentre-ios/Tests/AgentreStoreTests/]
+    model: strong
+    interfaces: "任务 3 的 RelayClient.attach/pull 与帧投递；AgentreWire 的 SessionSummary / DurableNotification"
+    status: todo
+    commit: null
+    note: "与服务端 mirror_svc 同构，规则逐条对照而不是另立一套（见 context）。"
+  - id: 4
+    goal: "消息列表读本地库：冷启动无网络即出内容；按最后活动倒序、等你处理者置顶并抬高；未读判据是最后活动时刻晚于本机已读位、从未读过判为未读，已读后乐观改写；运行中会话预览呈现为「正在输入…」；待批准的命令或待回答的问题在不进入对话的前提下可读；连接建立后已保存会话各自补齐，新帧落库并就地反映到列表；角标两个数由本地库现算；该屏过命中区断言。"
+    deps: [11]
+    files: [agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Tests/AgentreMessagesTests/]
+    model: mid
+    interfaces: "任务 11 的 SessionStore（列表读取、已读位、补齐驱动）；任务 2 的 L10n、HitTarget/assertHitTargets"
+    status: todo
+    commit: null
+    note: null
+  - id: 5
+    goal: "机器名册与在线态取自 REST 工作区端点；机器详情现问机器要会话（sessionList），游标翻页不重不漏、改搜索词即回到起点、界面只承诺匹配标题；每行分得清已保存与未保存，未保存者给出「保存到手机」——保存即 attach 并按游标 pull 进本地库，此后它出现在消息列表；顶部三个计数取自 sessionCounts；机器离线时该屏无会话可列且呈现为「不在线」，已保存的会话不受影响。"
+    deps: [4]
+    files: [agentre-ios/Sources/AgentreREST/Machine/, agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Tests/AgentreMachineTests/]
+    model: mid
+    interfaces: "任务 11 的 SessionStore.save/contains；任务 3 的 RelayClient（machine: 通道）"
+    status: todo
+    commit: null
+    note: null
+  - id: 6
+    goal: "先把宿主的转录规则移植成带用例的纯函数再渲染：汇总类目顺序固定，失败与后台计数永不截断，失败判据同时认结果错误标志与命令退出码且折叠展开同判；运行中不出耗时；运行中自动展开、落定自动收起；仅运行态按阈值省略并给出带汇总的省略行；Subagent 折叠态一行；活动块不套容器；工具档按规范类型→输入形状→中性兜底且不查工具名表；四类卡片不进块；上下文环三档变色、浮层只读、窗口不为正时整块不渲染；历史先读本地库、不足时经 pull 按 oldest_seq/has_more 向后补（不读服务端转录端点），与实时帧按 seq 合流；上滚即停自动跟随并给出带新增计数的回到最新。"
+    deps: [4]
+    files: [agentre-ios/Sources/AgentreDomain/Transcript/, agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
+    model: strong
+    interfaces: "任务 3 的 RelayClient.attach/pull 与帧投递；任务 4 的 SessionSummary（打开会话时连哪台由 device_fingerprint 给出）"
+    status: todo
+    commit: null
+    note: "四个纯函数的原件与用例见 context，规则逐条对齐，不另立一套。"
+  - id: 7
+    goal: "审批卡片内联于转录流、不升起模态：呈现请求种类、等宽的完整输入、执行目录与命令合成的一块，以及宿主原文原序的三档处置（描边 / 浅底 / 主色实心）；输入过长时收成摘要并可展开；AskUserQuestion 复用同一形态；作答经宿主既有 RPC 发出后卡片落定；三枚按钮命中区各 44×44 且两枚允许之间有可证的死区；任何位置都没有危险启发式。"
+    deps: [6]
+    files: [agentre-ios/Sources/AgentreDomain/Approval/, agentre-ios/Sources/AgentreUI/Conversation/Cards/, agentre-ios/Tests/AgentreApprovalTests/]
+    model: mid
+    interfaces: "任务 6 的 TranscriptStore 与卡片插入点；任务 3 的 RelayClient.call"
+    status: todo
+    commit: null
+    note: null
+  - id: 8
+    goal: "输入区下方常驻一行（面板入口、权限模式/模型/思考档位三枚图标、右端上下文环），面板逐行标注各项当前取值并提供会话信息、上下文、删除会话；一轮运行中发送进入队列而非禁用输入框，界面如实说明它们何时发出；斜杠命令与提及由键入就地触发，斜杠候选按会话工作目录作用域解析。"
+    deps: [6]
+    files: [agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Tests/AgentreComposerTests/]
+    model: mid
+    interfaces: "任务 6 的 ContextUsage 与 TranscriptStore；任务 3 的 RelayClient.call/notifications"
+    status: todo
+    commit: null
+    note: null
+  - id: 9
+    goal: "新建对话入口给出搜索、最近用过与全部 Agent，每行呈现解析出的目标机器或具体的不可用原因并压暗；「从项目里挑」一路的继承在客户端算成纯函数（直接与继承互斥、同一 Agent 不重复、祖先由近及远、成环时列不全而非卡死）；选中 Agent 落到草稿对话，输入区上方两枚 chip；发出第一条消息时先经 machine: 通道派发、成功后立即落进本地库，落库失败时对话不被当成未创建而是如实呈现「已开始但未入列」并可重试；机器面板逐档列出次序号、机器名、后端种类，不可用档压暗并写明宿主的三种原因，手动指定后给出交回自动挑；覆盖只对这一次生效；发出第一条消息后 chip 行退场。"
+    deps: [4]
+    files: [agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Sources/AgentreREST/Workspace/, agentre-ios/Sources/AgentreUI/NewConversation/, agentre-ios/Tests/AgentreNewConversationTests/]
+    model: mid
+    interfaces: "任务 2 的 HTTPTransport；任务 11 的 SessionStore（新对话落库后即出现在列表）"
+    status: todo
+    commit: null
+    note: "继承纯函数的原件与用例见 context。"
+  - id: 10
+    goal: "「我」给出账号信息、可改且默认指向生产的服务器地址、已授权设备列表与撤销、语言、外观与退出登录；刷新被拒即回到登录屏并清空钥匙串与本地会话库；退出登录同样清空两者，换账号后读不到上一个账号的任何会话行；「没有可用的机器」呈现为带原因的事实而非无限等待；每一处用户可见的失败都是被重述为用户语言的事实，由一道覆盖错误呈现层的守卫证明其中不出现错误码或对端原串。"
+    deps: [4]
+    files: [agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreREST/Account/, agentre-ios/Sources/AgentreUI/Me/, agentre-ios/Tests/AgentreAccountTests/]
+    model: mid
+    interfaces: "任务 2 的 AuthSession、TokenStore、L10n"
+    status: todo
+    commit: null
+    note: null
+
+review:
+  status: pending
+  axis: none
+  head: null
+  receipt: null
+  fixes: []
+  note: null
+
+verification:
+  status: pending
+  report: null
+  head: null
+  note: null
