@@ -143,8 +143,8 @@ tasks:
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Sources/AgentreStore/, agentre-ios/Tests/AgentreStoreTests/]
     model: strong
     interfaces: "任务 14 的全部中继适配器；任务 2/5/9/10 的 REST 客户端；任务 11/13 的 LocalConversationStore 与 IncomingFrame；任务 4–10 各屏的公开视图与其构造参数；各任务 note 里留给任务 12 的接线说明"
-    status: doing
-    commit: null
+    status: done
+    commit: 5598945
     note: "2026-09-21 用户批准新增；同日又批准拆为 14（适配器）与 12（装配）两段，以免超出单个实现者的上下文。任务 11 返回揭出：AgentreApp 在任务 2 之后无人拥有，中继 → 本地库的转换只存在于测试里。"
 
   - id: 13
