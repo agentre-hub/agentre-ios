@@ -58,6 +58,8 @@ public actor RelayChannel {
     private var handshakeFailures = 0
     private var handshakeTask: Task<Void, Never>?
     private var conversations: [String: Conversation] = [:]
+    /// 按对话订阅的交出口：一条机器通道承载多条对话，各屏只要自己那一条。
+    private var subscribers: [String: [UUID: AsyncStream<RelayNotification>.Continuation]] = [:]
 
     init(
         id: String,
@@ -109,6 +111,40 @@ public actor RelayChannel {
         return try await catchUp(conversationID)
     }
 
+    /// 订阅一条对话的通知（已去重；预览帧也在内）。可以有多个订阅方；流在通道关闭时结束。
+    public func subscribe(conversationID: String) -> AsyncStream<RelayNotification> {
+        let (stream, continuation) = AsyncStream<RelayNotification>.makeStream()
+        guard !closed, !halted else {
+            continuation.finish()
+            return stream
+        }
+        let token = UUID()
+        subscribers[conversationID, default: [:]][token] = continuation
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.unsubscribe(conversationID, token) }
+        }
+        return stream
+    }
+
+    private func unsubscribe(_ conversationID: String, _ token: UUID) {
+        subscribers[conversationID]?[token] = nil
+        if subscribers[conversationID]?.isEmpty == true { subscribers[conversationID] = nil }
+    }
+
+    /// 交出一条通知：总流一份，订阅了这条对话的每一方各一份。
+    private func emit(_ notification: RelayNotification) {
+        notificationSink.yield(notification)
+        guard let conversationID = notification.conversationID else { return }
+        guard let listening = subscribers[conversationID] else { return }
+        for continuation in listening.values { continuation.yield(notification) }
+    }
+
+    private func finishSubscribers() {
+        let all = subscribers.values.flatMap(\.values)
+        subscribers = [:]
+        for continuation in all { continuation.finish() }
+    }
+
     /// 某条对话已应用到的最大 seq。
     public func cursor(conversationID: String) -> Int64 {
         conversations[conversationID]?.cursor ?? 0
@@ -145,6 +181,7 @@ public actor RelayChannel {
         ready = false
         handshakeTask?.cancel()
         failAll(halted ? .updateRequired : .channelClosed)
+        finishSubscribers()
         if !halted { setStatus(.closed) }
     }
 
@@ -223,6 +260,7 @@ public actor RelayChannel {
         halted = true
         ready = false
         failAll(.updateRequired)
+        finishSubscribers()
         setStatus(.updateRequired)
         await connection?.close(id)
     }
@@ -237,6 +275,12 @@ public actor RelayChannel {
             attach.conversationID = conversationID
             attach.peerFingerprint = conversation.peerFingerprint
             let attached: Agentre_Wire_SessionAttachResponse = try await call(.sessionAttach, attach)
+            // 游标只可能来自对端发过的帧号，越过它的最高帧号只说明对端的帧号重新起算了
+            // （整条会话被删、会话号被复用）。不回退的话此后每一帧都被当成重复丢掉，
+            // 会话无声冻住（mirror_svc 与桌面端 reconnect.go 的 dropCursorAboveHighWater）。
+            if cursor(conversationID: conversationID) > attached.latestSeq {
+                conversations[conversationID]?.cursor = 0
+            }
             while true {
                 let before = cursor(conversationID: conversationID)
                 var pull = Agentre_Wire_SessionPullRequest()
@@ -269,7 +313,7 @@ public actor RelayChannel {
     /// 实时帧的投递入口。
     private func deliver(_ notification: Agentre_Wire_RpcNotification, createtime: Int64?, live: Bool) {
         guard let key = notification.durableKey, key.seq > 0 else {
-            notificationSink.yield(RelayNotification(
+            emit(RelayNotification(
                 payload: notification, conversationID: notification.durableKey?.conversationID,
                 seq: nil, createtime: createtime
             ))
@@ -288,7 +332,7 @@ public actor RelayChannel {
         guard seq > conversation.cursor else { return }
         conversation.cursor = seq
         conversations[conversationID] = conversation
-        notificationSink.yield(RelayNotification(
+        emit(RelayNotification(
             payload: notification, conversationID: conversationID, seq: seq, createtime: createtime
         ))
     }

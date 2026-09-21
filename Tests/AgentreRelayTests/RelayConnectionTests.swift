@@ -191,7 +191,11 @@ private final class SeqCollector: @unchecked Sendable {
         #expect(handshake.credential == "token-2")
 
         let reattach = try await second.nextRequest(on: newID, method: .sessionAttach)
-        second.respond(newID, to: reattach, with: attachResponse)
+        // 断线期间机器又往前走了：重新 attach 报的最高帧号不低于本机游标（低于时游标要回退，
+        // 见 RelayHighWaterTests）。
+        var reattachResponse = Agentre_Wire_SessionAttachResponse()
+        reattachResponse.latestSeq = 9
+        second.respond(newID, to: reattach, with: reattachResponse)
         let repull = try await second.nextRequest(on: newID, method: .sessionPull)
         let repullRequest = try Agentre_Wire_SessionPullRequest(serializedBytes: repull.request.encodedPayload)
         #expect(repullRequest.conversationID == "conv-1")

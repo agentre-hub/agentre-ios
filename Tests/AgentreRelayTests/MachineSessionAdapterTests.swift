@@ -1,0 +1,180 @@
+import AgentreDomain
+import AgentreRelay
+import AgentreWire
+import Foundation
+import SwiftProtobuf
+import Testing
+
+private func summary(_ id: String, peer: String = "", latest: Int64 = 0) -> Agentre_Wire_SessionSummary {
+    var summary = Agentre_Wire_SessionSummary()
+    summary.conversationID = id
+    summary.peerFingerprint = peer
+    summary.title = "Fix login"
+    summary.agentSyncID = "agent-1"
+    summary.cwd = "/repo"
+    summary.projectSyncID = "proj-1"
+    summary.backendType = "claudecode"
+    summary.lifecycleState = "running"
+    summary.waitingForInput = true
+    summary.latestSeq = latest
+    summary.lastMessageAt = 1_700_000_000_000
+    return summary
+}
+
+private func durableFrame(_ seq: Int64, createtime: Int64) -> Agentre_Wire_DurableNotification {
+    var frame = Agentre_Wire_DurableNotification()
+    frame.seq = seq
+    frame.payload = relayTurnStarted("conv-1", seq: seq)
+    frame.createtime = createtime
+    return frame
+}
+
+@Suite struct MachineSessionAdapterTests {
+    @Test("会话清单：machine:<指纹> 上发 sessionList（关键词 / 游标 / 条数），应答逐格映射成领域页")
+    func listsSessions() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayMachineSessions(connection: harness.connection)
+        async let page = adapter.sessions(on: "fp-1", keyword: "login", cursor: "c-2", limit: 20)
+
+        let (socket, id) = try await harness.machineChannel("fp-1")
+        let request = try await socket.nextRequest(on: id, method: .sessionList)
+        let body = try request.body(Agentre_Wire_SessionListRequest.self)
+        #expect(body.keyword == "login")
+        #expect(body.cursor == "c-2")
+        #expect(body.limit == 20)
+        #expect(body.conversationIds.isEmpty)
+
+        var response = Agentre_Wire_SessionListResponse()
+        response.sessions = [summary("conv-1", peer: "peer-1", latest: 42), summary("conv-2")]
+        response.cursor = "c-3"
+        response.hasMore_p = true
+        socket.respond(id, to: request, with: response)
+
+        let result = try await page
+        #expect(result.cursor == "c-3")
+        #expect(result.hasMore)
+        #expect(result.sessions.map(\.conversationID) == ["conv-1", "conv-2"])
+        #expect(result.sessions[0] == MachineSession(
+            conversationID: "conv-1", peerFingerprint: "peer-1", title: "Fix login", agentSyncID: "agent-1", cwd: "/repo",
+            projectSyncID: "proj-1", backendType: "claudecode", lifecycleState: "running", waitingForInput: true,
+            latestSeq: 42, lastMessageAt: 1_700_000_000_000
+        ))
+    }
+
+    @Test("计数：sessionCounts 的三个数原样交出")
+    func countsSessions() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayMachineSessions(connection: harness.connection)
+        async let counts = adapter.counts(on: "fp-1")
+        let (socket, id) = try await harness.machineChannel("fp-1")
+        let request = try await socket.nextRequest(on: id, method: .sessionCounts)
+        var response = Agentre_Wire_SessionCountsResponse()
+        response.total = 9
+        response.running = 2
+        response.waiting = 1
+        socket.respond(id, to: request, with: response)
+        #expect(try await counts == MachineSessionCounts(total: 9, running: 2, waiting: 1))
+    }
+
+    @Test("保存到手机：attach 带 conversation_id 与发起端指纹，答复最高帧号；pull 的帧载荷是 RpcNotification 字节，createtime 原样")
+    func attachAndPull() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayMachineSessions(connection: harness.connection)
+        async let latest = adapter.attach(conversationID: "conv-1", peerFingerprint: "peer-1", on: "fp-1")
+        let (socket, id) = try await harness.machineChannel("fp-1")
+        let attach = try await socket.nextRequest(on: id, method: .sessionAttach)
+        let attachBody = try attach.body(Agentre_Wire_SessionAttachRequest.self)
+        #expect(attachBody.conversationID == "conv-1")
+        #expect(attachBody.peerFingerprint == "peer-1")
+        var attached = Agentre_Wire_SessionAttachResponse()
+        attached.latestSeq = 7
+        socket.respond(id, to: attach, with: attached)
+        #expect(try await latest == 7)
+
+        async let batch = adapter.pull(conversationID: "conv-1", peerFingerprint: "peer-1", after: 5, on: "fp-1")
+        let pull = try await socket.nextRequest(on: id, method: .sessionPull)
+        let pullBody = try pull.body(Agentre_Wire_SessionPullRequest.self)
+        #expect(pullBody.conversationID == "conv-1")
+        #expect(pullBody.peerFingerprint == "peer-1")
+        #expect(pullBody.cursor == 5)
+        #expect(pullBody.limit > 0)
+        var page = Agentre_Wire_SessionPullResponse()
+        page.notifications = [durableFrame(6, createtime: 1_006), durableFrame(7, createtime: 0)]
+        page.cursor = 7
+        page.hasMore_p = false
+        socket.respond(id, to: pull, with: page)
+
+        let frames = try await batch
+        #expect(frames.cursor == 7)
+        #expect(!frames.hasMore)
+        #expect(frames.frames.map(\.seq) == [6, 7])
+        #expect(frames.frames.map(\.createtime) == [1_006, 0])
+        let decoded = try Agentre_Wire_RpcNotification(serializedBytes: frames.frames[0].payload)
+        #expect(decoded == relayTurnStarted("conv-1", seq: 6))
+    }
+
+    @Test("机器报的最高帧号低于本机游标：pull 从 0 起，而不是永远什么都拉不到")
+    func pullRewindsAboveHighWater() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayMachineSessions(connection: harness.connection)
+        async let latest = adapter.attach(conversationID: "conv-1", peerFingerprint: "", on: "fp-1")
+        let (socket, id) = try await harness.machineChannel("fp-1")
+        let attach = try await socket.nextRequest(on: id, method: .sessionAttach)
+        var attached = Agentre_Wire_SessionAttachResponse()
+        attached.latestSeq = 2
+        socket.respond(id, to: attach, with: attached)
+        #expect(try await latest == 2)
+
+        async let batch = adapter.pull(conversationID: "conv-1", peerFingerprint: "", after: 40, on: "fp-1")
+        let pull = try await socket.nextRequest(on: id, method: .sessionPull)
+        #expect(try pull.body(Agentre_Wire_SessionPullRequest.self).cursor == 0)
+        var page = Agentre_Wire_SessionPullResponse()
+        page.notifications = [durableFrame(1, createtime: 1), durableFrame(2, createtime: 2)]
+        page.cursor = 2
+        socket.respond(id, to: pull, with: page)
+        #expect(try await batch.frames.map(\.seq) == [1, 2])
+    }
+
+    @Test("错误应答与到期无应答都以不带码、不带原串的领域失败收场", arguments: FailureScenario.allCases)
+    func failuresAreDomainFacts(_ scenario: FailureScenario) async throws {
+        let list = try await failure(scenario, method: .sessionList, on: "fp-1") { harness in
+            try await RelayMachineSessions(connection: harness.connection).sessions(on: "fp-1", keyword: "", cursor: "", limit: 10)
+        }
+        #expect(list as? RelayFailure == scenario.expected)
+        #expect(!String(describing: list).contains("peer raw string"))
+
+        let counts = try await failure(scenario, method: .sessionCounts, on: "fp-1") { harness in
+            try await RelayMachineSessions(connection: harness.connection).counts(on: "fp-1")
+        }
+        #expect(counts as? RelayFailure == scenario.expected)
+
+        let attach = try await failure(scenario, method: .sessionAttach, on: "fp-1") { harness in
+            try await RelayMachineSessions(connection: harness.connection).attach(conversationID: "c", peerFingerprint: "", on: "fp-1")
+        }
+        #expect(attach as? RelayFailure == scenario.expected)
+
+        let pull = try await failure(scenario, method: .sessionPull, on: "fp-1") { harness in
+            try await RelayMachineSessions(connection: harness.connection).pull(conversationID: "c", peerFingerprint: "", after: 0, on: "fp-1")
+        }
+        #expect(pull as? RelayFailure == scenario.expected)
+    }
+}
+
+@Suite struct RelayFailureTests {
+    @Test("中继调用的每种收场都落到一个领域事实，界面据它用自己的话说")
+    func mapsToFacts() {
+        #expect(RelayFailure(RelayCallError.timedOut) == .timedOut)
+        #expect(RelayFailure(RelayCallError.disconnected) == .connectionLost)
+        #expect(RelayFailure(RelayCallError.channelClosed) == .machineUnreachable)
+        #expect(RelayFailure(RelayCallError.updateRequired) == .updateRequired)
+        #expect(RelayFailure(RelayCallError.unexpectedResponse) == .unrecognisedResponse)
+        #expect(RelayFailure(RelayCallError.rejected(code: -32_000)) == .refused)
+
+        #expect(RelayFailure.timedOut.fact == .timedOut)
+        #expect(RelayFailure.connectionLost.fact == .serverUnreachable)
+        #expect(RelayFailure.machineUnreachable.fact == .noMachineAvailable(.offline))
+        #expect(RelayFailure.updateRequired.fact == .updateRequired)
+        #expect(RelayFailure.unrecognisedResponse.fact == .unrecognisedResponse)
+        #expect(RelayFailure.refused.fact == .unknown)
+    }
+}
