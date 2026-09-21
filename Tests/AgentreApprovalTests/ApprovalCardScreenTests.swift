@@ -99,10 +99,13 @@ struct ApprovalCardScreenTests {
         #expect(seen.contains(try text("permission.allowOnce", "zh-Hans")))
     }
 
-    @Test("三枚处置按钮：命中区各 44×44，同一行右对齐、按标签宽度排；两枚允许之间留出死区；发现数 = 放置数")
-    func dispositionHitTargets() async throws {
+    @Test(
+        "三枚处置按钮：命中区各 44×44，中英文下都同处一行、右对齐、按标签宽度排；两枚允许之间留出死区；发现数 = 放置数",
+        arguments: ["zh-Hans", "en"]
+    )
+    func dispositionHitTargets(language: String) async throws {
         let model = await transcript(ending: [.permissionRequest(permission())])
-        let report = await hitTargetReport(of: screen(model, cards: cards(), language: "zh-Hans"))
+        let report = await hitTargetReport(of: screen(model, cards: cards(), language: language))
         #expect(report.violations.isEmpty, "\(report.violations)")
         try #require(report.targets.count == 3, "放了三枚处置按钮：\(report.targets)")
         let row = report.targets.sorted { $0.minX < $1.minX }
@@ -111,21 +114,9 @@ struct ApprovalCardScreenTests {
             #expect(abs(target.midY - row[0].midY) < 0.5, "同一行：\(row)")
             #expect(target.width < 195, "按标签宽度排，不做通栏：\(target)")
         }
-        #expect(gap(row[0], row[1]) >= 8, "拒绝与本会话始终允许不相接：\(row)")
-        #expect(gap(row[1], row[2]) >= 8, "本会话始终允许与仅本次允许之间的死区：\(row)")
+        #expect(gap(row[0], row[1]) >= 8, "拒绝与本会话之间不相接：\(row)")
+        #expect(gap(row[1], row[2]) >= 8, "本会话与仅本次之间的死区：\(row)")
         #expect(row[2].maxX > 390 - 16 - 24, "右对齐：\(row)")
-    }
-
-    @Test("英文标签排不下一行时换行排，死区照留；发现数 = 放置数")
-    func dispositionHitTargetsEnglish() async throws {
-        let model = await transcript(ending: [.permissionRequest(permission())])
-        let report = await hitTargetReport(of: screen(model, cards: cards(), language: "en"))
-        #expect(report.violations.isEmpty, "\(report.violations)")
-        try #require(report.targets.count == 3, "\(report.targets)")
-        for (i, a) in report.targets.enumerated() {
-            #expect(a.width >= 44 && a.height >= 44, "\(a)")
-            for b in report.targets[(i + 1)...] { #expect(gap(a, b) >= 8, "\(a) \(b)") }
-        }
     }
 
     @Test("长输入的展开按钮也补满命中区、不与处置相接；发现数 = 放置数")
