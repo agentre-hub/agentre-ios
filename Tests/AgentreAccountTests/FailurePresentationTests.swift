@@ -90,6 +90,12 @@ struct FailurePresentationTests {
         }
     }
 
+    @Test("协议版本不等：以规格给定的那句话告知更新 App")
+    func updateRequiredWording() throws {
+        #expect(try Self.localized("failure.updateRequired", "zh-Hans") == "这个版本的 App 连不上你的服务端，请更新 App")
+        #expect(try Self.localized("failure.updateRequired", "en") == "This version of the app can't connect to your server. Please update the app.")
+    }
+
     @Test("有出口的事实才给出口：能重试的给重试，登出、拒绝、要更新的不给")
     func exits() async throws {
         #expect(FailureFact.offline.exit == .retry)

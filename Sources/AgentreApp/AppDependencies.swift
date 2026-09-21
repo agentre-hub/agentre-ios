@@ -21,6 +21,8 @@ struct AppDependencies {
     var relaySleeper: any Sleeping
     var deviceName: String
     var version: String
+    /// 网络路径的变化（true = 有网）。真机上是系统网络路径；宿主测试不给时按一直有网。
+    var networkPath: @Sendable () -> AsyncStream<Bool> = { AsyncStream { $0.yield(true) } }
 
     @MainActor
     static func live() -> AppDependencies {
@@ -35,7 +37,8 @@ struct AppDependencies {
             loginSleeper: TaskSleeper(),
             relaySleeper: TaskSleeper(),
             deviceName: UIDevice.current.name,
-            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+            version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+            networkPath: { Connectivity.systemPath() }
         )
     }
 }

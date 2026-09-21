@@ -38,6 +38,11 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
     public var pending: PendingInput?
     /// 转录里最近一句正文或用户消息；还没有时为空。
     public var lastText: String
+    /// 这条会话此刻用的模型（清单原样）；空 = 机器没报。
+    public var providerKey: String
+    public var modelKey: String
+    /// 这条会话记下的思考档位；空 = 跟随后端配置。
+    public var reasoningEffort: String
 
     public var id: ConversationKey { key }
 
@@ -55,7 +60,10 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         latestSeq: Int64 = 0,
         readMarker: Int64? = nil,
         pending: PendingInput? = nil,
-        lastText: String = ""
+        lastText: String = "",
+        providerKey: String = "",
+        modelKey: String = "",
+        reasoningEffort: String = ""
     ) {
         self.key = key
         self.peerFingerprint = peerFingerprint
@@ -71,6 +79,9 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         self.readMarker = readMarker
         self.pending = pending
         self.lastText = lastText
+        self.providerKey = providerKey
+        self.modelKey = modelKey
+        self.reasoningEffort = reasoningEffort
     }
 
     /// 会话生命周期的取值（与机器、服务端镜像同一套字符串）。

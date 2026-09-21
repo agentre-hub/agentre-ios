@@ -34,6 +34,50 @@ struct ComposerModelTests {
         #expect(model.canSend)
     }
 
+    @Test("面板三项的当前取值：模型与思考档位取自会话行，权限档位与可选范围取自执行端与引擎目录")
+    func settingsForConversation() {
+        var saved = conversation()
+        saved.providerKey = "anthropic"
+        saved.modelKey = "claude-opus"
+        saved.reasoningEffort = "high"
+        let models = [ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus")]
+        let settings = ComposerSettings(conversation: saved, permissionMode: "plan", permissionModes: ["default", "plan"], models: models)
+        #expect(settings.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(settings.reasoningEffort == "high")
+        #expect(settings.permissionMode == "plan")
+        #expect(settings.permissionModes == ["default", "plan"])
+        #expect(settings.models == models)
+        // 会话行上没有模型：不编一个当前值。
+        #expect(ComposerSettings(conversation: conversation(), permissionMode: "", permissionModes: [], models: models).model == nil)
+    }
+
+    @Test("一轮运行中可以停止本轮：发出 runtimeAbort；停的调用在飞时不重复发")
+    func stopsRunningTurn() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        #expect(!model.canStop, "闲着的时候没有什么可停")
+        model.turnStarted()
+        #expect(model.canStop)
+        async let first: Void = model.stop()
+        async let second: Void = model.stop()
+        _ = await (first, second)
+        #expect(await relay.calls == [.abort])
+        #expect(model.canStop, "停没停下来由这一轮的收场帧说话，不在这里猜")
+        await model.turnEnded(normally: false)
+        #expect(!model.canStop)
+    }
+
+    @Test("停不下来不另开一条错误面：这一轮照常在跑，还能再停")
+    func stopFailureIsSilent() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("abort")
+        let model = composer(relay: relay)
+        model.turnStarted()
+        await model.stop()
+        #expect(model.failure == nil)
+        #expect(model.canStop)
+    }
+
     @Test("排队的插话没排进去：从队列拿掉，字还回输入框")
     func steerFails() async throws {
         let relay = FakeComposerRelay()
@@ -155,14 +199,14 @@ struct ComposerModelTests {
 
     // MARK: 斜杠命令
 
-    @Test("键入 / 就地给出候选；Skill 目录向承载机要，按会话工作目录解析")
+    @Test("键入 / 就地给出候选；Skill 目录按这条会话要（承载机由适配器解析），按会话工作目录解析")
     func slashCandidates() async throws {
         let relay = FakeComposerRelay()
         await relay.set(skills: [ComposerSkillSource(name: "deploy", description: "上线")])
         let model = composer(relay: relay)
         model.edit(text: "/", cursor: 1)
         try await eventually("skills") { model.candidates.count == 2 }
-        #expect(await relay.calls == [.skills(machine: "fp-mini", backend: "claudecode", cwd: "/srv/app")])
+        #expect(await relay.calls == [.skills(key, backend: "claudecode", cwd: "/srv/app")])
         #expect(model.candidates.map(\.title) == ["/compact", "/deploy"])
         model.edit(text: "/dep", cursor: 4)
         #expect(model.candidates.map(\.title) == ["/deploy"])

@@ -194,7 +194,7 @@ public struct MeView: View {
     }
 }
 
-/// 一台已授权设备：在线点、名字（备注名优先，等宽）、平台与本机标注、撤销。
+/// 一台已授权设备：在线点、名字（备注名优先，等宽）、平台与本机标注；本机给撤销，其它设备写明到网页控制台撤销。
 struct DeviceRow: View {
     let device: AuthorizedDevice
     let onRevoke: () -> Void
@@ -225,12 +225,20 @@ struct DeviceRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: onRevoke) {
-                Text("me.devices.revoke", tableName: "Me", bundle: .module)
-                    .foregroundStyle(.token(.failure))
-                    .padding(.horizontal, 8)
+            // 服务端只允许设备令牌撤销它自己：其它设备在这里撤不动，那一行如实写明去哪儿撤。
+            if device.isThisDevice {
+                Button(action: onRevoke) {
+                    Text("me.devices.revoke", tableName: "Me", bundle: .module)
+                        .foregroundStyle(.token(.failure))
+                        .padding(.horizontal, 8)
+                }
+                .hitTarget()
+            } else {
+                Text("me.devices.revokeInConsole", tableName: "Me", bundle: .module)
+                    .font(.caption)
+                    .foregroundStyle(.token(.textSecondary))
+                    .multilineTextAlignment(.trailing)
             }
-            .hitTarget()
         }
     }
 }

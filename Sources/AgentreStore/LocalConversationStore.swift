@@ -106,6 +106,9 @@ public actor LocalConversationStore: ConversationStore {
         row.lifecycleState = summary.lifecycleState
         row.waitingForInput = summary.waitingForInput
         row.lastMessageAt = summary.lastMessageAt
+        row.providerKey = summary.providerKey
+        row.modelKey = summary.modelKey
+        row.reasoningEffort = summary.reasoningEffort
         // 新快照是机器此刻的原话，比从帧上攒出来的新：待决集合作废（mirror_svc 的 setSummary）。
         waiters[key] = nil
         try commit()
@@ -434,7 +437,10 @@ private extension ConversationRecord {
             waitingForInput: waitingForInput,
             lastMessageAt: lastMessageAt,
             latestSeq: latestSeq,
-            readMarker: readMarker
+            readMarker: readMarker,
+            providerKey: providerKey,
+            modelKey: modelKey,
+            reasoningEffort: reasoningEffort
         )
     }
 }

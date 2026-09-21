@@ -26,6 +26,7 @@ let sampleSettings = ComposerSettings(
 actor FakeComposerRelay: ComposerRelay {
     enum Call: Equatable {
         case run(String, compact: Bool)
+        case abort
         case steer(queuedID: String, text: String)
         case cancel(String)
         case drain
@@ -33,7 +34,7 @@ actor FakeComposerRelay: ComposerRelay {
         case model(String, String)
         case effort(String)
         case delete
-        case skills(machine: String, backend: String, cwd: String)
+        case skills(ConversationKey, backend: String, cwd: String)
     }
 
     private(set) var calls: [Call] = []
@@ -54,6 +55,11 @@ actor FakeComposerRelay: ComposerRelay {
     func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool) async throws {
         calls.append(.run(text, compact: compact))
         try check("run")
+    }
+
+    func abort(_ key: ConversationKey, peerFingerprint: String) async throws {
+        calls.append(.abort)
+        try check("abort")
     }
 
     func steer(_ key: ConversationKey, peerFingerprint: String, queuedID: String, text: String) async throws -> ComposerSteerHandle {
@@ -95,8 +101,8 @@ actor FakeComposerRelay: ComposerRelay {
         return true
     }
 
-    func skillCommands(machineFingerprint: String, agentSyncID: String, backendType: String, cwd: String) async throws -> [ComposerSkillSource] {
-        calls.append(.skills(machine: machineFingerprint, backend: backendType, cwd: cwd))
+    func skillCommands(_ key: ConversationKey, agentSyncID: String, backendType: String, cwd: String) async throws -> [ComposerSkillSource] {
+        calls.append(.skills(key, backend: backendType, cwd: cwd))
         try check("skills")
         return skills
     }

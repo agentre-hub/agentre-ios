@@ -39,6 +39,16 @@ public struct ComposerSettings: Sendable, Equatable {
         self.backendReasoningEffort = backendReasoningEffort
     }
 
+    /// 一条会话的面板取值：当前模型与思考档位取自会话行（机器的清单原样），权限档位与两份可选范围
+    /// 由调用方从执行端与引擎目录问来。会话行上没有模型时当前模型留空，不编。
+    public init(conversation: SavedConversation, permissionMode: String, permissionModes: [String], models: [ComposerModelChoice]) {
+        self.init(
+            permissionMode: permissionMode, permissionModes: permissionModes,
+            model: conversation.modelKey.isEmpty ? nil : ComposerModelChoice(providerKey: conversation.providerKey, modelKey: conversation.modelKey),
+            models: models, reasoningEffort: conversation.reasoningEffort
+        )
+    }
+
     /// 有效档位：会话行上的值非空时是它，为空时是后端配置的档位；都空时是空（界面标注「默认」）。
     public var effectiveReasoningEffort: String { reasoningEffort.isEmpty ? backendReasoningEffort : reasoningEffort }
 }

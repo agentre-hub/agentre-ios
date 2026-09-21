@@ -25,9 +25,9 @@ struct MeScreenTests {
         return model
     }
 
-    /// 放置的可点元素：改服务器地址 1、每台设备的撤销 1、语言 3、外观 3、退出登录 1。
-    static func placedTargets(devices: Int) -> Int {
-        1 + devices + DisplayLanguage.allCases.count + DisplayAppearance.allCases.count + 1
+    /// 放置的可点元素：改服务器地址 1、本机的撤销 1（其它设备撤不了，那一行不放按钮）、语言 3、外观 3、退出登录 1。
+    static func placedTargets(revocable: Int) -> Int {
+        1 + revocable + DisplayLanguage.allCases.count + DisplayAppearance.allCases.count + 1
     }
 
     @Test("每个可点元素的命中区补满 44×44 且互不重叠；发现的目标数 = 放置的可点元素数")
@@ -35,8 +35,8 @@ struct MeScreenTests {
         let model = await loadedModel()
         #expect(model.devices.count == 2)
         let report = await hitTargetReport(of: NavigationStack { MeView(model: model) }, size: Self.tall)
-        #expect(Self.placedTargets(devices: 2) == 10)
-        #expect(report.targets.count == Self.placedTargets(devices: 2), "\(report.targets)")
+        #expect(Self.placedTargets(revocable: 1) == 9)
+        #expect(report.targets.count == Self.placedTargets(revocable: 1), "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
@@ -47,7 +47,7 @@ struct MeScreenTests {
         let model = await loadedModel(account: account)
         #expect(model.failure == .timedOut)
         let report = await hitTargetReport(of: NavigationStack { MeView(model: model) }, size: Self.tall)
-        #expect(report.targets.count == Self.placedTargets(devices: 0) + 1, "\(report.targets)")
+        #expect(report.targets.count == Self.placedTargets(revocable: 0) + 1, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
         let labels = await HostedScreen(NavigationStack { MeView(model: model) }, size: Self.tall).labels().joined(separator: "\n")
         #expect(labels.contains(Self.text("failure.timedOut")), "\(labels)")
@@ -67,6 +67,14 @@ struct MeScreenTests {
         #expect(labels.contains(Self.text("me.language.zhHans")))
         #expect(labels.contains(Self.text("me.appearance.dark")))
         #expect(labels.contains(Self.text("me.signOut")))
+    }
+
+    @Test("撤销只对本机生效：本机那一行给撤销；其它设备照常列出，那一行写明到网页控制台撤销、不给撤不动的按钮")
+    func revokeOnlyThisDevice() async throws {
+        let model = await loadedModel()
+        let labels = await HostedScreen(NavigationStack { MeView(model: model) }, size: Self.tall).labels()
+        #expect(labels.filter { $0 == Self.text("me.devices.revoke") }.count == 1, "\(labels)")
+        #expect(labels.contains(Self.text("me.devices.revokeInConsole")), "\(labels)")
     }
 
     @Test("语言偏好作用于界面：选了简体中文，同一个键读出中文；选了英文读出英文")

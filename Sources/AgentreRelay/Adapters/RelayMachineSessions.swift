@@ -72,7 +72,8 @@ extension MachineSession {
             conversationID: summary.conversationID, peerFingerprint: summary.peerFingerprint, title: summary.title,
             agentSyncID: summary.agentSyncID, cwd: summary.cwd, projectSyncID: summary.projectSyncID,
             backendType: summary.backendType, lifecycleState: summary.lifecycleState,
-            waitingForInput: summary.waitingForInput, latestSeq: summary.latestSeq, lastMessageAt: summary.lastMessageAt
+            waitingForInput: summary.waitingForInput, latestSeq: summary.latestSeq, lastMessageAt: summary.lastMessageAt,
+            providerKey: summary.providerKey, modelKey: summary.modelKey, reasoningEffort: summary.reasoningEffort
         )
     }
 }

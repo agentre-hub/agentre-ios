@@ -15,6 +15,7 @@ public struct ComposerPanel: View {
     private let onDeleted: () -> Void
     @State private var page: Page
     @State private var confirmsDelete = false
+    @Environment(\.isOffline) private var isOffline
     @Environment(\.dismiss) private var dismiss
 
     public init(model: ComposerModel, contextUsage: ContextUsage?, initialPage: Page = .root, onDeleted: @escaping () -> Void) {
@@ -34,7 +35,11 @@ public struct ComposerPanel: View {
             case .sessionInfo: infoPage
             case .context: contextPage
             }
-            if let failure = model.failure { ComposerFailureText(failure: failure).composerRow() }
+            if isOffline {
+                ComposerOfflineText().composerRow()
+            } else if let failure = model.failure {
+                ComposerFailureText(failure: failure).composerRow()
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -77,6 +82,7 @@ public struct ComposerPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .hitTarget()
+        .disabled(isOffline)
         .composerRow()
     }
 
@@ -194,6 +200,7 @@ private struct ComposerOptionRow<Label: View>: View {
     let selected: Bool
     let action: () -> Void
     @ViewBuilder let label: Label
+    @Environment(\.isOffline) private var isOffline
 
     var body: some View {
         Button(action: action) {
@@ -207,6 +214,7 @@ private struct ComposerOptionRow<Label: View>: View {
             .frame(maxWidth: .infinity)
         }
         .hitTarget()
+        .disabled(isOffline)
         .composerRow()
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

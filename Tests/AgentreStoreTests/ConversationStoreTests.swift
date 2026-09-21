@@ -51,6 +51,24 @@ struct ConversationStoreTests {
         #expect(try decode(frames[0]).runtimeEvent.textDelta.text == "frame 1")
     }
 
+    @Test("会话此刻用的模型与思考档位随清单落库、冷启动照样读得出（面板据它标注当前取值）")
+    func modelAndEffortPersist() async throws {
+        let directory = try TemporaryDirectory()
+        do {
+            let store = try openStore(directory)
+            var listed = summary("conv-1")
+            listed.providerKey = "anthropic"
+            listed.modelKey = "claude-opus"
+            listed.reasoningEffort = "xhigh"
+            try await store.save(listed, via: machine)
+        }
+        let reopened = try openStore(directory)
+        let conversation = try #require(try await reopened.conversation(key("conv-1")))
+        #expect(conversation.providerKey == "anthropic")
+        #expect(conversation.modelKey == "claude-opus")
+        #expect(conversation.reasoningEffort == "xhigh")
+    }
+
     @Test("同一 seq 到两次只落一行，先到的那一行为准——一批之内、两批之间、跨冷启动都一样")
     func duplicateSeqLandsOnce() async throws {
         let directory = try TemporaryDirectory()

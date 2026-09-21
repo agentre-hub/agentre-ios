@@ -35,11 +35,13 @@ public struct ComposerSkillSource: Sendable, Equatable {
 
 /// 输入区要走中继的全部调用。一律经 `machine:<承载机指纹>` 通道、以 `conversation_id` 指明对话；
 /// 适配器归装配层（任务 12）。方法与 wire 一一对应：
-/// runtimeRun / runtimeSteer / runtimeCancelSteer / runtimeDrainPending / runtimeSetPermissionMode /
+/// runtimeRun / runtimeAbort / runtimeSteer / runtimeCancelSteer / runtimeDrainPending / runtimeSetPermissionMode /
 /// setModelTarget / setSessionReasoningEffort / sessionDelete / skillCommands。
 public protocol ComposerRelay: Sendable {
     /// 在这条对话上开新一轮。`compact` 为真时这一轮是一次上下文压缩（RuntimeRunRequest.compact）。
     func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool) async throws
+    /// 把运行中的这一轮停下来（runtimeAbort）。
+    func abort(_ key: ConversationKey, peerFingerprint: String) async throws
     /// 一轮运行中插一句话。`queuedID` 是本端铸的号，执行端回显或换成它自己的。
     func steer(_ key: ConversationKey, peerFingerprint: String, queuedID: String, text: String) async throws -> ComposerSteerHandle
     /// 撤回一条排队的插话，交回确实撤掉的句柄。
@@ -53,10 +55,11 @@ public protocol ComposerRelay: Sendable {
     func setReasoningEffort(_ key: ConversationKey, peerFingerprint: String, effort: String) async throws
     /// 在承载机上删除这条会话；交回机器是否确实删了一条。
     func deleteSession(_ key: ConversationKey, peerFingerprint: String) async throws -> Bool
-    /// 问承载机这一档执行目标此刻叫得动哪些 Skill。`cwd` 是会话的工作目录：项目级 Skill
-    /// 只在它下面解析得出来（SkillCommandsRequest.cwd）。授权（SkillAuthorization）由适配器按
-    /// Agent 与机器从组织数据里取，与控制台 useSessionSkillCommands 同一口径。
-    func skillCommands(machineFingerprint: String, agentSyncID: String, backendType: String, cwd: String) async throws -> [ComposerSkillSource]
+    /// 问承载这条会话的机器（适配器按本地库记下的那台解析，不是会话键上的发起端）此刻叫得动哪些
+    /// Skill。`cwd` 是会话的工作目录：项目级 Skill 只在它下面解析得出来（SkillCommandsRequest.cwd）。
+    /// 授权（SkillAuthorization）由适配器按 Agent 与机器从组织数据里取，与控制台
+    /// useSessionSkillCommands 同一口径。
+    func skillCommands(_ key: ConversationKey, agentSyncID: String, backendType: String, cwd: String) async throws -> [ComposerSkillSource]
 }
 
 /// 面板三项的当前取值与可选范围从哪来：权限档位来自执行端的 runtimeCapabilities，模型目录来自

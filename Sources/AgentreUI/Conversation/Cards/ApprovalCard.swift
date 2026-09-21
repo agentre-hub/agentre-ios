@@ -333,6 +333,8 @@ private struct ApprovalButton: View {
     let key: LocalizedStringKey
     let weight: ApprovalButtonWeight
     let action: () -> Void
+    /// 离线时处置发不出去：点不动，而不是点了再报失败。
+    @Environment(\.isOffline) private var isOffline
 
     var body: some View {
         Button(action: action) {
@@ -355,6 +357,7 @@ private struct ApprovalButton: View {
                 }
         }
         .hitTarget()
+        .disabled(isOffline)
     }
 }
 

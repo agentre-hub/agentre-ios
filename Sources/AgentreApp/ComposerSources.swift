@@ -83,9 +83,9 @@ struct EngineCatalogClient: Sendable {
     }
 }
 
-/// 输入区面板三项：权限档位问承载机的 runtimeCapabilities，模型目录取服务端引擎目录。
-/// 会话此刻用的模型与思考档位不在本地库的行上（清单的 model_key / reasoning_effort 本轮没落库），
-/// 所以当前模型留空、思考档位读作「默认」；后端配置的档位在引擎目录里只对后端所在的那台机器下发，手机拿不到。
+/// 输入区面板三项：权限档位问承载机的 runtimeCapabilities，模型目录取服务端引擎目录，
+/// 会话此刻用的模型与思考档位取自本地库那一行（机器清单的 model_key / reasoning_effort）。
+/// 后端配置的档位在引擎目录里只对后端所在的那台机器下发，手机拿不到。
 struct ComposerSettingsAdapter: ComposerSettingsSource {
     let catalog: EngineCatalogClient
     let connection: RelayConnection
@@ -97,6 +97,7 @@ struct ComposerSettingsAdapter: ComposerSettingsSource {
         async let modes = try? connection.permissionModes(backendType: conversation.backendType, on: machine)
         let (choices, permission) = await (models, modes)
         return ComposerSettings(
+            conversation: conversation,
             permissionMode: permission?.defaultMode ?? "",
             permissionModes: permission?.allowed ?? [],
             models: choices ?? []

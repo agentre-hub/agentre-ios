@@ -10,6 +10,7 @@ public struct ComposerView: View {
     private let contextUsage: ContextUsage?
     private let onDeleted: () -> Void
     @State private var panel: ComposerPanel.Page?
+    @Environment(\.isOffline) private var isOffline
 
     /// - Parameters:
     ///   - contextUsage: 任务 6 的上下文用量（`TranscriptModel.contextUsage`）；nil 时环整块不渲染。
@@ -28,7 +29,11 @@ public struct ComposerView: View {
                 queuedSection
             }
             if !model.candidates.isEmpty { candidateList }
-            if let failure = model.failure { ComposerFailureText(failure: failure).padding(.horizontal, 16).padding(.top, 4) }
+            if isOffline {
+                ComposerOfflineText().padding(.horizontal, 16).padding(.top, 4)
+            } else if let failure = model.failure {
+                ComposerFailureText(failure: failure).padding(.horizontal, 16).padding(.top, 4)
+            }
             inputRow
             permanentRow
         }
@@ -154,16 +159,29 @@ public struct ComposerView: View {
                 }
             }
             .background(.token(.surface), in: RoundedRectangle(cornerRadius: 22))
+            // 停止本轮：只在一轮真的在跑时摆——闲着的时候没有什么可停。与排队并存，不替换发送。
+            if model.isTurnRunning {
+                Button {
+                    Task { await model.stop() }
+                } label: {
+                    Image(systemName: "stop.circle")
+                        .font(.title)
+                        .foregroundStyle(.token(model.canStop ? .textPrimary : .textSecondary))
+                        .accessibilityLabel(Text("composer.stop", tableName: composerTable, bundle: .module))
+                }
+                .hitTarget()
+                .disabled(!model.canStop || isOffline)
+            }
             Button {
                 Task { await model.send() }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title)
-                    .foregroundStyle(.token(model.canSend ? .accent : .textSecondary))
+                    .foregroundStyle(.token(model.canSend && !isOffline ? .accent : .textSecondary))
                     .accessibilityLabel(Text("composer.send", tableName: composerTable, bundle: .module))
             }
             .hitTarget()
-            .disabled(!model.canSend)
+            .disabled(!model.canSend || isOffline)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -219,6 +237,20 @@ private struct ComposerCandidateRow: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// 离线：输入照常，发不出去——只陈述这个事实。
+struct ComposerOfflineText: View {
+    var body: some View {
+        Label {
+            Text("composer.deviceOffline", tableName: composerTable, bundle: .module)
+        } icon: {
+            Image(systemName: "wifi.slash")
+        }
+        .font(.footnote)
+        .foregroundStyle(.token(.textSecondary))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

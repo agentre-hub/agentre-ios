@@ -222,6 +222,23 @@
         }
       }
     },
+    "me.devices.revokeInConsole": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke from the web console"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "到网页控制台撤销"
+          }
+        }
+      }
+    },
     "me.language": {
       "extractionState": "manual",
       "localizations": {
@@ -534,13 +551,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Update the app to connect"
+            "value": "This version of the app can't connect to your server. Please update the app."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "需要更新 App 才能连接"
+            "value": "这个版本的 App 连不上你的服务端，请更新 App"
           }
         }
       }

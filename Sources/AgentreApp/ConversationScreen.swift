@@ -9,6 +9,7 @@ struct ConversationScreen: View {
     let key: ConversationKey
     let onDeleted: () -> Void
     @State private var model: ConversationScreenModel?
+    @Environment(\.isOffline) private var isOffline
 
     var body: some View {
         Group {
@@ -17,7 +18,8 @@ struct ConversationScreen: View {
                     TranscriptView(model: model.transcript, agentName: model.agentName) { card in
                         ApprovalCard(card, model: model.cards)
                     }
-                    if let fact = services.failures.facts[key] {
+                    // 离线时由输入区如实说离线；跟随不上的那条事实（连不上服务器、没回应）此刻只是它的后果。
+                    if !isOffline, let fact = services.failures.facts[key] {
                         FailureNotice(fact: fact) { Task { await services.resume() } }
                             .padding(.horizontal, 16)
                     }

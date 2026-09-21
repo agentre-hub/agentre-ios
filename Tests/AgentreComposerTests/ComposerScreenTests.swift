@@ -53,9 +53,40 @@ struct ComposerScreenTests {
         #expect(labels.contains("先别动数据库") && labels.contains("再跑一次测试"))
         #expect(labels.contains(text("composer.cancelQueued")))
         let report = await hitTargetReport(of: view)
-        // 常驻 7 块 + 可撤的那一条的撤回。
+        // 常驻 7 块 + 停止本轮 + 可撤的那一条的撤回。
+        #expect(report.targets.count == 9, "\(report.targets)")
+        #expect(report.violations.isEmpty, "\(report.violations)")
+    }
+
+    @Test("停止本轮只在一轮真的在跑时摆出来，与排队并存；点下去发出停止")
+    func stopButton() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        let idle = await HostedScreen(ComposerView(model: model, contextUsage: usage, onDeleted: {})).labels()
+        #expect(!idle.contains(text("composer.stop")), "\(idle)")
+        model.turnStarted()
+        let view = ComposerView(model: model, contextUsage: usage, onDeleted: {})
+        let running = await HostedScreen(view).labels()
+        #expect(running.contains(text("composer.stop")), "\(running)")
+        #expect(running.contains(text("composer.send")), "运行中输入框与发送照常在")
+        let report = await hitTargetReport(of: view)
         #expect(report.targets.count == 8, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
+    }
+
+    @Test("完全离线：输入框照常可打字，发送与停止不可用，如实说这台设备没有联网")
+    func offline() async throws {
+        let model = composer()
+        model.turnStarted()
+        model.text = "还在吗"
+        let online = HostedScreen(ComposerView(model: model, contextUsage: usage, onDeleted: {}))
+        #expect(await !online.disabledLabels().contains(text("composer.send")))
+        #expect(await !online.labels().contains(text("composer.deviceOffline")))
+        let screen = HostedScreen(ComposerView(model: model, contextUsage: usage, onDeleted: {}).environment(\.isOffline, true))
+        let labels = await screen.labels()
+        #expect(labels.contains(text("composer.deviceOffline")), "\(labels)")
+        let disabled = await screen.disabledLabels()
+        #expect(disabled.contains(text("composer.send")) && disabled.contains(text("composer.stop")), "\(disabled)")
     }
 
     @Test("轮末没发出去的：说明几条未发送，给恢复为草稿与丢弃")

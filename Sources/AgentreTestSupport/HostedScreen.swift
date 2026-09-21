@@ -26,4 +26,13 @@ public final class HostedScreen {
         let swiftUI = AccessibilityTree.elements(in: controller.view).compactMap(\.accessibilityLabel)
         return swiftUI + AccessibilityTree.visibleLabels(in: controller.view)
     }
+
+    /// 屏上此刻点不动的元素（无障碍树里带 notEnabled 的）的标签：断言「这个动作此刻不可用」。
+    public func disabledLabels() async -> [String] {
+        guard AccessibilityTree.enable() else { return [] }
+        await AccessibilityTree.settle(controller.view)
+        return AccessibilityTree.elements(in: controller.view)
+            .filter { $0.accessibilityTraits.contains(.notEnabled) }
+            .compactMap(\.accessibilityLabel)
+    }
 }

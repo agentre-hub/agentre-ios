@@ -38,6 +38,19 @@ struct ApprovalCardScreenTests {
         #expect(inOrder(["Bash", "/Users/dev/agentre", "$", "pnpm test --filter ui"] + dispositions, in: seen), "\(seen)")
     }
 
+    @Test("完全离线：卡片照常可读，三档处置都点不动")
+    func offlineDispositions() async throws {
+        let request = permission(input: ["command": "pnpm test --filter ui"])
+        let model = await transcript(ending: [.permissionRequest(request)])
+        let dispositions = try ["permission.reject", "permission.allowForSession", "permission.allowOnce"].map { try text($0, "zh-Hans") }
+        let online = await HostedScreen(screen(model, cards: cards(), language: "zh-Hans")).disabledLabels()
+        #expect(dispositions.allSatisfy { !online.contains($0) }, "\(online)")
+        let offline = HostedScreen(screen(model, cards: cards(), language: "zh-Hans").environment(\.isOffline, true))
+        #expect(await offline.labels().contains("pnpm test --filter ui"))
+        let disabled = await offline.disabledLabels()
+        #expect(dispositions.allSatisfy(disabled.contains), "\(disabled)")
+    }
+
     @Test("三档的视觉分量：描边、浅底、主色实心")
     func weights() {
         #expect(PermissionDisposition.allCases.map(\.weight) == [.outline, .tinted, .solid])

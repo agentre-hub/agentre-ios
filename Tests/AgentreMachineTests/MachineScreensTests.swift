@@ -43,6 +43,56 @@ struct MachineScreensTests {
         return model
     }
 
+    static func failureText(_ key: String) -> String {
+        AgentreUIResources.bundle.localizedString(forKey: key, value: "⟨missing⟩", table: "Me")
+    }
+
+    actor ScriptedRoster: MachineRoster {
+        let result: Result<[Machine], any Error>
+        init(_ result: Result<[Machine], any Error>) { self.result = result }
+        func machines() throws -> [Machine] { try result.get() }
+    }
+
+    func rosterScreen(_ result: Result<[Machine], any Error>) async -> MachinesView {
+        let model = MachinesModel(roster: ScriptedRoster(result))
+        await model.load()
+        return MachinesView(model: model, onOpen: { _ in })
+    }
+
+    @Test("名册没取到：如实说出事实并给重试，不是一片空白")
+    func rosterFailureIsStated() async throws {
+        let view = await rosterScreen(.failure(URLError(.notConnectedToInternet)))
+        let labels = await HostedScreen(view).labels()
+        #expect(labels.contains(Self.failureText("failure.offline")), "\(labels)")
+        #expect(labels.contains(Self.failureText("me.retry")), "\(labels)")
+        let report = await hitTargetReport(of: view)
+        #expect(report.targets.count == 1, "\(report.targets)")
+        #expect(report.violations.isEmpty, "\(report.violations)")
+    }
+
+    @Test("账号下没有在线机器：呈现「没有可用的机器」及其原因；机器照常列出")
+    func noOnlineMachineIsStated() async throws {
+        let offline = await HostedScreen(await rosterScreen(.success([
+            Machine(id: 2, fingerprint: "fp-2", name: "build-box", online: false, lastSeenAt: 1_800_000_000_000),
+        ]))).labels()
+        #expect(offline.contains(Self.failureText("failure.noMachine.offline")), "\(offline)")
+        #expect(offline.contains { $0.contains("build-box") }, "\(offline)")
+        let none = await HostedScreen(await rosterScreen(.success([]))).labels()
+        #expect(none.contains(Self.failureText("failure.noMachine.unpaired")), "\(none)")
+        let some = await HostedScreen(await roster()).labels()
+        #expect(!some.contains { $0.hasPrefix(Self.failureText("failure.noMachine.unspecified")) }, "有机器在线时不说没有可用的机器：\(some)")
+    }
+
+    @Test("完全离线：机器详情如实说这台设备没有联网，而不是说没连上那台机器；保存到手机点不动")
+    func detailWhenDeviceOffline() async throws {
+        let model = await detail()
+        let screen = HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) }.environment(\.isOffline, true))
+        let labels = await screen.labels()
+        #expect(labels.contains(Self.text("machines.detail.deviceOffline")), "\(labels)")
+        #expect(!labels.contains(Self.text("machines.detail.unreachable")), "\(labels)")
+        #expect(await screen.disabledLabels().contains(Self.text("machines.detail.save")))
+    }
+
     @Test("名册：每台机器一个按钮，命中区补满 44×44 且互不重叠；发现数 = 3")
     func rosterHitTargets() async throws {
         let report = await hitTargetReport(of: await roster())

@@ -23,6 +23,10 @@ final class ConversationRecord {
     /// 本机自己的游标：已落库的最大帧号。
     var latestSeq: Int64
     var readMarker: Int64?
+    /// 清单上这条会话此刻用的模型与思考档位（带默认值：旧库轻量迁移时补空）。
+    var providerKey: String = ""
+    var modelKey: String = ""
+    var reasoningEffort: String = ""
 
     init(machineFingerprint: String, conversationID: String, viaFingerprint: String) {
         self.machineFingerprint = machineFingerprint

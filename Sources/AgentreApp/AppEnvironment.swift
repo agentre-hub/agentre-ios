@@ -19,6 +19,8 @@ final class AppEnvironment {
     let tokens: AccessTokenProvider
     /// 「我」页；它的显示偏好在登录屏上也生效，所以跟应用同寿。
     let me: MeModel
+    /// 这台设备此刻有没有网络；登录屏与登录态都据它说离线。
+    let connectivity: Connectivity
     private(set) var services: SignedInServices?
 
     init(_ dependencies: AppDependencies) throws {
@@ -42,6 +44,7 @@ final class AppEnvironment {
         )
         transport = AuthorizedTransport(inner: dependencies.http, tokens: tokens)
         me = MeModel(account: AccountClient(transport: transport), servers: servers, preferences: dependencies.preferences, signOut: signOut)
+        connectivity = Connectivity(updates: dependencies.networkPath())
     }
 
     /// 库打不开（文件坏了）时整个目录重建：库里只是机器上那份的副本，机器才是权威。

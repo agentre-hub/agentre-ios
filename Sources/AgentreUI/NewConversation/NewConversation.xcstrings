@@ -52,6 +52,23 @@
         }
       }
     },
+    "newconv.deviceOffline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This device is offline"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台设备没有联网"
+          }
+        }
+      }
+    },
     "newconv.directMembers": {
       "extractionState": "manual",
       "localizations": {

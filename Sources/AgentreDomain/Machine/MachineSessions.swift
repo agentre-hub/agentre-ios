@@ -15,13 +15,18 @@ public struct MachineSession: Sendable, Equatable, Identifiable {
     public let latestSeq: Int64
     /// 最后活动时刻，机器时钟上的 Unix 毫秒；0 表示机器没报。
     public let lastMessageAt: Int64
+    /// 这条会话此刻用的模型（供应商键 + 模型键）；空 = 机器没报。
+    public let providerKey: String
+    public let modelKey: String
+    /// 这条会话记下的思考档位；空 = 跟随后端配置。
+    public let reasoningEffort: String
 
     public var id: String { conversationID }
 
     public init(
         conversationID: String, peerFingerprint: String = "", title: String = "", agentSyncID: String = "", cwd: String = "",
         projectSyncID: String = "", backendType: String = "", lifecycleState: String = "", waitingForInput: Bool = false,
-        latestSeq: Int64 = 0, lastMessageAt: Int64 = 0
+        latestSeq: Int64 = 0, lastMessageAt: Int64 = 0, providerKey: String = "", modelKey: String = "", reasoningEffort: String = ""
     ) {
         self.conversationID = conversationID
         self.peerFingerprint = peerFingerprint
@@ -34,6 +39,9 @@ public struct MachineSession: Sendable, Equatable, Identifiable {
         self.waitingForInput = waitingForInput
         self.latestSeq = latestSeq
         self.lastMessageAt = lastMessageAt
+        self.providerKey = providerKey
+        self.modelKey = modelKey
+        self.reasoningEffort = reasoningEffort
     }
 
     /// 这一行此刻的状态，与消息列表同一套判法。

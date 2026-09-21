@@ -14,16 +14,24 @@ public struct MachinesView: View {
     }
 
     public var body: some View {
-        List(model.machines) { machine in
-            Button {
-                onOpen(machine)
-            } label: {
-                MachineRosterRow(machine: machine)
+        List {
+            // 名册没取到、或账号下没有一台在线：如实说出来，而不是一片空白或无限等待。
+            if let failure = model.failure {
+                FailureNotice(fact: failure) { Task { await model.load() } }
+                    .machinesRow()
+            } else if let reason = model.unavailable {
+                FailureNotice(fact: .noMachineAvailable(reason)) {}
+                    .machinesRow()
             }
-            .hitTarget()
-            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+            ForEach(model.machines) { machine in
+                Button {
+                    onOpen(machine)
+                } label: {
+                    MachineRosterRow(machine: machine)
+                }
+                .hitTarget()
+                .machinesRow()
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -31,6 +39,14 @@ public struct MachinesView: View {
         .navigationTitle(Text("machines.title", tableName: "Machines", bundle: .module))
         .task { await model.load() }
         .refreshable { await model.load() }
+    }
+}
+
+private extension View {
+    func machinesRow() -> some View {
+        listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
     }
 }
 

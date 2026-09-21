@@ -60,6 +60,8 @@ public final class ComposerModel {
 
     /// 开新一轮的调用在飞：连点不重复开。
     private var isStartingTurn = false
+    /// 停止本轮的调用在飞：连点不重复发。
+    private var isStopping = false
     private var skills: [ComposerSkillSource] = []
     private var skillsRequested = false
     private var mentionSources = ComposerMentionSources()
@@ -95,6 +97,9 @@ public final class ComposerModel {
         !isStartingTurn && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// 只在一轮真的在跑时可停；闲着的时候没有什么可停。
+    public var canStop: Bool { isTurnRunning && !isStopping }
+
     public func load() async {
         settings = try? await settingsSource.settings(for: conversation)
     }
@@ -129,6 +134,15 @@ public final class ComposerModel {
                 restore(draft)
             }
         }
+    }
+
+    /// 停止本轮（runtimeAbort）。停没停下来由这一轮的收场帧说话；停不下来也不另开一条错误面
+    /// ——实时流照常继续，状态自己说话（与控制台 SessionDetailHeader 的停止同一口径）。
+    public func stop() async {
+        guard canStop else { return }
+        isStopping = true
+        defer { isStopping = false }
+        try? await relay.abort(key, peerFingerprint: peer)
     }
 
     public func turnStarted() {
@@ -271,14 +285,14 @@ public final class ComposerModel {
         }
     }
 
-    /// Skill 目录向承载这条会话的机器要，按会话的工作目录解析项目级 Skill；每条会话只要一次。
+    /// Skill 目录向承载这条会话的机器要（适配器按会话解析承载机），按会话的工作目录解析项目级 Skill；每条会话只要一次。
     /// 要不到就只列内置命令：没有补全比挡住用户正在打的那句话正确。
     private func requestSkills() {
         guard !skillsRequested, SlashCommands.skillPrefix(backendType: conversation.backendType) != nil else { return }
         skillsRequested = true
         Task {
             guard let skills = try? await relay.skillCommands(
-                machineFingerprint: key.machineFingerprint, agentSyncID: conversation.agentSyncID,
+                key, agentSyncID: conversation.agentSyncID,
                 backendType: conversation.backendType, cwd: conversation.cwd
             ) else { return }
             self.skills = skills

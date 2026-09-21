@@ -10,6 +10,7 @@ public struct DraftConversationView: View {
     @Bindable private var model: DraftConversationModel
     private let onStarted: (ConversationKey) -> Void
     @State private var panel: Panel?
+    @Environment(\.isOffline) private var isOffline
 
     enum Panel: Identifiable {
         case machine
@@ -81,6 +82,16 @@ public struct DraftConversationView: View {
             case .draft, .sending, .started:
                 EmptyView()
             }
+            if isOffline, model.showsChips {
+                Label {
+                    Text("newconv.deviceOffline", tableName: table, bundle: .module)
+                } icon: {
+                    Image(systemName: "wifi.slash")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.token(.textSecondary))
+                .row()
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -143,11 +154,11 @@ public struct DraftConversationView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title)
-                    .foregroundStyle(.token(model.canSend ? .accent : .textSecondary))
+                    .foregroundStyle(.token(model.canSend && !isOffline ? .accent : .textSecondary))
                     .accessibilityLabel(Text("newconv.send", tableName: table, bundle: .module))
             }
             .hitTarget()
-            .disabled(!model.canSend)
+            .disabled(!model.canSend || isOffline)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

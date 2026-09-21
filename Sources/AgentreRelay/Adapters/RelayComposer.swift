@@ -66,6 +66,14 @@ public struct RelayComposer: ComposerRelay {
         let _: Agentre_Wire_RuntimeRunResponse = try await connection.call(machine: await carrier(key), .runtimeRun, request)
     }
 
+    /// 停下运行中的这一轮（对照控制台 SessionDetailHeader 的 abortTurn：带回发起端）。
+    public func abort(_ key: ConversationKey, peerFingerprint: String) async throws {
+        var request = Agentre_Wire_RuntimeAbortRequest()
+        request.conversationID = key.conversationID
+        request.peerFingerprint = peerFingerprint
+        let _: Agentre_Wire_RuntimeAbortResponse = try await connection.call(machine: await carrier(key), .runtimeAbort, request)
+    }
+
     public func steer(_ key: ConversationKey, peerFingerprint: String, queuedID: String, text: String) async throws -> ComposerSteerHandle {
         var request = Agentre_Wire_RuntimeSteerRequest()
         request.conversationID = key.conversationID
@@ -134,9 +142,10 @@ public struct RelayComposer: ComposerRelay {
         return response.deleted
     }
 
-    /// 后端还不知道时不问：发一次注定答错的调用，代价是菜单里出现一批叫不动的名字。
-    public func skillCommands(machineFingerprint: String, agentSyncID: String, backendType: String, cwd: String) async throws -> [ComposerSkillSource] {
+    /// 问承载这条会话的机器。后端还不知道时不问：发一次注定答错的调用，代价是菜单里出现一批叫不动的名字。
+    public func skillCommands(_ key: ConversationKey, agentSyncID: String, backendType: String, cwd: String) async throws -> [ComposerSkillSource] {
         guard !backendType.isEmpty else { return [] }
+        let machineFingerprint = await carrier(key)
         // 授权拿不到不是不问的理由：机器仍答得出它自己解析的那一半。
         let grants = agentSyncID.isEmpty ? [] : ((try? await skillGrants(agentSyncID, backendType, machineFingerprint)) ?? [])
         var request = Agentre_Wire_SkillCommandsRequest()

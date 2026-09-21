@@ -137,6 +137,23 @@
         }
       }
     },
+    "composer.deviceOffline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This device is offline"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台设备没有联网"
+          }
+        }
+      }
+    },
     "composer.discard": {
       "extractionState": "manual",
       "localizations": {
@@ -575,6 +592,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "调用 Pi Skill"
+          }
+        }
+      }
+    },
+    "composer.stop": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止"
           }
         }
       }

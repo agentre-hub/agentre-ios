@@ -19,6 +19,9 @@ extension LocalConversationStore: ConversationSaving {
         summary.waitingForInput = session.waitingForInput
         summary.latestSeq = session.latestSeq
         summary.lastMessageAt = session.lastMessageAt
+        summary.providerKey = session.providerKey
+        summary.modelKey = session.modelKey
+        summary.reasoningEffort = session.reasoningEffort
         return try save(summary, via: machineFingerprint)
     }
 

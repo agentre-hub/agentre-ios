@@ -14,6 +14,7 @@ struct AppRootView: View {
             SignedInRoot(environment: environment)
         }
         .displayPreferences(environment.me.preferences)
+        .environment(\.isOffline, environment.connectivity.isOffline)
     }
 }
 
@@ -44,6 +45,11 @@ private struct SignedInRoot: View {
         .onChange(of: scenePhase) { _, phase in
             // 回到前台：连接自己会重拨，这里补上此前跟随失败的会话。
             guard phase == .active, let services else { return }
+            Task { await services.resume() }
+        }
+        .onChange(of: environment.connectivity.isOffline) { _, offline in
+            // 网络回来了（飞行模式关掉、换了网）：同样补上离线期间跟随失败的会话。
+            guard !offline, let services else { return }
             Task { await services.resume() }
         }
     }

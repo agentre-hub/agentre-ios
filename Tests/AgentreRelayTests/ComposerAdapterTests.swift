@@ -156,13 +156,23 @@ private func answer<Request: SwiftProtobuf.Message>(
         #expect(body.peerFingerprint == "peer-1")
     }
 
-    @Test("斜杠命令：在那台机器上问 skillsCommands，带后端、工作目录与这一档的授权")
+    @Test("停止本轮：runtimeAbort 经承载机的通道，带 conversation_id 与发起端")
+    func abortsTurn() async throws {
+        let harness = await Harness.started()
+        async let stopped: Void = composer(harness).abort(key, peerFingerprint: "peer-1")
+        let body = try await answer(harness, .runtimeAbort, as: Agentre_Wire_RuntimeAbortRequest.self, with: Agentre_Wire_RuntimeAbortResponse())
+        try await stopped
+        #expect(body.conversationID == "conv-1")
+        #expect(body.peerFingerprint == "peer-1")
+    }
+
+    @Test("斜杠命令：在承载机（不是会话键上的发起端）上问 skillsCommands，带后端、工作目录与这一档的授权")
     func asksSkillCommands() async throws {
         let harness = await Harness.started()
         let adapter = composer(harness, grants: { agent, backend, machine in
             agent == "agent-1" && backend == "claudecode" && machine == "carrier-fp" ? [SkillGrant(id: "pack-1", enabled: true)] : []
         })
-        async let skills = adapter.skillCommands(machineFingerprint: "carrier-fp", agentSyncID: "agent-1", backendType: "claudecode", cwd: "/repo")
+        async let skills = adapter.skillCommands(key, agentSyncID: "agent-1", backendType: "claudecode", cwd: "/repo")
         var response = Agentre_Wire_SkillCommandsResponse()
         response.commands = [Agentre_Wire_SkillCommand.with { $0.name = "review"; $0.description_p = "Review code" }]
         let body = try await answer(harness, .skillsCommands, as: Agentre_Wire_SkillCommandsRequest.self, with: response)
@@ -178,7 +188,7 @@ private func answer<Request: SwiftProtobuf.Message>(
         let harness = await Harness.started()
         struct Unavailable: Error {}
         let adapter = composer(harness, grants: { _, _, _ in throw Unavailable() })
-        async let skills = adapter.skillCommands(machineFingerprint: "carrier-fp", agentSyncID: "agent-1", backendType: "codex", cwd: "")
+        async let skills = adapter.skillCommands(key, agentSyncID: "agent-1", backendType: "codex", cwd: "")
         let body = try await answer(harness, .skillsCommands, as: Agentre_Wire_SkillCommandsRequest.self, with: Agentre_Wire_SkillCommandsResponse())
         #expect(try await skills.isEmpty)
         #expect(body.authorized.isEmpty)
@@ -187,7 +197,7 @@ private func answer<Request: SwiftProtobuf.Message>(
     @Test("后端还不知道时不问，一条都不列")
     func skillCommandsNeedBackend() async throws {
         let harness = await Harness.started()
-        let skills = try await composer(harness).skillCommands(machineFingerprint: "carrier-fp", agentSyncID: "agent-1", backendType: "", cwd: "/repo")
+        let skills = try await composer(harness).skillCommands(key, agentSyncID: "agent-1", backendType: "", cwd: "/repo")
         #expect(skills.isEmpty)
         #expect(harness.dialer.sockets.allSatisfy { $0.frames.isEmpty })
     }
@@ -197,6 +207,7 @@ private func answer<Request: SwiftProtobuf.Message>(
         typealias Call = @Sendable (RelayComposer) async throws -> Void
         let calls: [(Agentre_Wire_RpcMethod, Call)] = [
             (.runtimeRun, { try await $0.run(key, peerFingerprint: "", text: "x", compact: false) }),
+            (.runtimeAbort, { try await $0.abort(key, peerFingerprint: "") }),
             (.runtimeSteer, { _ = try await $0.steer(key, peerFingerprint: "", queuedID: "q", text: "x") }),
             (.runtimeCancelSteer, { _ = try await $0.cancelSteer(key, peerFingerprint: "", queuedID: "q") }),
             (.runtimeDrainPending, { _ = try await $0.drainPending(key, peerFingerprint: "") }),
@@ -204,7 +215,7 @@ private func answer<Request: SwiftProtobuf.Message>(
             (.setModelTarget, { try await $0.setModelTarget(key, peerFingerprint: "", providerKey: "p", modelKey: "m") }),
             (.setSessionReasoningEffort, { try await $0.setReasoningEffort(key, peerFingerprint: "", effort: "high") }),
             (.sessionDelete, { _ = try await $0.deleteSession(key, peerFingerprint: "") }),
-            (.skillsCommands, { _ = try await $0.skillCommands(machineFingerprint: "carrier-fp", agentSyncID: "a", backendType: "claudecode", cwd: "") }),
+            (.skillsCommands, { _ = try await $0.skillCommands(key, agentSyncID: "a", backendType: "claudecode", cwd: "") }),
         ]
         for (method, call) in calls {
             let error = try await failure(scenario, method: method, on: "carrier-fp") { harness in

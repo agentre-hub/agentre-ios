@@ -8,6 +8,7 @@ public struct MachineDetailView: View {
     private let model: MachineDetailModel
     private let onOpen: (ConversationKey) -> Void
     @State private var query = ""
+    @Environment(\.isOffline) private var isOffline
 
     /// - Parameter onOpen: 进入一条已保存的对话。导航归宿主。
     public init(model: MachineDetailModel, onOpen: @escaping (ConversationKey) -> Void) {
@@ -38,7 +39,18 @@ public struct MachineDetailView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                if model.unreachable {
+                if isOffline {
+                    // 本机没网：如实说是离线，而不是说没连上那台机器。
+                    Label {
+                        Text("machines.detail.deviceOffline", tableName: "Machines", bundle: .module)
+                    } icon: {
+                        Image(systemName: "wifi.slash")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.token(.textSecondary))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                } else if model.unreachable {
                     Text("machines.detail.unreachable", tableName: "Machines", bundle: .module)
                         .font(.subheadline)
                         .foregroundStyle(.token(.textSecondary))
@@ -109,6 +121,8 @@ private struct MachineSessionRowView: View {
     let row: MachineSessionRow
     let onOpen: (ConversationKey) -> Void
     let onSave: () -> Void
+    /// 保存要机器来答：离线时点不动。
+    @Environment(\.isOffline) private var isOffline
 
     var body: some View {
         if row.isSaved {
@@ -134,6 +148,7 @@ private struct MachineSessionRowView: View {
                             .accessibilityLabel(Text("machines.detail.save", tableName: "Machines", bundle: .module))
                     }
                     .hitTarget()
+                    .disabled(isOffline)
                 }
             }
         }

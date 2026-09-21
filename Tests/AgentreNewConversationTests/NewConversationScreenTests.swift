@@ -125,6 +125,17 @@ struct NewConversationScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
+    @Test("完全离线：草稿里发不出去，如实说这台设备没有联网")
+    func draftOffline() async throws {
+        let model = await loadedDraft()
+        model.text = "修构建"
+        let online = HostedScreen(DraftConversationView(model: model, onStarted: { _ in }))
+        #expect(await !online.disabledLabels().contains(text("newconv.send")))
+        let screen = HostedScreen(DraftConversationView(model: model, onStarted: { _ in }).environment(\.isOffline, true))
+        #expect(await screen.labels().contains(text("newconv.deviceOffline")))
+        #expect(await screen.disabledLabels().contains(text("newconv.send")))
+    }
+
     @Test("派发没成时说连不上哪台机器，chip 行还在")
     func draftDispatchFailed() async throws {
         let dispatcher = FakeDispatcher()

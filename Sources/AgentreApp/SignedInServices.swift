@@ -97,7 +97,8 @@ final class SignedInServices {
         me = environment.me
         connection = RelayConnection(
             url: RelayEndpoint.clientURL(for: server), dialer: dependencies.relayDialer,
-            accessToken: { try await tokens.accessToken() }, sleeper: dependencies.relaySleeper
+            // 中继没有 401 可等：令牌过期就先刷新再拨号、再握手（规格「登录」：过期以刷新令牌换新）。
+            accessToken: { try await tokens.unexpiredAccessToken() }, sleeper: dependencies.relaySleeper
         )
         let carrier: RelayCarrier = { key in (try? await store.carrier(of: key)) ?? key.machineFingerprint }
         self.carrier = carrier

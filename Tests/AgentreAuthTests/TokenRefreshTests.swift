@@ -106,6 +106,45 @@ struct TokenRefreshTests {
         #expect(rejections.value == 1)
     }
 
+    @Test("中继取令牌（连接与逐通道握手都用它）：已过期先刷新再交出；并发的调用方共用那一次刷新")
+    func relayTokenRefreshesWhenExpired() async throws {
+        let store = InMemoryCredentialStore(credentials: Self.old)
+        let refresher = GatedRefresher(outcome: .success(Self.fresh))
+        let provider = AccessTokenProvider(credentials: store, refresher: refresher, server: { .production }, onRejected: {})
+
+        let tokens = try await withThrowingTaskGroup(of: String.self) { group in
+            for _ in 0..<3 { group.addTask { try await provider.unexpiredAccessToken() } }
+            await refresher.settle()
+            return try await group.reduce(into: []) { $0.append($1) }
+        }
+
+        #expect(tokens == Array(repeating: "new-at", count: 3))
+        #expect(await refresher.calls == ["old-rt"])
+        #expect(store.stored?.accessToken == "new-at")
+    }
+
+    @Test("中继取令牌：离到期还远就原样交出，不刷新")
+    func relayTokenStillValid() async throws {
+        var valid = Self.old
+        valid.accessTokenExpiresAt = Date().addingTimeInterval(600)
+        let refresher = GatedRefresher(outcome: .success(Self.fresh))
+        let provider = AccessTokenProvider(credentials: InMemoryCredentialStore(credentials: valid), refresher: refresher, server: { .production }, onRejected: {})
+        #expect(try await provider.unexpiredAccessToken() == "old-at")
+        #expect(await refresher.calls.isEmpty)
+    }
+
+    @Test("中继取令牌时刷新被拒：登出，调用方得到 refreshRejected")
+    func relayTokenRefreshRejected() async throws {
+        let refresher = GatedRefresher(outcome: .failure(.refreshRejected))
+        await refresher.release()
+        let rejections = RejectionCounter()
+        let provider = AccessTokenProvider(
+            credentials: InMemoryCredentialStore(credentials: Self.old), refresher: refresher, server: { .production }, onRejected: { rejections.hit() }
+        )
+        await #expect(throws: AuthError.refreshRejected) { try await provider.unexpiredAccessToken() }
+        #expect(rejections.value == 1)
+    }
+
     @Test("没有凭据：取令牌即 signedOut")
     func signedOut() async {
         let provider = AccessTokenProvider(credentials: InMemoryCredentialStore(), refresher: GatedRefresher(outcome: .success(Self.fresh)), server: { .production }, onRejected: {})

@@ -18,6 +18,9 @@ private func summary(_ id: String, peer: String = "", latest: Int64 = 0) -> Agen
     summary.waitingForInput = true
     summary.latestSeq = latest
     summary.lastMessageAt = 1_700_000_000_000
+    summary.providerKey = "anthropic"
+    summary.modelKey = "claude-sonnet"
+    summary.reasoningEffort = "high"
     return summary
 }
 
@@ -57,7 +60,8 @@ private func durableFrame(_ seq: Int64, createtime: Int64) -> Agentre_Wire_Durab
         #expect(result.sessions[0] == MachineSession(
             conversationID: "conv-1", peerFingerprint: "peer-1", title: "Fix login", agentSyncID: "agent-1", cwd: "/repo",
             projectSyncID: "proj-1", backendType: "claudecode", lifecycleState: "running", waitingForInput: true,
-            latestSeq: 42, lastMessageAt: 1_700_000_000_000
+            latestSeq: 42, lastMessageAt: 1_700_000_000_000,
+            providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "high"
         ))
     }
 
