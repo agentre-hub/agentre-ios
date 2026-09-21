@@ -29,7 +29,7 @@
 | 1 | iOS 端只经 `agentre-server` 中继接入，不做局域网直连 agentred | 中继是唯一外网可达且已有完整 RPC 面的通道。被否：局域网直连——需要自签证书固定、设备发现与 `auth.direct` 凭据三套新逻辑；且 agentred 只对 `desktop` 种类的凭据下发直连凭据与地址（`agentre/docs/architecture.md` 的远程执行一节），`mobile` 本就拿不到 |
 | 2 | 以 `mobile` 设备种类走 RFC 8628 设备流取得设备 access token，并以该令牌直接连 `/v1/relay/client` | `/v1/relay/client` 的 client 侧同时接受原生端设备 access token 与浏览器票据；`isAddressableKind()`（只认 desktop/agentred）仅约束 `/v1/relay/daemon`，client 侧无种类门。被否：复用网页的 relay ticket——那是为浏览器设头限制而生的两分钟短票，原生端用它只会白白引入续期逻辑 |
 | 3 | 逐通道握手的凭据即设备 access token，由 agentred 回调服务端 `/v1/credentials/introspect` 核验 | 该端点走 `auth_svc.BearerResolver`，不区分种类；设备凭据的 `PeerFingerprint` 即该设备自身指纹（`internal/service/device_svc/bearer.go:68`）。被否：为移动端新增一类凭据——服务端会因此产生变更，违反本轮不变式 |
-| 4 | `wire.proto` 的 Swift 产物由 `agentre` 仓生成并持有，本仓以 SPM 钉不可变 revision 消费 | 与工作区既有不变式同形：`agentre/` 拥有产物，消费方钉已推送的不可变 revision。协议兼容判据是版本号逐字相等（当前 `0.1.0`），钉不准即握手被拒。被否：本仓自带一份 `.proto` 自行生成——同一 schema 出现第二个主人，与既有的「全工作区只有一份 `wire.pb.go`」守卫精神相悖 |
+| 4 | `wire.proto` 的 Swift 产物由 `agentre` 仓生成并持有，本仓以 SPM 钉不可变 revision 消费 | 与工作区既有不变式同形：`agentre/` 拥有产物，消费方钉已推送的不可变 revision。协议兼容判据是版本号逐字相等（当前 **`0.2.0`**，见 `agentre/pkg/wire/proto/agentre/wire/wire.proto:46`；版本取自该文件选项而非任何一侧的字面量），钉不准即握手被拒。被否：本仓自带一份 `.proto` 自行生成——同一 schema 出现第二个主人，与既有的「全工作区只有一份 `wire.pb.go`」守卫精神相悖 |
 | 5 | 移动端自有一套设计语言，不复用 `@agentre-hub/agentre-ui` 的视觉 | 该包是 React 实现，Swift 侧无法消费；且手机的信息密度、触达区与主导作业（审批）与桌面/控制台不同。被否：照搬控制台配色与密度——会得到一个被压窄的网页而不是一个 iOS 应用 |
 | 6 | 主色沿用桌面端品牌蓝，但「运行中」交给绿色 | 品牌一致性由主色承担；蓝色接管「可交互」后，若再兼表「运行中」则同一颜色承担两种语义。被否：以电光青柠同时表主操作与运行中——性格鲜明但与既有品牌脱节，且语义重载 |
 | 7 | 深色与浅色两套主题都做，随系统切换 | iOS 用户期待跟随系统。代价是每个色值出两套并各自过对比度 |
@@ -206,7 +206,7 @@ payload 的编解码使用由同一份 schema 生成的 Swift 消息类型，帧
 
 | 接缝 | 验证什么 | 现有对照 |
 |---|---|---|
-| wire 消息编解码 | Swift 侧与 Go/TS 两侧对同一批帧同解同编 | 直接消费 `agentre-wire` 既有的金样本 JSON（约 20 份），跨语言同源 |
+| wire 消息编解码 | Swift 侧与 Go 侧对同一批帧同解同编：Go 产出一批**二进制金向量**与各自的期望字段值，Swift 解码后字段逐一相等；Swift 再编码回去，Go 解得到与原消息相等的消息。**判据不是字节逐一相等**——protobuf 不保证跨实现的字节级一致（map 序、未知字段的位置），把那个当判据会得到一条随实现升级而红的测试 | 本轮新建。**既有的 `agentre-wire/fixtures/` 那 23 份 JSON 不能用作本接缝的判据**：它们与 `src/codec.gen.ts` 由同一个 Go 生成器产出（`golden_test.go` / `tsgen_test.go`），是那层**手写 JSON 领域 codec** 的金样本，而那层是 TS 宿主为自己的 UI 而设的一层，iOS 直接消费 protobuf 结构、根本不经过它。实测 `protojson` 往返只有 5/23 结构相同，差异来自 64 位整数的字符串化、`DurableNotification` 的形状不同、`json.RawMessage` 透传字段，以及两份专门证明未知字段往返不丢的样本——最后一类 protobuf 消息永远做不到 |
 | 中继客户端（注入伪传输） | 一条通道上并发请求按 id 路由不串道；断线重连后 attach→按游标 pull→按 `seq` 去重，重复帧只应用一次；握手版本不等即拒且不重试 | Go 侧 `internal/daemon/client/client_test.go`，TS 侧 `frontend/src/__tests__/relay-client-*.test.ts` |
 | 设备流（注入伪 HTTP） | 授权中、授权过期、被拒、成功各自的收场；令牌刷新的单次性 | `agentre-server` 侧 `internal/service/device_svc/device_test.go` 的状态机 |
 | 领域层状态（注入伪仓储） | 消息列表的排序与置顶、未读判定、一轮从发起到收场的状态迁移 | 无 |
