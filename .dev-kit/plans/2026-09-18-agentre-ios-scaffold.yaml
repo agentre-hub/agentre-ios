@@ -178,9 +178,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/Cards/, agentre-ios/Tests/AgentreApprovalTests/]
     model: mid
     interfaces: null
-    status: todo
-    commit: null
-    note: null
+    status: done
+    commit: a1b258e
+    note: "RED：dispositionHitTargetsEnglish 在英文下 midY 相差 54pt（三行）；GREEN：AgentreApprovalTests 41 条过，dispositionHitTargets 以 zh-Hans / en 参数化断言同行右对齐。旧的「英文排不下即换行」测试被取代删除。"
 
   - id: 16
     goal: "权限模式随每一轮发送生效：runtime.run 带上当前生效的档位；两轮之间切档只改本机当前档、不呈现失败，下一轮随 run 生效；一轮正在跑时额外调 runtime.setPermissionMode，那一次的失败才如实呈现；起手档位 = 用户这次选的 → 转录里执行端报过的当前档（permission_mode_changed）→ 执行端报的默认档。伪中继（含宿主闭环测试的 FakeRelay）照搬 agentred：会话不在跑时 setPermissionMode 回 ErrNoActiveTurn、run 带的 permission_mode 被记下可查；先让「两轮之间切档后发一句」的测试在现状下失败（现状：界面报 Not changed，且 run 不带档位）。"
@@ -188,9 +188,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreRelay/Adapters/RelayComposer.swift, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
     interfaces: null
-    status: todo
-    commit: null
-    note: null
+    status: done
+    commit: 067abe6 + a7e180e
+    note: "RED：伪机器照搬 agentred 后，permissionModeRidesTheNextRun 四处失败（Not changed、档位未变、调了 setPermissionMode、run 不带字段 16），起手档测试取到默认档。GREEN：Composer 69、Relay 77、宿主 18 条过；全量 543 条过（exit 0）。退回一次：起手档宿主测试的帧原先直写本地库、伪机器没有，跟随按高水位回退把它们删掉，整目标下必红；改由伪机器产出（a7e180e）。已知残留：点发送后、机器报回合开始前切档，被当作两轮之间，本轮仍用旧档、下一轮生效。"
 
   - id: 17
     goal: "挂起回前台后打开着的对话屏续上：连接断开后转录的实时跟随在回到前台（scenePhase .active）或网络恢复时重新 attach，从转录自己的最新帧号接着补，其间已落库的帧与刚发出的用户消息都在屏上、不丢不重；先用测试复现现状（attach 流结束后无人再接，屏上停在断开前、刚发的消息消失），证实根因后再修。"
@@ -198,7 +198,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
     interfaces: "TranscriptModel.start/attach（Sources/AgentreUI/Conversation/TranscriptModel.swift:50-87）；SignedInServices.resume（AppRootView.swift:45-53 调用处）"
-    status: todo
+    status: doing
     commit: null
     note: null
 
