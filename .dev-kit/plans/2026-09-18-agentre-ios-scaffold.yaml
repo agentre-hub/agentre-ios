@@ -176,7 +176,7 @@ review:
   note: "规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（中继补齐、摘要刷新、审批卡、输入区、登录等，全修；主会话重跑全量 536 条过）。代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。"
 
 verification:
-  status: pending
-  report: null
-  head: null
-  note: null
+  status: running
+  report: e2e/scratch/2026-09-18-agentre-ios-scaffold/report.md
+  head: d967db0
+  note: "用户 2026-09-21 授权（原话选项）：「跑，授权上述三项（推荐）」——在 dev（docker.local:8443）上：写一条 mobile 设备记录、在 agentred 上真跑一个 agent、批准一条只在 pwd/ls 范围内的命令；登录时由用户在浏览器批准。无 Apple Team ID：拇指可达一项记为未观察。"
