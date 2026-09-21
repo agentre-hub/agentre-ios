@@ -138,14 +138,14 @@ tasks:
     note: "返回所报、主会话已核实或须收尾处理的两条：(1) 服务端只允许设备令牌撤销它自己（agentre-server/internal/controller/device_ctr/device.go:164-167，target != callerID → 403），规格承诺的撤销其它设备在本轮不变式下做不到，界面改为列出全部设备、其它设备注明去网页控制台撤销——规格待改。(2) 原话：If clearing the local store fails twice, rows can remain. Sign-out still clears the Keychain so the user is not stuck half signed out, but the previous account rows stay readable in that case——违反「换账号后读不到上一个账号的任何会话行」，修复需动本地库，留规格核对轴。"
 
   - id: 12
-    goal: "装配：实现任务 5–10 在领域层声明的全部中继端口适配器（均按 machine: 寻址）；应用入口组装全部具体实现——中继帧经那一行转换接进本地库，任务 4–10 的各屏接进三标签骨架与导航，一切会话通道按 machine: 寻址；机器侧最高 seq 低于本机游标时游标回退（对照服务端 dropCursorAboveHighWater）；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
-    deps: [5, 6, 7, 8, 9, 10, 13]
-    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
+    goal: "装配（12b）：应用入口组装全部具体实现——任务 14 的中继适配器、各任务的 REST 客户端、本地库（含它对 ConversationSaving / StartedConversationRecording 的遵从，以及中继帧 → IncomingFrame 的转换：IncomingFrame 在 AgentreStore，中继不能 import 它）、提及来源（任务 9 的 WorkspaceClient 与任务 5 的 MachineRosterClient 组合）、输入区的回合事件（turnStarted / turnEnded(normally:) / steersConsumed）由转录帧喂入、每条会话一个 ApprovalCardsModel 接进转录的 card 参数；任务 4–10 的各屏接进三标签骨架与导航；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
+    deps: [14]
+    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
-    interfaces: "任务 4–10 各屏的公开视图与其构造参数；任务 3 的 RelayConnection/RelayChannel；任务 11 的 SessionStore 与 IncomingFrame"
+    interfaces: "任务 14 的全部中继适配器；任务 2/5/9/10 的 REST 客户端；任务 11/13 的 LocalConversationStore 与 IncomingFrame；任务 4–10 各屏的公开视图与其构造参数；各任务 note 里留给任务 12 的接线说明"
     status: todo
     commit: null
-    note: "2026-09-21 用户批准新增。任务 11 返回揭出：AgentreApp 在任务 2 之后无人拥有，中继 → 本地库的转换只存在于测试里；不设此任务则测试全绿而 App 里只有登录与三个空标签。"
+    note: "2026-09-21 用户批准新增；同日又批准拆为 14（适配器）与 12（装配）两段，以免超出单个实现者的上下文。任务 11 返回揭出：AgentreApp 在任务 2 之后无人拥有，中继 → 本地库的转换只存在于测试里。"
 
   - id: 13
     goal: "收尾缺口四处：(1) 提问卡给出宿主的选项——转录领域模型的提问携带选项（含多选与自定义答案），卡片按宿主规则作答（未选即提交给出宿主那句报错），经作答端口发出选中的 label；(2) 退出登录或刷新被拒时，即使本地库清空失败，上一个账号的任何会话行也不得再可读，清空失败这条路径有测试；(3) README 的全量测试命令使用全新的构建目录；(4) 登录屏的服务器地址完整可读，不被中间截断。"
@@ -153,9 +153,19 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Transcript/, agentre-ios/Sources/AgentreUI/Conversation/Cards/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreUI/Login/, agentre-ios/README.md, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreApprovalTests/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreAuthTests/]
     model: mid
     interfaces: "任务 6 的 QuestionRequest 与转录归约；任务 7 的 ApprovalCard / ApprovalCardsModel / ApprovalAnswering；任务 11 的 LocalConversationStore.removeAll；任务 10 的 SignOut"
+    status: done
+    commit: 8896c9b
+    note: "2026-09-21 用户批准新增。四处分别由任务 7、10、2、2 的返回揭出，均落在已冻结任务的目录里，任务 12 的写入集碰不到。"
+
+  - id: 14
+    goal: "中继适配器（12a）：在 AgentreRelay 实现任务 5–10 在领域层声明的全部中继端口——机器会话列表 / 计数 / 保存到手机的 attach+pull、转录的 attach / pull 与帧载荷解码成领域转录事件（含任务 13 带上的提问选项）、新建对话派发、审批与提问作答、输入区的发送 / 插话 / 撤回 / 取回 / 权限模式 / 模型 / 思考档位 / 删除会话 / 斜杠命令——一律按 machine:<指纹> 寻址、以 conversation_id 指明对话；每个适配器对伪套接字证明所发的 RPC 方法与字段、应答到领域类型的映射以及错误应答的收场；机器侧最高 seq 低于本机游标时游标回退（对照服务端 mirror_svc/mirror.go:736-770 的 dropCursorAboveHighWater）；实时帧保持不带 createtime 的形状，维持任务 4 的实时判据。"
+    deps: [5, 6, 7, 8, 9, 10, 13]
+    files: [agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/]
+    model: strong
+    interfaces: "任务 3 的 RelayConnection / RelayChannel；任务 5–10 在 AgentreDomain/<Feature>/ 声明的端口；AgentreWire 生成类型"
     status: doing
     commit: null
-    note: "2026-09-21 用户批准新增。四处分别由任务 7、10、2、2 的返回揭出，均落在已冻结任务的目录里，任务 12 的写入集碰不到。"
+    note: "2026-09-21 由任务 12 拆出（用户批准）。依赖 AgentreStore 的适配（ConversationSaving、StartedConversationRecording、IncomingFrame 转换）不在此，归任务 12——中继不能 import 本地库。"
 
 review:
   status: pending
