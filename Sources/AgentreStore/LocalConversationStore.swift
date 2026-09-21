@@ -19,6 +19,10 @@ public struct IncomingFrame: Sendable {
         self.createtime = createtime
         self.payload = payload
     }
+
+    /// 实时到达的帧（含补齐期间缓冲下来的实时帧）：载体上没有发生时刻。
+    /// 只有它们跟随摘要——补齐拉回的是历史，摘要由机器的清单快照说了算。
+    var isLive: Bool { createtime == nil }
 }
 
 /// 手机自有的会话库（SwiftData，落在应用沙盒里的一个库文件上）。
@@ -30,6 +34,8 @@ public struct IncomingFrame: Sendable {
 /// - 预览帧与不带号的帧不进转录。
 /// - 发生时刻原样取自载体：补齐拉回的照录（0 仍是 0），实时帧盖收帧那一刻。
 /// - 游标是本机自己的——已落库的最大帧号，不是机器报的高水位。
+/// - 实时帧让摘要跟着走（`follow`）：轮次边界改生命周期与最后活动，审批 / 提问的
+///   请求与落定改「等你处理」。与帧号正交——线上的轮次边界帧不带号，照样跟随。
 ///
 /// 实时帧与补齐帧只有 `record` 这一个入口。
 public actor LocalConversationStore: ConversationStore, ModelActor {
@@ -39,6 +45,11 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
     private let now: @Sendable () -> Int64
+    /// 从实时帧上看见、此刻还没落定的待决请求标识（mirror_svc 的 trackedSession.waiters）。
+    /// 没有条目 = 帧还没就「等你处理」说过话，清单快照仍是权威；空集合 = 帧说过话，此刻一个待决都没有。
+    /// 待决是机器进程内、按轮的，所以这张表只在内存里：冷启动后重新由快照说了算。
+    private var waiters: [ConversationKey: Set<String>] = [:]
+    private var observers: [UUID: AsyncStream<Void>.Continuation] = [:]
 
     /// 打开（或建立）`directory` 下的库文件。
     public init(
@@ -80,7 +91,9 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
         row.lifecycleState = summary.lifecycleState
         row.waitingForInput = summary.waitingForInput
         row.lastMessageAt = summary.lastMessageAt
-        try modelContext.save()
+        // 新快照是机器此刻的原话，比从帧上攒出来的新：待决集合作废（mirror_svc 的 setSummary）。
+        waiters[key] = nil
+        try commit()
         return key
     }
 
@@ -89,7 +102,7 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
         var batches: [String: [IncomingFrame]] = [:]
         var order: [String] = []
         for frame in frames {
-            guard let seq = frame.seq, seq > 0, !frame.payload.isPreview,
+            guard !frame.payload.isPreview,
                   let conversationID = frame.conversationID ?? frame.payload.durableConversationID
             else { continue }
             if batches[conversationID] == nil { order.append(conversationID) }
@@ -97,9 +110,9 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
         }
         for conversationID in order {
             guard let row = try fetchConversation(conversationID, via: machineFingerprint) else { continue }
-            try append(batches[conversationID] ?? [], to: row)
+            try apply(batches[conversationID] ?? [], to: row)
         }
-        if modelContext.hasChanges { try modelContext.save() }
+        try commit()
     }
 
     /// 跟着一条帧流落库，直到它结束。App 把中继通道交出的通知接到这里。
@@ -117,11 +130,11 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
         let descriptor = FetchDescriptor<ConversationRecord>(sortBy: [
             SortDescriptor(\.lastMessageAt, order: .reverse), SortDescriptor(\.conversationID),
         ])
-        return try modelContext.fetch(descriptor).map(\.snapshot)
+        return try modelContext.fetch(descriptor).map(snapshot)
     }
 
     public func conversation(_ key: ConversationKey) throws -> SavedConversation? {
-        try fetchConversation(key)?.snapshot
+        try fetchConversation(key).map(snapshot)
     }
 
     public func transcript(_ key: ConversationKey) throws -> [TranscriptFrame] {
@@ -143,10 +156,11 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
     public func markRead(_ key: ConversationKey) throws {
         guard let row = try fetchConversation(key) else { return }
         row.readMarker = row.lastMessageAt
-        try modelContext.save()
+        try commit()
     }
 
     public func delete(_ key: ConversationKey) throws {
+        waiters[key] = nil
         let owner = key.machineFingerprint
         let id = key.conversationID
         try modelContext.delete(
@@ -157,28 +171,111 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
             model: ConversationRecord.self,
             where: #Predicate { $0.machineFingerprint == owner && $0.conversationID == id }
         )
-        try modelContext.save()
+        try commit(force: true)
     }
 
     public func removeAll() throws {
+        waiters.removeAll()
         try modelContext.delete(model: FrameRecord.self)
         try modelContext.delete(model: ConversationRecord.self)
-        try modelContext.save()
+        try commit(force: true)
+    }
+
+    public func changes() -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let id = UUID()
+        observers[id] = continuation
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.stopObserving(id) }
+        }
+        return stream
     }
 
     // MARK: 内部
 
-    /// 追加一条会话的一批帧：库里已有的号与同批里重复的号都跳过，先到的为准。
-    private func append(_ frames: [IncomingFrame], to row: ConversationRecord) throws {
+    /// 落盘并通知订阅者。批量删除不经变更跟踪，`hasChanges` 看不见它们，所以删除路径强制提交。
+    private func commit(force: Bool = false) throws {
+        guard force || modelContext.hasChanges else { return }
+        try modelContext.save()
+        for observer in observers.values { observer.yield() }
+    }
+
+    private func stopObserving(_ id: UUID) {
+        observers[id] = nil
+    }
+
+    /// 一行摘要连同列表要的两样预览：此刻等你处理的那件事，与最后一句话。
+    private func snapshot(_ row: ConversationRecord) throws -> SavedConversation {
+        var conversation = row.snapshot
+        let preview = try preview(of: row)
+        conversation.pending = preview.pending
+        conversation.lastText = preview.lastText
+        return conversation
+    }
+
+    /// 从最新的帧往回找，最多看 `previewWindow` 帧：等你处理时，对端停在那次请求上，
+    /// 它就在转录末尾附近。
+    static let previewWindow = 200
+
+    /// 待决取最近一次没有落定的审批 / 提问请求，只在这一行正等你处理时才取——
+    /// 等待与否由摘要说了算（跟随规则），帧只回答「等的是什么」。
+    private func preview(of row: ConversationRecord) throws -> (pending: PendingInput?, lastText: String) {
         let owner = row.machineFingerprint
         let id = row.conversationID
-        let seqs = frames.compactMap(\.seq)
+        var descriptor = FetchDescriptor<FrameRecord>(
+            predicate: #Predicate { $0.machineFingerprint == owner && $0.conversationID == id },
+            sortBy: [SortDescriptor(\.seq, order: .reverse)]
+        )
+        descriptor.fetchLimit = Self.previewWindow
+        let wantsPending = row.waitingForInput
+        var pending: PendingInput?
+        var lastText: String?
+        var resolved = Set<String>()
+        for frame in try modelContext.fetch(descriptor) {
+            if lastText != nil, !wantsPending || pending != nil { break }
+            guard let notification = try? Agentre_Wire_RpcNotification(serializedBytes: frame.payload),
+                  case .runtimeEvent(let event) = notification.payload
+            else { continue }
+            switch event.event {
+            case .textDelta(let delta) where lastText == nil && !delta.text.isEmpty:
+                lastText = delta.text
+            case .userMessage(let message) where lastText == nil && !message.text.isEmpty:
+                lastText = message.text
+            case .toolPermissionResolved(let resolution):
+                resolved.insert(resolution.requestID)
+            case .userAskResolved(let resolution):
+                resolved.insert(resolution.requestID)
+            case .toolPermissionRequest(let request) where wantsPending && pending == nil && !resolved.contains(request.requestID):
+                pending = .permission(tool: request.toolName, detail: permissionDetail(request.input))
+            case .userAskRequest(let request) where wantsPending && pending == nil && !resolved.contains(request.requestID):
+                let question = request.questions.first.map { $0.question.isEmpty ? $0.header : $0.question } ?? ""
+                pending = .question(question)
+            default:
+                continue
+            }
+        }
+        return (pending, lastText ?? "")
+    }
+
+    /// 应用一条会话的一批帧。
+    ///
+    /// 逐帧先跟随、后落库，与 mirror_svc 的 Apply 同一次序：实时帧里号不大于游标的是重复
+    /// 投递，它带的事实全部应用过了，连跟随都不再跑（重放一条早已落定的请求会把它算回「还等着」）。
+    /// 落库只收带号的帧：库里已有的号与同批里重复的号都跳过，先到的为准。
+    private func apply(_ frames: [IncomingFrame], to row: ConversationRecord) throws {
+        let owner = row.machineFingerprint
+        let id = row.conversationID
+        let seqs = frames.compactMap(\.seq).filter { $0 > 0 }
         let stored = try modelContext.fetch(FetchDescriptor<FrameRecord>(
             predicate: #Predicate { $0.machineFingerprint == owner && $0.conversationID == id && seqs.contains($0.seq) }
         ))
         var seen = Set(stored.map(\.seq))
         for frame in frames {
-            guard let seq = frame.seq, seen.insert(seq).inserted else { continue }
+            let seq = frame.seq ?? 0
+            if frame.isLive, seq <= 0 || seq > row.latestSeq {
+                follow(frame.payload, row: row)
+            }
+            guard seq > 0, seen.insert(seq).inserted else { continue }
             var payload = frame.payload
             payload.stamp(seq: seq)
             modelContext.insert(FrameRecord(
@@ -186,6 +283,34 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
                 createtime: frame.createtime ?? now(), payload: try payload.serializedData()
             ))
             row.latestSeq = max(row.latestSeq, seq)
+        }
+    }
+
+    /// 让摘要跟着这一帧走（mirror_svc 的 followTurn + followWaiter）。只动生命周期、
+    /// 最后活动与「等你处理」三格：标题之类仍只由清单说了算，帧里没有它们的答案。
+    private func follow(_ notification: Agentre_Wire_RpcNotification, row: ConversationRecord) {
+        let key = row.key
+        if let lifecycle = notification.turnBoundaryLifecycle {
+            row.lifecycleState = lifecycle
+            // 边界帧上没有对端时刻，取本机钟；只前移不倒退——两台机器的钟不必一致。
+            let at = now()
+            if at > row.lastMessageAt { row.lastMessageAt = at }
+            // 待决是按轮的：一轮结束，那一轮的待决就没人能回答了。终态帧因此是等待的兜底出口。
+            if lifecycle != SavedConversation.Lifecycle.running {
+                waiters[key] = []
+                row.waitingForInput = false
+            }
+        }
+        if let signal = notification.waiterSignal {
+            // 按请求标识记集合而不是翻布尔：两次待决交错时，落定一次不能抹掉还在等的那一次。
+            // 落定帧也建集合——它清掉的可能正是快照带来的那一次等待。
+            var pending = waiters[key] ?? []
+            switch signal {
+            case .opened(let requestID): pending.insert(requestID)
+            case .closed(let requestID): pending.remove(requestID)
+            }
+            waiters[key] = pending
+            row.waitingForInput = !pending.isEmpty
         }
     }
 
@@ -215,10 +340,23 @@ public actor LocalConversationStore: ConversationStore, ModelActor {
     }
 }
 
+/// 待批准的工具调用要跑的命令，或它要动的文件；两者都不在输入里时为 nil。
+private func permissionDetail(_ input: Data) -> String? {
+    guard let object = try? JSONSerialization.jsonObject(with: input) as? [String: Any] else { return nil }
+    for field in ["command", "file_path"] {
+        if let value = object[field] as? String, !value.isEmpty { return value }
+    }
+    return nil
+}
+
 private extension ConversationRecord {
+    var key: ConversationKey {
+        ConversationKey(machineFingerprint: machineFingerprint, conversationID: conversationID)
+    }
+
     var snapshot: SavedConversation {
         SavedConversation(
-            key: ConversationKey(machineFingerprint: machineFingerprint, conversationID: conversationID),
+            key: key,
             peerFingerprint: peerFingerprint,
             title: title,
             agentSyncID: agentSyncID,

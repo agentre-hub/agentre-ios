@@ -33,6 +33,11 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
     public var latestSeq: Int64
     /// 已读位：标记已读那一刻看到的最后活动时刻。nil = 从未读过。
     public var readMarker: Int64?
+    /// 此刻等你处理的那一件事（待批准的命令 / 待回答的问题），取自已落库的帧；
+    /// 不在等你处理时为 nil。
+    public var pending: PendingInput?
+    /// 转录里最近一句正文或用户消息；还没有时为空。
+    public var lastText: String
 
     public var id: ConversationKey { key }
 
@@ -48,7 +53,9 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         waitingForInput: Bool = false,
         lastMessageAt: Int64 = 0,
         latestSeq: Int64 = 0,
-        readMarker: Int64? = nil
+        readMarker: Int64? = nil,
+        pending: PendingInput? = nil,
+        lastText: String = ""
     ) {
         self.key = key
         self.peerFingerprint = peerFingerprint
@@ -62,6 +69,16 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         self.lastMessageAt = lastMessageAt
         self.latestSeq = latestSeq
         self.readMarker = readMarker
+        self.pending = pending
+        self.lastText = lastText
+    }
+
+    /// 会话生命周期的取值（与机器、服务端镜像同一套字符串）。
+    public enum Lifecycle {
+        public static let running = "running"
+        public static let idle = "idle"
+        public static let failed = "failed"
+        public static let interrupted = "interrupted"
     }
 
     /// 未读判据（规格决策 17）：最后活动时刻晚于已读位即为未读；从未读过的一律未读。
@@ -69,6 +86,34 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         guard let readMarker else { return true }
         return lastMessageAt > readMarker
     }
+
+    /// 这一行此刻的状态。等你处理压过运行中：对端停在你这儿，不是在输入。
+    public var activity: ConversationActivity {
+        if waitingForInput { return .waiting }
+        switch lifecycleState {
+        case Lifecycle.running: return .typing
+        case Lifecycle.failed: return .failed
+        default: return .idle
+        }
+    }
+}
+
+/// 一条会话此刻的状态，与即时通讯的同名状态是同一件事。
+public enum ConversationActivity: Sendable, Equatable {
+    /// 对面在等你回：待批准或待回答。
+    case waiting
+    /// 对端正在产生内容。
+    case typing
+    case failed
+    case idle
+}
+
+/// 等你处理的那一件事。
+public enum PendingInput: Sendable, Equatable {
+    /// 待批准的工具调用：工具名，与它要跑的命令或要动的文件（取不到时为 nil）。
+    case permission(tool: String, detail: String?)
+    /// 待回答的问题。
+    case question(String)
 }
 
 /// 转录里的一帧持久帧，按 `seq` 排序。

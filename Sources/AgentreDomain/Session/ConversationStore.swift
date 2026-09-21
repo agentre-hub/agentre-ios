@@ -19,4 +19,6 @@ public protocol ConversationStore: Sendable {
     func delete(_ key: ConversationKey) async throws
     /// 退出登录：清空整个库，连同已读位与游标。
     func removeAll() async throws
+    /// 库每变一次就吐一个信号（多次变动可能合并成一个）。每次调用给出一条独立的流。
+    func changes() async -> AsyncStream<Void>
 }
