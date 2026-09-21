@@ -1,0 +1,133 @@
+import AgentreDomain
+@testable import AgentreUI
+import Testing
+
+/// 作答经端口发出、送达后落定；没送达如实呈现。
+@MainActor
+@Suite("审批与提问的作答")
+struct ApprovalCardsModelTests {
+    let port = FakeAnswering()
+
+    var model: ApprovalCardsModel { ApprovalCardsModel(conversation: savedConversation, answering: port) }
+
+    @Test("三档处置依次映射到 allow / always_allow_session，请求带会话身份与发起端指纹", arguments: [
+        (PermissionDisposition.reject, false, false, ApprovalPermissionState.denied),
+        (.allowForSession, true, true, .allowedForSession),
+        (.allowOnce, true, false, .allowed),
+    ])
+    func dispositionsGoThroughThePort(disposition: PermissionDisposition, allow: Bool, always: Bool, settled: ApprovalPermissionState) async {
+        let cards = model
+        let request = permission()
+        await cards.submit(disposition, for: request)
+        let sent = await port.permissions
+        #expect(sent == [ToolPermissionReply(conversation: conversationKey, peerFingerprint: "peer-1", requestID: "p1", disposition: disposition)])
+        #expect(sent.first?.disposition.allow == allow)
+        #expect(sent.first?.disposition.alwaysAllowSession == always)
+        #expect(cards.state(of: request) == settled)
+    }
+
+    @Test("三档自左到右按承诺范围排列：拒绝、本会话始终允许、仅本次允许")
+    func dispositionOrder() {
+        #expect(PermissionDisposition.allCases == [.reject, .allowForSession, .allowOnce])
+    }
+
+    @Test("送达之前不落定、也不收第二次作答")
+    func settlesOnlyAfterDelivery() async throws {
+        let cards = model
+        let request = permission()
+        await port.hold()
+        let first = Task { await cards.submit(.allowOnce, for: request) }
+        try await eventually("作答发出") { await port.permissions.count == 1 }
+        #expect(cards.state(of: request) == .open(submitting: true, failed: false))
+        await cards.submit(.reject, for: request)
+        await port.release()
+        await first.value
+        #expect(await port.permissions.count == 1)
+        #expect(cards.state(of: request) == .allowed)
+    }
+
+    @Test("没送达：卡片回到待处置并标出提交失败，可以再点")
+    func failedSubmitIsShown() async {
+        let cards = model
+        let request = permission()
+        await port.setFailing(true)
+        await cards.submit(.allowOnce, for: request)
+        #expect(cards.state(of: request) == .open(submitting: false, failed: true))
+        await port.setFailing(false)
+        await cards.submit(.allowForSession, for: request)
+        #expect(cards.state(of: request) == .allowedForSession)
+        #expect(await port.permissions.count == 2)
+    }
+
+    @Test("转录里已落定的请求照转录呈现，不能再作答")
+    func resolvedInTranscript() async {
+        let cards = model
+        #expect(cards.state(of: permission(resolved: true, allowed: true)) == .allowed)
+        #expect(cards.state(of: permission(resolved: true, allowed: false)) == .denied)
+        await cards.submit(.allowOnce, for: permission(resolved: true, allowed: false))
+        #expect(await port.permissions.isEmpty)
+        // 本机点的是本会话始终允许，转录随后报已允许：落定为「已允许(本会话)」。
+        await cards.submit(.allowForSession, for: permission("p2"))
+        #expect(cards.state(of: permission("p2", resolved: true, allowed: true)) == .allowedForSession)
+    }
+
+    @Test("提问：每一问都填了才能提交；答案以自填标签发出，送达后为已回答")
+    func answerQuestion() async {
+        let cards = model
+        let request = question("q1", ["用哪个分支？", "要不要跑 e2e？"])
+        #expect(!cards.canSubmit(request))
+        cards.setAnswer("main", at: 0, of: request)
+        #expect(!cards.canSubmit(request))
+        cards.setAnswer("   ", at: 1, of: request)
+        #expect(!cards.canSubmit(request))
+        cards.setAnswer("要", at: 1, of: request)
+        #expect(cards.canSubmit(request))
+        #expect(cards.answer(0, of: request) == "main")
+        await cards.submitAnswers(for: request)
+        #expect(await port.answers == [QuestionReply(
+            conversation: conversationKey, peerFingerprint: "peer-1", requestID: "q1",
+            questions: ["用哪个分支？", "要不要跑 e2e？"],
+            answers: [
+                QuestionAnswer(questionIndex: 0, labels: [QuestionAnswer.otherLabel], otherText: "main"),
+                QuestionAnswer(questionIndex: 1, labels: [QuestionAnswer.otherLabel], otherText: "要"),
+            ],
+            skipped: false
+        )])
+        #expect(cards.state(of: request) == .answered)
+    }
+
+    @Test("提问：没填完不发；跳过发出空答案；转录报已回答即为已回答")
+    func skipAndIncomplete() async {
+        let cards = model
+        let request = question()
+        await cards.submitAnswers(for: request)
+        #expect(await port.answers.isEmpty)
+        await cards.skip(request)
+        #expect(await port.answers.map(\.skipped) == [true])
+        #expect(await port.answers.first?.answers == [])
+        #expect(cards.state(of: request) == .skipped)
+        #expect(cards.state(of: question("q9", answered: true)) == .answered)
+    }
+
+    @Test("提问：没送达即失效，不再作答")
+    func failedAnswerExpires() async {
+        let cards = model
+        let request = question()
+        cards.setAnswer("main", at: 0, of: request)
+        await port.setFailing(true)
+        await cards.submitAnswers(for: request)
+        #expect(cards.state(of: request) == .expired)
+        await cards.skip(request)
+        #expect(await port.answers.count == 1)
+    }
+
+    @Test("长输入默认收起，逐张展开、收起")
+    func expansion() {
+        let cards = model
+        #expect(!cards.isExpanded("p1"))
+        cards.toggleExpanded("p1")
+        #expect(cards.isExpanded("p1") && !cards.isExpanded("p2"))
+        cards.toggleExpanded("p1")
+        #expect(!cards.isExpanded("p1"))
+    }
+}
