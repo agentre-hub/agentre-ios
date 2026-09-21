@@ -130,7 +130,14 @@ final class SignedInServices {
         newConversation = NewConversationModel(workspace: workspace, store: store)
         let failures = SyncFailures()
         self.failures = failures
-        sync = ConversationSync(connection: connection, store: store) { key, fact in await failures.set(fact, for: key) }
+        let recovered = RecoveredFollows()
+        sync = ConversationSync(connection: connection, store: store) { key, fact in
+            await failures.set(fact, for: key)
+            if fact == nil { await recovered.notify(key) }
+        }
+        // 跟随重新接上了承载机：那条会话若正开着、实时流已收场，一并接上。回到前台时通道的关闭帧
+        // 可能晚于 resume 才读到，这一步兜住那个次序。
+        recovered.handler = { [weak self] key in self?.conversations[key]?.transcript.resume() }
     }
 
     func start() {
@@ -144,8 +151,10 @@ final class SignedInServices {
         Task { [weak self] in await self?.loadAgentNames() }
     }
 
-    /// 回到前台、或用户点了重试：补上没在跟随的会话（连接自己会重拨）。
+    /// 回到前台、网络恢复、或用户点了重试：补上没在跟随的会话（连接自己会重拨），
+    /// 并让开着的对话屏里已收场的实时流从转录自己的最新帧号重新接上。
     func resume() async {
+        for screen in conversations.values { screen.transcript.resume() }
         await sync.resync()
     }
 
@@ -240,6 +249,16 @@ final class SyncFailures {
 
     func set(_ fact: FailureFact?, for key: ConversationKey) {
         facts[key] = fact
+    }
+}
+
+/// 跟随接上的通知：跟随在建好对话屏的那一套之前就要构造，处理方随后再挂上。
+@MainActor
+private final class RecoveredFollows: Sendable {
+    var handler: ((ConversationKey) -> Void)?
+
+    func notify(_ key: ConversationKey) {
+        handler?(key)
     }
 }
 

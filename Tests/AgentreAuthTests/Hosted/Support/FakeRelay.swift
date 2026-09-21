@@ -30,6 +30,15 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
         for socket in open { socket.close() }
     }
 
+    /// 连接断了（应用在后台被挂起、换了网）：已有的连接断开，网络仍在，重拨照常拨得通。
+    func dropConnections() {
+        let open = lock.withLock {
+            defer { sockets = [] }
+            return sockets
+        }
+        for socket in open { socket.close() }
+    }
+
     var calls: [Call] { lock.withLock { recorded } }
 
     func calls(_ method: UInt32) -> [Call] { calls.filter { $0.method == method } }
@@ -183,6 +192,18 @@ final class FakeMachine: @unchecked Sendable {
         lock.withLock {
             sessions.append(session)
             self.frames[session.conversationID] = frames.enumerated().map { (Int64($0.offset + 1), $0.element) }
+        }
+    }
+
+    /// 机器上这条会话又多了几帧（按到达次序接着编号）；交回新帧的号。
+    @discardableResult
+    func append(_ conversationID: String, _ more: [Proto]) -> [Int64] {
+        lock.withLock {
+            var existing = frames[conversationID] ?? []
+            let seqs = more.indices.map { Int64(existing.count + $0 + 1) }
+            existing += zip(seqs, more).map { ($0, $1) }
+            frames[conversationID] = existing
+            return seqs
         }
     }
 

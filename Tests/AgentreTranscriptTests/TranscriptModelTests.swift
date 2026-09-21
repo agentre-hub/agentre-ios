@@ -131,6 +131,50 @@ struct TranscriptModelTests {
         await second.value
     }
 
+    @Test("屏还开着、实时流断了（通道被关）：回到前台 resume 即重新接上，从转录自己的最新帧号补，刚发的那句仍在、不重不漏")
+    func resumeReattachesAnOpenScreen() async throws {
+        let (model, _, relay) = model(local: frames(1...3), machine: frames(1...3))
+        let open = Task { await model.start() }
+        try await eventually("attached") { await relay.attaches.count == 1 }
+        await relay.push(liveFrame(decoder, 4, .userMessage("m4")))
+        try await eventually("sent message on screen") { userTexts(model).last == "m4" }
+
+        await relay.finish()
+        await relay.append([frames(4...4)[0], stored(decoder, 5, .userMessage("m5"))])
+        // 流收场之后、回到前台之前：不自己重连（通道被关可能是机器下线，没人叫就不重拨）。
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await relay.attaches.count == 1)
+
+        model.resume()
+        try await eventually("caught up after resume") { userTexts(model).last == "m5" }
+        #expect(userTexts(model) == (1...5).map { "m\($0)" })
+        #expect(await relay.attaches.map(\.after) == [3, 4])
+        #expect(!open.isCancelled)
+
+        // 还接着的时候再回前台一次（连接自己会重拨补齐）：不再叠一条 attach。
+        model.resume()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await relay.attaches.count == 2)
+
+        open.cancel()
+        await open.value
+    }
+
+    @Test("屏已关掉（跟随的任务被取消）：流断在等 resume 时也立即收场；之后的 resume 不再接")
+    func dismissedScreenDoesNotReattach() async throws {
+        let (model, _, relay) = model(local: frames(1...3), machine: frames(1...3))
+        let open = Task { await model.start() }
+        try await eventually("attached") { await relay.attaches.count == 1 }
+        await relay.finish()
+        try await Task.sleep(for: .milliseconds(50))
+
+        open.cancel()
+        await open.value
+        model.resume()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(await relay.attaches.count == 1)
+    }
+
     @Test("本地为空、历史已整段补拉回来：接上实时帧时从补拉到的最新帧号接着补，不再从头下载一遍")
     func attachAfterBackfillDoesNotRedownload() async throws {
         let (model, _, relay) = model(local: [], machine: frames(1...7), pageSize: 3)

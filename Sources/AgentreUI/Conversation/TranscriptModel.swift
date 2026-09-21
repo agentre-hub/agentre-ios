@@ -28,6 +28,8 @@ public final class TranscriptModel {
     @ObservationIgnored private var loaded = false
     @ObservationIgnored private var attached = false
     @ObservationIgnored private var pulling = false
+    /// 实时流已收场、正等着 `resume()` 的各处跟随（同一条会话可以同时开在两个标签里）。
+    @ObservationIgnored private var waiting: [UUID: AsyncStream<Void>.Continuation] = [:]
 
     /// - Parameters:
     ///   - conversation: 本地库里的会话；它的键给出承载机器，`peerFingerprint` 原样带给 pull / attach。
@@ -46,10 +48,19 @@ public final class TranscriptModel {
         self.pageSize = max(1, pageSize)
     }
 
-    /// 读历史并接上实时帧（视图出现时调用，重复调用无副作用）。
+    /// 读历史并跟随实时帧，直到所在任务被取消（视图出现时调用，随视图消失而取消）。
+    /// 实时流收场（服务端关了通道、机器下线）后不自己重拨，等 `resume()` 再从转录的最新帧号接上。
     public func start() async {
         await load()
-        await attach()
+        while !Task.isCancelled {
+            await attach()
+            await waitForResume()
+        }
+    }
+
+    /// 回到前台、网络恢复：屏还开着而实时流已收场时重新接上；流还接着、或屏已关掉时什么也不做。
+    public func resume() {
+        for signal in waiting.values { signal.yield() }
     }
 
     /// 读本地库；不足一页时向机器补一页。只读一次。
@@ -111,6 +122,17 @@ public final class TranscriptModel {
     public func jumpToLatest() { follow.jumpToLatest() }
 
     // MARK: 内部
+
+    /// 等下一次 `resume()`；所在任务被取消即返回。
+    private func waitForResume() async {
+        guard !Task.isCancelled else { return }
+        let (signals, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let token = UUID()
+        waiting[token] = continuation
+        for await _ in signals { break }
+        continuation.finish()
+        waiting[token] = nil
+    }
 
     /// 从本地已有的最早帧往前补：游标取「最早帧之前一页」，但不早于机器报的最早帧；
     /// 按 has_more 续拉，只收比本地最早帧更早的。本地为空时从头拉到机器说没有更多为止。
