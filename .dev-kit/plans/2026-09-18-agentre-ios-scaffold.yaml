@@ -106,9 +106,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Approval/, agentre-ios/Sources/AgentreUI/Conversation/Cards/, agentre-ios/Tests/AgentreApprovalTests/]
     model: mid
     interfaces: "任务 6 的 TranscriptStore 与卡片插入点；任务 3 的 RelayClient.call"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 288a819
+    note: "留给任务 12：每条会话一个 ApprovalCardsModel(conversation:answering:)，以 { ApprovalCard($0, model: cards) } 作转录的 card 参数；ApprovalAnswering 的中继适配器。提问卡缺选项一事转任务 13。"
   - id: 8
     goal: "输入区下方常驻一行（面板入口、权限模式/模型/思考档位三枚图标、右端上下文环），面板逐行标注各项当前取值并提供会话信息、上下文、删除会话；一轮运行中发送进入队列而非禁用输入框，界面如实说明它们何时发出；斜杠命令与提及由键入就地触发，斜杠候选按会话工作目录作用域解析。"
     deps: [6]
@@ -139,13 +139,23 @@ tasks:
 
   - id: 12
     goal: "装配：实现任务 5–10 在领域层声明的全部中继端口适配器（均按 machine: 寻址）；应用入口组装全部具体实现——中继帧经那一行转换接进本地库，任务 4–10 的各屏接进三标签骨架与导航，一切会话通道按 machine: 寻址；机器侧最高 seq 低于本机游标时游标回退（对照服务端 dropCursorAboveHighWater）；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
-    deps: [5, 6, 7, 8, 9, 10]
+    deps: [5, 6, 7, 8, 9, 10, 13]
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
     interfaces: "任务 4–10 各屏的公开视图与其构造参数；任务 3 的 RelayConnection/RelayChannel；任务 11 的 SessionStore 与 IncomingFrame"
     status: todo
     commit: null
     note: "2026-09-21 用户批准新增。任务 11 返回揭出：AgentreApp 在任务 2 之后无人拥有，中继 → 本地库的转换只存在于测试里；不设此任务则测试全绿而 App 里只有登录与三个空标签。"
+
+  - id: 13
+    goal: "收尾缺口四处：(1) 提问卡给出宿主的选项——转录领域模型的提问携带选项（含多选与自定义答案），卡片按宿主规则作答（未选即提交给出宿主那句报错），经作答端口发出选中的 label；(2) 退出登录或刷新被拒时，即使本地库清空失败，上一个账号的任何会话行也不得再可读，清空失败这条路径有测试；(3) README 的全量测试命令使用全新的构建目录；(4) 登录屏的服务器地址完整可读，不被中间截断。"
+    deps: [7, 10]
+    files: [agentre-ios/Sources/AgentreDomain/Transcript/, agentre-ios/Sources/AgentreUI/Conversation/Cards/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreUI/Login/, agentre-ios/README.md, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreApprovalTests/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreAuthTests/]
+    model: mid
+    interfaces: "任务 6 的 QuestionRequest 与转录归约；任务 7 的 ApprovalCard / ApprovalCardsModel / ApprovalAnswering；任务 11 的 LocalConversationStore.removeAll；任务 10 的 SignOut"
+    status: doing
+    commit: null
+    note: "2026-09-21 用户批准新增。四处分别由任务 7、10、2、2 的返回揭出，均落在已冻结任务的目录里，任务 12 的写入集碰不到。"
 
 review:
   status: pending
