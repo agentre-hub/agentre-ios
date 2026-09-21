@@ -106,6 +106,29 @@ struct ComposerScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
+    @Test("上一轮的未发送还没处置、这一轮又排着几条：两段都在，排着的照样看得见、撤得掉")
+    func droppedAndQueued() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await model.turnEnded(normally: false)
+        model.turnStarted()
+        model.text = "b"
+        await model.send()
+        let view = ComposerView(model: model, contextUsage: usage, onDeleted: {})
+        let labels = await HostedScreen(view).labels()
+        #expect(labels.contains(text("composer.dropped %lld", 1)), "\(labels)")
+        #expect(labels.contains(text("composer.queued %lld", 1)), "\(labels)")
+        #expect(labels.contains("b"))
+        #expect(labels.contains(text("composer.cancelQueued")))
+        let report = await hitTargetReport(of: view)
+        // 常驻 7 块 + 停止本轮 + 恢复 + 丢弃 + 那一条的撤回。
+        #expect(report.targets.count == 11, "\(report.targets)")
+        #expect(report.violations.isEmpty, "\(report.violations)")
+    }
+
     @Test("斜杠候选就地出现在输入框上方，每条一块命中区")
     func slashCandidates() async throws {
         let relay = FakeComposerRelay()

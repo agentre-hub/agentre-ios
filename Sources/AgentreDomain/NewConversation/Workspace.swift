@@ -167,7 +167,3 @@ public protocol WorkspaceService: Sendable {
     func projects() async throws -> [WorkspaceProject]
     func dispatchPlan(_ query: DispatchPlanQuery) async throws -> DispatchPlan
 }
-
-public enum WorkspaceError: Error, Equatable {
-    case unexpectedResponse(status: Int)
-}

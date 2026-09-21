@@ -51,6 +51,17 @@ struct TimelineTests {
         timeline.insert(seq: 2, event: .textDelta("Hello"))
         #expect(texts(timeline) == ["a", "ΔHello"])
     }
+
+    @Test("向前补进来的更早帧不取代预览尾巴：翻到顶时回复还在流，已流出的字不被抹掉")
+    func backfillKeepsPreviews() {
+        var timeline = TranscriptTimeline()
+        timeline.insert(seq: 10, event: .userMessage("j"))
+        timeline.insert(seq: nil, event: .textDelta("Hel"), preview: true)
+        timeline.insert(seq: 9, event: .userMessage("i"))
+        #expect(texts(timeline) == ["i", "j", "ΔHel"])
+        timeline.insert(seq: 11, event: .textDelta("Hello"))
+        #expect(texts(timeline) == ["i", "j", "ΔHello"])
+    }
 }
 
 /// 自动跟随：上滚即停，回到最新时给出其间新增了多少。

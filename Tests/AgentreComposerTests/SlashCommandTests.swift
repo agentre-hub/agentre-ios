@@ -49,9 +49,12 @@ struct SlashCommandTests {
         #expect(names(SlashCommands.filter(commands, query: "go", trigger: "/")) == ["/goal"])
     }
 
-    @Test("只有 claudecode 的 CLI 自己认 /compact")
-    func nativeCompact() {
-        #expect(SlashCommands.isNativeCompact(backendType: "claudecode"))
-        #expect(!SlashCommands.isNativeCompact(backendType: "codex"))
+    @Test("/compact 只在摆得出它、而 CLI 自己不认的后端（codex、Pi）上转成压缩调用")
+    func hostCompact() {
+        #expect(SlashCommands.isHostCompact(backendType: "codex"))
+        #expect(SlashCommands.isHostCompact(backendType: "piagent"))
+        #expect(!SlashCommands.isHostCompact(backendType: "claudecode"))
+        #expect(!SlashCommands.isHostCompact(backendType: "hermes"))
+        #expect(!SlashCommands.isHostCompact(backendType: ""))
     }
 }

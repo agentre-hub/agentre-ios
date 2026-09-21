@@ -3,7 +3,7 @@ import AgentreWire
 import Foundation
 
 /// 审批与提问的作答：经承载机的 `machine:` 通道发宿主既有的两个 RPC，以 conversation_id 指明对话。
-/// 对端答「已经处理过了」（别的端先答了）也算送达：那一问确实不再等人。
+/// 对端答「已经处理过了」（别的端先答了）也算送达：那一问确实不再等人；但如实报出来，结局不是本机这一答。
 public struct RelayApprovalAnswering: ApprovalAnswering {
     private let connection: RelayConnection
     private let carrier: RelayCarrier
@@ -13,19 +13,22 @@ public struct RelayApprovalAnswering: ApprovalAnswering {
         self.carrier = carrier
     }
 
-    public func submitToolPermission(_ reply: ToolPermissionReply) async throws {
+    @discardableResult
+    public func submitToolPermission(_ reply: ToolPermissionReply) async throws -> ApprovalDelivery {
         var request = Agentre_Wire_RuntimeSubmitToolPermissionRequest()
         request.conversationID = reply.conversation.conversationID
         request.peerFingerprint = reply.peerFingerprint
         request.requestID = reply.requestID
         request.allow = reply.disposition.allow
         request.alwaysAllowSession = reply.disposition.alwaysAllowSession
-        let _: Agentre_Wire_PeerSessionControlResponse = try await connection.call(
+        let response: Agentre_Wire_PeerSessionControlResponse = try await connection.call(
             machine: await carrier(reply.conversation), .runtimeSubmitToolPermission, request
         )
+        return response.alreadyHandled ? .alreadyHandled : .accepted
     }
 
-    public func submitAnswer(_ reply: QuestionReply) async throws {
+    @discardableResult
+    public func submitAnswer(_ reply: QuestionReply) async throws -> ApprovalDelivery {
         var request = Agentre_Wire_RuntimeSubmitAnswerRequest()
         request.conversationID = reply.conversation.conversationID
         request.peerFingerprint = reply.peerFingerprint
@@ -43,8 +46,9 @@ public struct RelayApprovalAnswering: ApprovalAnswering {
             return wire
         }
         request.skipped = reply.skipped
-        let _: Agentre_Wire_PeerSessionControlResponse = try await connection.call(
+        let response: Agentre_Wire_PeerSessionControlResponse = try await connection.call(
             machine: await carrier(reply.conversation), .runtimeSubmitAnswer, request
         )
+        return response.alreadyHandled ? .alreadyHandled : .accepted
     }
 }

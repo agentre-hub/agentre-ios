@@ -18,13 +18,28 @@ struct SaveToPhoneTests {
         let detail = MachineDetailModel(machine: onlineMachine(), sessions: source, store: store, transfer: transfer)
         await detail.load()
         #expect(detail.rows.map(\.isSaved) == [false, false])
-        await detail.save("a")
+        await detail.save(key("a"))
         #expect(await transfer.attaches == ["a"])
         #expect(await transfer.pulls == [0, 2, 4])
         #expect(await store.transcript(key("a")).map(\.seq) == [1, 2, 3, 4, 5])
         #expect(await store.conversation(key("a"))?.title == "Fix build")
         #expect(detail.rows.map(\.isSaved) == [true, false])
         #expect(!detail.rows[0].isSaving)
+    }
+
+    @Test("一台机器上两条同号会话（它自己的与它代转的他端的）：两行都列出，各按自己的会话键判已保存")
+    func sameIDConversationsAreDistinctRows() async throws {
+        let source = FakeSessionSource([session("sess-1", title: "Own"), session("sess-1", title: "Relayed", peer: "origin")])
+        let store = FakeSavingStore()
+        let detail = MachineDetailModel(machine: onlineMachine(), sessions: source, store: store, transfer: FakeTransfer())
+        await detail.load()
+        #expect(detail.rows.map(\.session.title) == ["Own", "Relayed"])
+        #expect(Set(detail.rows.map(\.id)).count == 2)
+
+        await detail.save(key("sess-1", machine: "origin"))
+        #expect(await store.conversation(key("sess-1", machine: "origin"))?.title == "Relayed")
+        #expect(await store.conversation(key("sess-1")) == nil)
+        #expect(detail.rows.map(\.isSaved) == [false, true])
     }
 
     @Test("补齐从本机已有的最大帧号起，不从头重放")
@@ -45,13 +60,13 @@ struct SaveToPhoneTests {
         await transfer.configure(failPullAfterFirstBatch: true)
         let detail = MachineDetailModel(machine: onlineMachine(), sessions: source, store: store, transfer: transfer)
         await detail.load()
-        await detail.save("a")
+        await detail.save(key("a"))
         #expect(await store.conversation(key("a")) == nil)
         #expect(await store.transcript(key("a")).isEmpty)
         #expect(detail.rows[0].isSaved == false)
         #expect(detail.rows[0].saveFailed)
         await transfer.configure()
-        await detail.save("a")
+        await detail.save(key("a"))
         #expect(detail.rows[0].isSaved)
         #expect(!detail.rows[0].saveFailed)
         #expect(await store.transcript(key("a")).count == 5)
@@ -84,7 +99,7 @@ struct SaveToPhoneTests {
     @Test("机器说还有、游标却不前进：判失败而不是死循环")
     func stalledPullFails() async throws {
         struct Stalled: MachineSessionTransfer {
-            func attach(conversationID: String, peerFingerprint: String, on machine: String) async throws -> Int64 { 9 }
+            func attach(conversationID: String, peerFingerprint: String, on machine: String) async throws -> Int64? { 9 }
             func pull(conversationID: String, peerFingerprint: String, after cursor: Int64, on machine: String) async throws -> PulledFrames {
                 PulledFrames(frames: [], cursor: cursor, hasMore: true)
             }
@@ -123,7 +138,7 @@ struct SaveToPhoneTests {
         let transfer = FakeTransfer(["conv-1": payloads], batch: 2)
         let detail = MachineDetailModel(machine: onlineMachine(), sessions: source, store: store, transfer: transfer)
         await detail.load()
-        await detail.save("conv-1")
+        await detail.save(key("conv-1"))
         #expect(detail.rows.map(\.isSaved) == [true, false])
 
         let messages = MessagesModel(store: local)

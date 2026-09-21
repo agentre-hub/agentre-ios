@@ -83,11 +83,26 @@ struct WorkspaceClientTests {
         #expect(plan.tiers == [DispatchTier(rank: 1, availability: .unpaired)])
     }
 
+    @Test("失败与其它 REST 端点落到同一组事实：5xx 服务器出错、401 登录失效、认不出的正文")
+    func failuresAreFacts() async throws {
+        func fact(_ response: HTTPResponse) async -> FailureFact? {
+            do {
+                _ = try await WorkspaceClient(transport: FakeHTTPTransport { _ in response }, server: server).agents()
+                return nil
+            } catch {
+                return FailureFact(presenting: error)
+            }
+        }
+        #expect(await fact(HTTPResponse(status: 502)) == .serverUnavailable)
+        #expect(await fact(HTTPResponse(status: 401)) == .signedOut)
+        #expect(await fact(HTTPResponse(status: 200, body: Data("<html>".utf8))) == .unrecognisedResponse)
+    }
+
     @Test("非 2xx 与认不出的正文都如实报错")
     func failures() async throws {
         let failing = WorkspaceClient(transport: FakeHTTPTransport { _ in HTTPResponse(status: 502) }, server: server)
-        await #expect(throws: WorkspaceError.unexpectedResponse(status: 502)) { try await failing.agents() }
+        await #expect(throws: AuthError.unexpectedResponse(status: 502)) { try await failing.agents() }
         let garbled = WorkspaceClient(transport: FakeHTTPTransport { _ in HTTPResponse(status: 200, body: Data("<html>".utf8)) }, server: server)
-        await #expect(throws: WorkspaceError.unexpectedResponse(status: 200)) { try await garbled.projects() }
+        await #expect(throws: AuthError.unexpectedResponse(status: 200)) { try await garbled.projects() }
     }
 }

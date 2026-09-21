@@ -48,6 +48,16 @@ struct ReducerTests {
         #expect(doc.messages.single?.blocks == [.permission(permission), .question(question)])
     }
 
+    @Test("权限决议带着「本会话始终允许」回填原卡")
+    func permissionResolutionCarriesAlwaysAllow() {
+        let doc = TranscriptReducer.reduce(entries([
+            .permissionRequest(PermissionRequest(requestID: "r1", toolCallID: "t1", toolName: "Bash")),
+            .permissionResolved(requestID: "r1", allowed: true, alwaysAllow: true),
+        ]))
+        guard case .permission(let request) = doc.messages.single?.blocks.first else { Issue.record("no card"); return }
+        #expect(request.resolved && request.allowed && request.alwaysAllow)
+    }
+
     @Test("提问带着选项、单选 / 多选与标题原样进卡片，决议只改作答位")
     func questionOptionsSurvive() {
         let asked = QuestionRequest(requestID: "q1", toolCallID: "t1", questions: [
@@ -75,7 +85,37 @@ struct ReducerTests {
         #expect(tool.subagent?.durationMs == 4200)
     }
 
-    @Test("用量：助手消息记下总输入，流式用量另记；错误落到这一轮")
+    @Test("一轮收尾时还挂在运行中的前台 Subagent 翻成已取消，不会永远转下去")
+    func turnEndCancelsForegroundSubagents() {
+        let spawn = use("sp", "Task", input: ["prompt": "go"], canonical: Canonical(kind: "agent.spawn"))
+        let doc = TranscriptReducer.reduce(entries([
+            .toolCall(spawn),
+            .subagent(SubagentUpdate(toolCallID: "sp", phase: .started, info: SubagentState(taskID: "task-1", status: "running"))),
+            .turnDone(TurnDone(stopError: "interrupted")),
+        ]))
+        guard case .toolUse(let tool) = doc.messages.single?.blocks.first else { Issue.record("no tool"); return }
+        #expect(tool.subagent?.status == "canceled")
+    }
+
+    @Test("后台任务可以活过发起它的那一轮：默认后台的 Agent 与 run_in_background 的 Bash 收尾时不翻；显式前台的 Agent 照翻", arguments: [
+        ("local_agent", nil, "running"),
+        ("local_agent", false, "canceled"),
+        ("local_bash", true, "running"),
+        ("local_bash", nil, "canceled"),
+    ] as [(String, Bool?, String)])
+    func backgroundSubagentsOutliveTheTurn(kind: String, background: Bool?, settled: String) {
+        var input: [String: JSONValue] = ["prompt": "go"]
+        if let background { input["run_in_background"] = .bool(background) }
+        let doc = TranscriptReducer.reduce(entries([
+            .toolCall(use("sp", "Task", input: input)),
+            .subagent(SubagentUpdate(toolCallID: "sp", phase: .started, info: SubagentState(taskID: "task-1", status: "running", kind: kind))),
+            .turnDone(TurnDone()),
+        ]))
+        guard case .toolUse(let tool) = doc.messages.single?.blocks.first else { Issue.record("no tool"); return }
+        #expect(tool.subagent?.status == settled)
+    }
+
+    @Test("用量：助手消息记下总输入、窗口记到转录上，二者得出上下文用量；错误落到这一轮")
     func usageAndErrors() {
         let doc = TranscriptReducer.reduce(entries([
             .userMessage("a"), .textDelta("x"), .usage(totalInputTokens: 1200, contextWindow: 10_000), .error("boom"),

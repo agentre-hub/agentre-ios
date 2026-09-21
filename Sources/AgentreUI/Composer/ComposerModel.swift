@@ -127,7 +127,7 @@ public final class ComposerModel {
             isStartingTurn = true
             defer { isStartingTurn = false }
             // 不认 /compact 的 CLI 上把这一句转成压缩调用，否则模型会一本正经地回答「/compact」。
-            let compact = trimmed == "/compact" && !SlashCommands.isNativeCompact(backendType: conversation.backendType)
+            let compact = trimmed == "/compact" && SlashCommands.isHostCompact(backendType: conversation.backendType)
             do {
                 try await relay.run(key, peerFingerprint: peer, text: body, compact: compact)
             } catch {
@@ -158,6 +158,9 @@ public final class ComposerModel {
             queue.endTurn()
             return
         }
+        // 问信箱与接续那一轮在路上时，这就是一次开新一轮的调用：此时点发送不能再另开一轮。
+        isStartingTurn = true
+        defer { isStartingTurn = false }
         let drained: [ComposerConsumedSteer]?
         do {
             drained = try await relay.drainPending(key, peerFingerprint: peer)

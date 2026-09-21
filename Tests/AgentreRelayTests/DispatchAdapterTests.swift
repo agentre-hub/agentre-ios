@@ -105,6 +105,21 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         await #expect(throws: DispatchFailure.rejected) { try await task.value }
     }
 
+    @Test("Pi 派发中途被取消（离开了新建对话屏）：照样撤掉这条会话，不留一个注册了一半的 generation")
+    func cancelledPiDispatchStillAborts() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayDispatcher(connection: harness.connection, source: phone)
+        let task = Task { try await adapter.dispatch(request(kind: "agentred", backendType: "piagent")) }
+        let (socket, id) = try await harness.machineChannel("fp-9")
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .runtimeRun), with: ack("0190-conv"))
+        _ = try await socket.nextRequest(on: id, method: .runtimeRun)
+        task.cancel()
+        let abort = try await socket.nextRequest(on: id, method: .runtimeAbort)
+        #expect(try abort.body(Agentre_Wire_RuntimeAbortRequest.self).conversationID == "0190-conv")
+        socket.respond(id, to: abort, with: Agentre_Wire_RuntimeAbortResponse())
+        _ = await task.result
+    }
+
     @Test("对端确认的是另一条会话：判为没开起来")
     func mismatchedAckIsRejected() async throws {
         let harness = await Harness.started()

@@ -9,7 +9,8 @@ public struct MachineSessionRow: Sendable, Equatable, Identifiable {
     public var isSaving = false
     public var saveFailed = false
 
-    public var id: String { session.conversationID }
+    /// 会话号只在发起端内唯一：一台机器上它自己的与它代转的他端的会话可以同号。
+    public var id: ConversationKey { key }
 }
 
 /// 机器详情：现问那台机器要它的会话与计数，并在这里把一条保存到手机。
@@ -82,8 +83,8 @@ public final class MachineDetailModel {
     }
 
     /// 保存到手机：收进本地库并把转录拉全。成功后这一行读作已保存；失败则仍是未保存并带失败标记。
-    public func save(_ conversationID: String) async {
-        guard let index = rows.firstIndex(where: { $0.id == conversationID }), !rows[index].isSaved, !rows[index].isSaving else { return }
+    public func save(_ key: ConversationKey) async {
+        guard let index = rows.firstIndex(where: { $0.id == key }), !rows[index].isSaved, !rows[index].isSaving else { return }
         rows[index].isSaving = true
         rows[index].saveFailed = false
         let session = rows[index].session
@@ -95,7 +96,7 @@ public final class MachineDetailModel {
             failed = true
         }
         await refreshSaved()
-        if let index = rows.firstIndex(where: { $0.id == conversationID }) {
+        if let index = rows.firstIndex(where: { $0.id == key }) {
             rows[index].isSaving = false
             rows[index].saveFailed = failed
         }
@@ -131,10 +132,10 @@ public final class MachineDetailModel {
     private func append(_ page: MachineSessionPage) {
         // 两页之间机器上新到的会话会把清单往后挤：已列过的不再列第二次。
         let listed = Set(rows.map(\.id))
-        rows += page.sessions.filter { !listed.contains($0.conversationID) }.map { session in
+        rows += page.sessions.map { session in
             let key = machine.key(of: session)
             return MachineSessionRow(session: session, key: key, isSaved: savedKeys.contains(key))
-        }
+        }.filter { !listed.contains($0.id) }
         cursor = page.cursor
         hasMore = page.hasMore && !page.cursor.isEmpty
     }

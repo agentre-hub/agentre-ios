@@ -63,8 +63,13 @@ public struct RelayDispatcher: NewConversationDispatching {
         } catch {
             var abort = Agentre_Wire_RuntimeAbortRequest()
             abort.conversationID = run.conversationID
-            // 清理失败不能盖掉原来那个失败。
-            let _: Agentre_Wire_RuntimeAbortResponse? = try? await connection.call(machine: machine, .runtimeAbort, abort)
+            // 清理失败不能盖掉原来那个失败。派发被取消（离开了新建对话屏）时照样要撤：清理放在
+            // 不随调用方取消的任务里。
+            let connection = connection
+            let request = abort
+            await Task {
+                let _: Agentre_Wire_RuntimeAbortResponse? = try? await connection.call(machine: machine, .runtimeAbort, request)
+            }.value
             throw error
         }
     }

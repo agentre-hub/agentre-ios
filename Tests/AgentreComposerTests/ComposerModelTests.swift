@@ -197,6 +197,38 @@ struct ComposerModelTests {
         #expect(await native.calls == [.run("/compact", compact: false)])
     }
 
+    @Test("不摆 /compact 的后端（hermes、未知）上照原文发出，不发一次对端不认的压缩调用", arguments: ["hermes", "openclaw", ""])
+    func compactOnlyWhereOffered(_ backend: String) async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(backend: backend, relay: relay)
+        model.text = "/compact"
+        await model.send()
+        #expect(await relay.calls == [.run("/compact", compact: false)])
+    }
+
+    @Test("轮末接续还在路上：此时点发送不另开一轮，接续那一轮开起来之前发送不可用")
+    func sendDuringContinuation() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-local-1", text: "a")])
+        await relay.holdNextDrain()
+        let ending = Task { await model.turnEnded(normally: true) }
+        await relay.waitForHeldDrain()
+
+        model.text = "b"
+        #expect(!model.canSend)
+        await model.send()
+        await relay.releaseDrain()
+        await ending.value
+
+        #expect(await relay.calls.filter { if case .run = $0 { true } else { false } } == [.run("a", compact: false)])
+        #expect(model.text == "b")
+        #expect(model.canSend)
+    }
+
     // MARK: 斜杠命令
 
     @Test("键入 / 就地给出候选；Skill 目录按这条会话要（承载机由适配器解析），按会话工作目录解析")

@@ -121,6 +121,22 @@ struct DeviceAuthClientTests {
         }
     }
 
+    @Test("刷新：没带 invalid_grant 的 401 / 403 也是拒绝", arguments: [401, 403])
+    func refreshRejectedWithoutOAuthError(status: Int) async {
+        let transport = FakeHTTPTransport { _ in HTTPResponse(status: status) }
+        await #expect(throws: AuthError.refreshRejected) {
+            try await client(transport).refresh(refreshToken: "rt1", server: server)
+        }
+    }
+
+    @Test("刷新：限流、超时与不带 invalid_grant 的其它 4xx 不是拒绝，不登出", arguments: [400, 404, 408, 429])
+    func refreshTransientIsNotRejection(status: Int) async {
+        let transport = FakeHTTPTransport { _ in HTTPResponse(status: status) }
+        await #expect(throws: AuthError.unexpectedResponse(status: status)) {
+            try await client(transport).refresh(refreshToken: "rt1", server: server)
+        }
+    }
+
     @Test("刷新：5xx 抛认不出的应答而不是 refreshRejected")
     func refreshServerError() async {
         let transport = FakeHTTPTransport { _ in HTTPResponse(status: 503) }

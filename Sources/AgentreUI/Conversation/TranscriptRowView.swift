@@ -36,7 +36,13 @@ struct TranscriptRowView<Card: View>: View {
         case .card(let value):
             card(value)
         case .error(let text):
-            Text(verbatim: text)
+            Group {
+                if text.isEmpty {
+                    Text("transcript.error.unknown", tableName: "Conversation", bundle: .module)
+                } else {
+                    Text(verbatim: text)
+                }
+            }
                 .font(.footnote)
                 .foregroundStyle(.token(.failure))
                 .frame(maxWidth: .infinity, alignment: .leading)

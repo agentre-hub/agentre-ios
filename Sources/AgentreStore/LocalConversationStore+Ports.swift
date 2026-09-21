@@ -33,7 +33,7 @@ extension LocalConversationStore: ConversationSaving {
                 payload: try Agentre_Wire_RpcNotification(serializedBytes: frame.payload)
             )
         }
-        try record(incoming, via: machineFingerprint)
+        try record(incoming, into: key)
     }
 }
 
@@ -48,6 +48,10 @@ extension LocalConversationStore: StartedConversationRecording {
         summary.cwd = conversation.cwd
         summary.backendType = conversation.backendType
         summary.lifecycleState = SavedConversation.Lifecycle.running
-        return try save(summary, via: conversation.machineFingerprint)
+        // 话是本机此刻说的：最后活动就是此刻（排在列表最前），也已读过。
+        summary.lastMessageAt = now()
+        let key = try save(summary, via: conversation.machineFingerprint)
+        try markRead(key)
+        return key
     }
 }

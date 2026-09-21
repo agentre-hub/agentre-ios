@@ -135,10 +135,12 @@ struct TranscriptScreenTests {
         #expect(labels.contains(200_000.formatted()))
     }
 
-    @Test("三档变色：正常取 accent、告警取 waiting、危急取 failure")
-    func ringTokens() {
-        #expect(ContextRingView.token(for: .ok) == .accent)
-        #expect(ContextRingView.token(for: .warn) == .waiting)
-        #expect(ContextRingView.token(for: .danger) == .failure)
+    @Test("出错的一轮没带原话：给出通用的一句，而不是一行空白")
+    func emptyErrorReadsAsFailure() async throws {
+        let frames = [stored(decoder, 1, .userMessage("修一下构建")), stored(decoder, 2, .turnStarted), stored(decoder, 3, .error(""))]
+        let model = TranscriptModel(conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"), store: FakeStore(frames), relay: FakeRelay(), decoder: decoder)
+        await model.load()
+        let labels = await HostedScreen(TranscriptView(model: model, agentName: "Codex")).labels()
+        #expect(labels.contains(Self.format("transcript.error.unknown")), "\(labels)")
     }
 }

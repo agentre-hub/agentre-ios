@@ -7,10 +7,14 @@ import Testing
 let conversationKey = ConversationKey(machineFingerprint: "machine-1", conversationID: "conv-1")
 let savedConversation = SavedConversation(key: conversationKey, peerFingerprint: "peer-1", cwd: "/Users/dev/agentre", lifecycleState: "running")
 
-func permission(_ id: String = "p1", tool: String = "Bash", input: [String: JSONValue]? = ["command": "pnpm test"], resolved: Bool = false, allowed: Bool = false) -> PermissionRequest {
+func permission(
+    _ id: String = "p1", tool: String = "Bash", input: [String: JSONValue]? = ["command": "pnpm test"],
+    resolved: Bool = false, allowed: Bool = false, alwaysAllow: Bool = false
+) -> PermissionRequest {
     var request = PermissionRequest(requestID: id, toolCallID: "t-\(id)", toolName: tool, input: input)
     request.resolved = resolved
     request.allowed = allowed
+    request.alwaysAllow = alwaysAllow
     return request
 }
 
@@ -42,10 +46,13 @@ actor FakeAnswering: ApprovalAnswering {
     private(set) var permissions: [ToolPermissionReply] = []
     private(set) var answers: [QuestionReply] = []
     var failing = false
+    /// 对端答「别的端已经处理过了」。
+    var handledElsewhere = false
     private var gate: CheckedContinuation<Void, Never>?
     private var holding = false
 
     func setFailing(_ value: Bool) { failing = value }
+    func setHandledElsewhere(_ value: Bool) { handledElsewhere = value }
     func hold() { holding = true }
     func release() {
         holding = false
@@ -53,19 +60,20 @@ actor FakeAnswering: ApprovalAnswering {
         gate = nil
     }
 
-    func submitToolPermission(_ reply: ToolPermissionReply) async throws {
+    func submitToolPermission(_ reply: ToolPermissionReply) async throws -> ApprovalDelivery {
         permissions.append(reply)
-        try await pass()
+        return try await pass()
     }
 
-    func submitAnswer(_ reply: QuestionReply) async throws {
+    func submitAnswer(_ reply: QuestionReply) async throws -> ApprovalDelivery {
         answers.append(reply)
-        try await pass()
+        return try await pass()
     }
 
-    private func pass() async throws {
+    private func pass() async throws -> ApprovalDelivery {
         if holding { await withCheckedContinuation { gate = $0 } }
         if failing { throw Failure() }
+        return handledElsewhere ? .alreadyHandled : .accepted
     }
 }
 
@@ -108,7 +116,7 @@ struct FakeRelay: TranscriptRelay {
         TranscriptPage(frames: [], cursor: cursor, hasMore: false, oldestSeq: 0)
     }
 
-    func attach(_ key: ConversationKey, peerFingerprint: String) -> AsyncStream<LiveTranscriptFrame> {
+    func attach(_ key: ConversationKey, peerFingerprint: String, after: Int64) -> AsyncStream<LiveTranscriptFrame> {
         AsyncStream { _ in }
     }
 }

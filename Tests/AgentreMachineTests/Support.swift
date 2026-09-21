@@ -94,7 +94,7 @@ actor FakeTransfer: MachineSessionTransfer {
         self.failPullAfterFirstBatch = failPullAfterFirstBatch
     }
 
-    func attach(conversationID: String, peerFingerprint: String, on machine: String) async throws -> Int64 {
+    func attach(conversationID: String, peerFingerprint: String, on machine: String) async throws -> Int64? {
         attaches.append(conversationID)
         if failAttach { throw CancellationError() }
         return transcripts[conversationID]?.last?.seq ?? 0

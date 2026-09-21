@@ -9,11 +9,11 @@ public protocol TranscriptPayloadDecoding: Sendable {
 /// 实时到达的一帧。轮次边界与预览帧线上不带号：`seq` 为 nil。
 public struct LiveTranscriptFrame: Sendable, Equatable {
     public var seq: Int64?
-    /// 源端时钟上的发生时刻（Unix 毫秒）；0 = 不知道。
-    public var createtime: Int64
+    /// 补齐拉回的帧在源端时钟上的发生时刻（Unix 毫秒，源端没记时可以是 0）；nil = 实时帧（含预览帧）。
+    public var createtime: Int64?
     public var payload: Data
 
-    public init(seq: Int64?, createtime: Int64, payload: Data) {
+    public init(seq: Int64?, createtime: Int64?, payload: Data) {
         self.seq = seq
         self.createtime = createtime
         self.payload = payload
@@ -43,6 +43,7 @@ public struct TranscriptPage: Sendable, Equatable {
 public protocol TranscriptRelay: Sendable {
     /// 拉 seq 大于 `cursor` 的持久帧，最多 `limit` 条，升序。
     func pull(_ key: ConversationKey, peerFingerprint: String, cursor: Int64, limit: Int) async throws -> TranscriptPage
-    /// 接上这条会话的实时帧。流在通道关闭时结束。
-    func attach(_ key: ConversationKey, peerFingerprint: String) async throws -> AsyncStream<LiveTranscriptFrame>
+    /// 接上这条会话的实时帧：先补齐 seq 大于 `after` 的持久帧，再接着投递实时帧。流在通道关闭时结束。
+    /// `after` 是调用方手里已有的最大帧号（转录自己读到的，而不是本地库的）。
+    func attach(_ key: ConversationKey, peerFingerprint: String, after: Int64) async throws -> AsyncStream<LiveTranscriptFrame>
 }

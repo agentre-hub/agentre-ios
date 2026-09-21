@@ -37,7 +37,7 @@ public enum TranscriptRows {
                 liveThinking: takesLive ? document.liveThinking : "",
                 liveText: takesLive ? document.liveText : ""
             )
-            guard !items.isEmpty || !message.errorText.isEmpty else { return }
+            guard !items.isEmpty || message.errorText != nil else { return }
             rows.append(TranscriptRow(id: "message:\(message.id):agent", content: .agentHeader))
             let turnRunning = takesLive && document.running
             for (index, item) in items.enumerated() {
@@ -59,8 +59,8 @@ public enum TranscriptRows {
                     rows.append(TranscriptRow(id: key, content: .card(card)))
                 }
             }
-            if !message.errorText.isEmpty {
-                rows.append(TranscriptRow(id: "message:\(message.id):error", content: .error(message.errorText)))
+            if let errorText = message.errorText {
+                rows.append(TranscriptRow(id: "message:\(message.id):error", content: .error(errorText)))
             }
         }
 
@@ -111,7 +111,8 @@ public enum TranscriptRows {
             let status = state?.status ?? ""
             let running = status.isEmpty ? (group.result == nil && turnRunning) : (status == "running" || status == "waiting")
             let failed = status == "failed" || (group.result?.isError ?? false)
-            let duration = state?.durationMs ?? group.use.canonical?.fields["durationMs"]?.int ?? 0
+            // 0 读作「运行态没报过」，回落到规范形态上的耗时（宿主 AgentSpawnCard 同）。
+            let duration = state.map(\.durationMs).flatMap { $0 > 0 ? $0 : nil } ?? group.use.canonical?.fields["durationMs"]?.int ?? 0
             let expanded = disclosure.expanded[group.key] ?? false
             rows.append(TranscriptRow(id: group.key, content: .subagent(SubagentRow(
                 key: group.key, name: Self.subagentName(group.use),

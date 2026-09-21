@@ -177,10 +177,7 @@ final class SignedInServices {
         let transcript = TranscriptModel(
             conversation: conversation, store: store,
             relay: TurnFeedingTranscript(
-                inner: RelayTranscript(
-                    connection: connection, carrier: carrier,
-                    localCursor: { key in (try? await store.latestSeq(key)) ?? 0 }
-                ),
+                inner: RelayTranscript(connection: connection, carrier: carrier),
                 feed: { signal in await box.apply(signal) }
             ),
             decoder: WireTranscriptDecoder()

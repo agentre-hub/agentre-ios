@@ -106,6 +106,41 @@ struct TokenRefreshTests {
         #expect(rejections.value == 1)
     }
 
+    @Test("刷新途中登出了：刷回来的新令牌不落库，调用方得到 signedOut")
+    func signOutDuringRefreshStaysSignedOut() async throws {
+        let store = InMemoryCredentialStore(credentials: Self.old)
+        let refresher = GatedRefresher(outcome: .success(Self.fresh))
+        let provider = AccessTokenProvider(credentials: store, refresher: refresher, server: { .production }, onRejected: {})
+
+        let refreshing = Task { try await provider.refreshedToken(replacing: "old-at") }
+        for _ in 0..<1_000 where await refresher.waiting == 0 { await Task.yield() }
+        try store.clearCredentials()
+        await refresher.release()
+
+        await #expect(throws: AuthError.signedOut) { try await refreshing.value }
+        #expect(store.stored == nil)
+    }
+
+    @Test("刷新途中登出又登录了另一份：旧的刷新结果不盖掉新凭据，被拒也不把新登录登出")
+    func reSignInDuringRefreshKeepsNewLogin() async throws {
+        let other = Credentials(accessToken: "other-at", refreshToken: "other-rt", accessTokenExpiresAt: .distantFuture, refreshTokenExpiresAt: .distantFuture, deviceID: 11)
+        for outcome in [Result<TokenGrant, AuthError>.success(Self.fresh), .failure(.refreshRejected)] {
+            let store = InMemoryCredentialStore(credentials: Self.old)
+            let refresher = GatedRefresher(outcome: outcome)
+            let rejections = RejectionCounter()
+            let provider = AccessTokenProvider(credentials: store, refresher: refresher, server: { .production }, onRejected: { rejections.hit() })
+
+            let refreshing = Task { try await provider.refreshedToken(replacing: "old-at") }
+            for _ in 0..<1_000 where await refresher.waiting == 0 { await Task.yield() }
+            try store.saveCredentials(other)
+            await refresher.release()
+
+            #expect(try await refreshing.value == "other-at")
+            #expect(store.stored == other)
+            #expect(rejections.value == 0)
+        }
+    }
+
     @Test("中继取令牌（连接与逐通道握手都用它）：已过期先刷新再交出；并发的调用方共用那一次刷新")
     func relayTokenRefreshesWhenExpired() async throws {
         let store = InMemoryCredentialStore(credentials: Self.old)

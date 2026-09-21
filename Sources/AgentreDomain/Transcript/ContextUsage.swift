@@ -4,13 +4,11 @@ import Foundation
 
 extension ContextUsage {
     /// - 窗口不为正：nil（整块不渲染，而不是渲染成零）；
-    /// - 流式用量为正时优先；
     /// - 否则从尾部往前找首条总输入为正的助手消息；
     /// - 都没有：0 / 上限的占位。
-    public static func compute(messages: [ContextUsageMessage], contextWindow: Int, liveTotalInputTokens: Int? = nil) -> ContextUsage? {
+    public static func compute(messages: [TranscriptMessage], contextWindow: Int) -> ContextUsage? {
         guard contextWindow > 0 else { return nil }
-        if let live = liveTotalInputTokens, live > 0 { return ContextUsage(used: live, max: contextWindow) }
-        let used = messages.last { $0.role == .assistant && ($0.totalInputTokens ?? 0) > 0 }?.totalInputTokens ?? 0
+        let used = messages.last { $0.role == .assistant && $0.totalInputTokens > 0 }?.totalInputTokens ?? 0
         return ContextUsage(used: used, max: contextWindow)
     }
 

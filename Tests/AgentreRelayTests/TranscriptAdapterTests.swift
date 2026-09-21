@@ -69,13 +69,11 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         #expect(try await page.frames.isEmpty)
     }
 
-    @Test("接上实时帧：从本机游标起 attach 并补齐；补齐帧带 createtime，实时帧与预览帧不带（任务 4 的实时判据）")
+    @Test("接上实时帧：从调用方给的游标起 attach 并补齐；补齐帧带 createtime，实时帧与预览帧不带（任务 4 的实时判据）")
     func attachStreamsLiveFrames() async throws {
         let harness = await Harness.started()
-        let adapter = RelayTranscript(
-            connection: harness.connection, carrier: { _ in "carrier-fp" }, localCursor: { $0 == key ? 4 : 0 }
-        )
-        let attaching = Task { try await adapter.attach(key, peerFingerprint: "peer-1") }
+        let adapter = RelayTranscript(connection: harness.connection, carrier: { _ in "carrier-fp" })
+        let attaching = Task { try await adapter.attach(key, peerFingerprint: "peer-1", after: 4) }
         let (socket, id) = try await harness.machineChannel("carrier-fp")
         let attach = try await socket.nextRequest(on: id, method: .sessionAttach)
         let attachBody = try attach.body(Agentre_Wire_SessionAttachRequest.self)
@@ -107,16 +105,41 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         _ = try await eventually("live seq 6") { live.items.contains { $0.seq == 6 } ? true : nil }
         #expect(live.items == [
             LiveTranscriptFrame(seq: 5, createtime: 9_000, payload: try text(5, "caught up").serializedData()),
-            LiveTranscriptFrame(seq: nil, createtime: 0, payload: try text(0, "typing…", preview: true).serializedData()),
-            LiveTranscriptFrame(seq: 6, createtime: 0, payload: try text(6, "live").serializedData()),
+            LiveTranscriptFrame(seq: nil, createtime: nil, payload: try text(0, "typing…", preview: true).serializedData()),
+            LiveTranscriptFrame(seq: 6, createtime: nil, payload: try text(6, "live").serializedData()),
         ])
+    }
+
+    @Test("补齐拉回的帧源端 createtime 为 0 也不算实时帧：与真正的实时帧分得开")
+    func caughtUpFrameWithZeroCreatetimeIsNotLive() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayTranscript(connection: harness.connection)
+        let attaching = Task { try await adapter.attach(key, peerFingerprint: "", after: 0) }
+        let (socket, id) = try await harness.machineChannel("origin-fp")
+        var attached = Agentre_Wire_SessionAttachResponse()
+        attached.latestSeq = 1
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), with: attached)
+        var page = Agentre_Wire_SessionPullResponse()
+        var frame = Agentre_Wire_DurableNotification()
+        frame.seq = 1
+        frame.payload = text(1, "old")
+        page.notifications = [frame]
+        page.cursor = 1
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionPull), with: page)
+        let live = Collected(try await attaching.value)
+        socket.notify(id, text(2, "live"))
+        _ = try await eventually("live seq 2") { live.items.contains { $0.seq == 2 } ? true : nil }
+        let caughtUp = try #require(live.items.first { $0.seq == 1 })
+        let fresh = try #require(live.items.first { $0.seq == 2 })
+        #expect(caughtUp.createtime == 0)
+        #expect(fresh.createtime == nil)
     }
 
     @Test("服务端关掉这条机器通道：实时流随之结束，不留一个永远等不到帧的界面")
     func streamEndsWhenChannelCloses() async throws {
         let harness = await Harness.started()
         let adapter = RelayTranscript(connection: harness.connection)
-        let attaching = Task { try await adapter.attach(key, peerFingerprint: "") }
+        let attaching = Task { try await adapter.attach(key, peerFingerprint: "", after: 0) }
         let (socket, id) = try await harness.machineChannel("origin-fp")
         socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), with: Agentre_Wire_SessionAttachResponse())
         socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionPull), with: Agentre_Wire_SessionPullResponse())
@@ -132,7 +155,7 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         }
         #expect(pull as? RelayFailure == scenario.expected)
         let attach = try await failure(scenario, method: .sessionAttach, on: "origin-fp") { harness in
-            _ = try await RelayTranscript(connection: harness.connection).attach(key, peerFingerprint: "")
+            _ = try await RelayTranscript(connection: harness.connection).attach(key, peerFingerprint: "", after: 0)
         }
         #expect(attach as? RelayFailure == scenario.expected)
     }
@@ -217,6 +240,13 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
             resolved.allowed = true
             $0.toolPermissionResolved = resolved
         }) == DecodedNotification(event: .permissionResolved(requestID: "r1", allowed: true)))
+        #expect(try decode(event(11) {
+            var resolved = Agentre_Wire_ToolPermissionResolved()
+            resolved.requestID = "r2"
+            resolved.allowed = true
+            resolved.alwaysAllow = true
+            $0.toolPermissionResolved = resolved
+        }) == DecodedNotification(event: .permissionResolved(requestID: "r2", allowed: true, alwaysAllow: true)))
 
         let question = try decode(event(12) {
             var ask = Agentre_Wire_UserAskRequest()
@@ -260,12 +290,12 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
             sub.toolCallID = "t3"
             sub.info = Agentre_Wire_SubagentInfo.with {
                 $0.taskID = "task-1"; $0.subagentType = "explore"; $0.taskDescription = "look"
-                $0.durationMs = 12; $0.toolUses = 3; $0.status = "running"
+                $0.durationMs = 12; $0.toolUses = 3; $0.status = "running"; $0.kind = "local_agent"
             }
             $0.subagentStarted = sub
         })
         #expect(started == DecodedNotification(event: .subagent(SubagentUpdate(toolCallID: "t3", phase: .started, info: SubagentState(
-            taskID: "task-1", status: "running", subagentType: "explore", taskDescription: "look", durationMs: 12, toolUses: 3
+            taskID: "task-1", status: "running", kind: "local_agent", subagentType: "explore", taskDescription: "look", durationMs: 12, toolUses: 3
         )))))
         let progress = try decode(event(15) { $0.subagentProgress = Agentre_Wire_SubagentEvent.with { $0.toolCallID = "t3" } })
         #expect(progress == DecodedNotification(event: .subagent(SubagentUpdate(toolCallID: "t3", phase: .progress, info: SubagentState()))))

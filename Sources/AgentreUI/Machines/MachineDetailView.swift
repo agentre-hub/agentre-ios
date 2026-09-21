@@ -192,12 +192,5 @@ private struct MachineSessionRowView: View {
         }
     }
 
-    private var statusToken: ColorToken {
-        switch row.session.activity {
-        case .waiting: .waiting
-        case .typing: .running
-        case .failed: .failure
-        case .idle: .textSecondary
-        }
-    }
+    private var statusToken: ColorToken { row.session.activity.statusToken }
 }

@@ -200,6 +200,39 @@ struct TranscriptRowsTests {
         #expect(sub.durationMs == nil)
     }
 
+    @Test("Subagent 状态里没报过耗时：回落到调用规范形态上的耗时")
+    func subagentDurationFallsBackToCanonical() {
+        let spawn = use("sp", "Task", input: ["prompt": "go"], canonical: Canonical(kind: "agent.spawn", fields: ["durationMs": 7_000]),
+                        subagent: SubagentState(taskID: "task-1", status: "completed"))
+        let rows = TranscriptRows.build(document([.toolUse(spawn), .toolResult(result("sp", "done"))], running: false))
+        guard case .subagent(let sub) = rows[2].content else { Issue.record("no subagent row"); return }
+        #expect(sub.durationMs == 7_000)
+    }
+
+    @Test("没有调用 id 的 Subagent 不认领匿名结果：那条结果归前面那次匿名的普通调用")
+    func anonymousSpawnDoesNotClaimResults() {
+        let spawn = use("", "Task", input: ["prompt": "go"], canonical: Canonical(kind: "agent.spawn"))
+        let items = TranscriptItems.build(messageID: "m1", blocks: [
+            .toolUse(use("", input: ["command": "ls"])), .toolUse(spawn), .toolResult(result("", "a.txt")),
+        ])
+        guard items.count == 2, case .activity(let group) = items[0], case .subagent(let sub) = items[1] else {
+            Issue.record("\(items)"); return
+        }
+        guard case .tool(_, _, let paired)? = group.steps.first else { Issue.record("\(group.steps)"); return }
+        #expect(paired?.text == "a.txt")
+        #expect(sub.result == nil)
+    }
+
+    @Test("一轮在任何助手事件之前就失败、错误也没带原话：仍给出一行错误，而不是整轮静默消失")
+    func emptyErrorStillShows() {
+        let doc = TranscriptReducer.reduce([
+            TimelineEntry(anchor: "s1", event: .userMessage("修一下构建")),
+            TimelineEntry(anchor: "s2", event: .turnStarted),
+            TimelineEntry(anchor: "s3", event: .error("")),
+        ])
+        #expect(names(TranscriptRows.build(doc)) == ["user", "agent", "error"])
+    }
+
     @Test("审批与提问各自成卡片行；一条助手消息只有一行署名")
     func cardsAndHeader() {
         let doc = document([

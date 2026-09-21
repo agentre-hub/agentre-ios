@@ -117,26 +117,15 @@ private func durableFrame(_ seq: Int64, createtime: Int64) -> Agentre_Wire_Durab
         #expect(decoded == relayTurnStarted("conv-1", seq: 6))
     }
 
-    @Test("机器报的最高帧号低于本机游标：pull 从 0 起，而不是永远什么都拉不到")
-    func pullRewindsAboveHighWater() async throws {
+    @Test("保存一条已中断的会话：对端 attach 回 no active turn 不算失败——没有最高帧号可报，历史照拉")
+    func interruptedAttachIsNotAFailure() async throws {
         let harness = await Harness.started()
         let adapter = RelayMachineSessions(connection: harness.connection)
         async let latest = adapter.attach(conversationID: "conv-1", peerFingerprint: "", on: "fp-1")
         let (socket, id) = try await harness.machineChannel("fp-1")
-        let attach = try await socket.nextRequest(on: id, method: .sessionAttach)
-        var attached = Agentre_Wire_SessionAttachResponse()
-        attached.latestSeq = 2
-        socket.respond(id, to: attach, with: attached)
-        #expect(try await latest == 2)
-
-        async let batch = adapter.pull(conversationID: "conv-1", peerFingerprint: "", after: 40, on: "fp-1")
-        let pull = try await socket.nextRequest(on: id, method: .sessionPull)
-        #expect(try pull.body(Agentre_Wire_SessionPullRequest.self).cursor == 0)
-        var page = Agentre_Wire_SessionPullResponse()
-        page.notifications = [durableFrame(1, createtime: 1), durableFrame(2, createtime: 2)]
-        page.cursor = 2
-        socket.respond(id, to: pull, with: page)
-        #expect(try await batch.frames.map(\.seq) == [1, 2])
+        socket.fail(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), code: -32010, message: "no active turn")
+        let reported: Int64? = try await latest
+        #expect(reported == nil)
     }
 
     @Test("错误应答与到期无应答都以不带码、不带原串的领域失败收场", arguments: FailureScenario.allCases)

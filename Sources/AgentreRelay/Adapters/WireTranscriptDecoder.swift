@@ -42,7 +42,8 @@ public struct WireTranscriptDecoder: TranscriptPayloadDecoding {
             .permissionRequest(PermissionRequest(
                 requestID: request.requestID, toolCallID: request.toolCallID, toolName: request.toolName, input: object(request.input)
             ))
-        case .toolPermissionResolved(let resolved): .permissionResolved(requestID: resolved.requestID, allowed: resolved.allowed)
+        case .toolPermissionResolved(let resolved):
+            .permissionResolved(requestID: resolved.requestID, allowed: resolved.allowed, alwaysAllow: resolved.alwaysAllow)
         case .userAskRequest(let ask):
             .questionRequest(QuestionRequest(requestID: ask.requestID, toolCallID: ask.toolCallID, questions: ask.questions.map(question)))
         case .userAskResolved(let resolved): .questionResolved(requestID: resolved.requestID)
@@ -76,7 +77,7 @@ public struct WireTranscriptDecoder: TranscriptPayloadDecoding {
     private static func subagent(_ update: Agentre_Wire_SubagentEvent, _ phase: SubagentUpdate.Phase) -> SubagentUpdate {
         let info = update.info
         return SubagentUpdate(toolCallID: update.toolCallID, phase: phase, info: SubagentState(
-            taskID: info.taskID, status: info.status, subagentType: info.subagentType, taskDescription: info.taskDescription,
+            taskID: info.taskID, status: info.status, kind: info.kind, subagentType: info.subagentType, taskDescription: info.taskDescription,
             durationMs: Int(info.durationMs), toolUses: Int(info.toolUses)
         ))
     }

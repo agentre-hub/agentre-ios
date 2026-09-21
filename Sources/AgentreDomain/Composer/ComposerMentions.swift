@@ -85,13 +85,27 @@ public enum ComposerMentions {
         return rankGroup(agents, query) + rankGroup(devices, query)
     }
 
-    /// 发送时把正文里的 `@名字` 换成提及 XML：每个选过的提及换第一处，用户删掉了的不换。
+    /// 发送时把正文里的 `@名字` 换成提及 XML：每个选过的提及换第一处完整的 `@名字`，用户删掉了的不换。
+    /// 完整 = 前面是开头或空白（与键入 `@` 触发候选同一条件），后面是结尾、空白或标点：
+    /// 选过 `Al` 时不能改写 `@Alice` 里的前缀。名字为空的提及不换。
     public static func serialize(_ text: String, mentions: [MentionRef]) -> String {
         // 换过的那处已成 XML、不再以 `@名字` 出现，所以每次从头找到的就是下一处。
         mentions.reduce(text) { result, ref in
-            guard let range = result.range(of: "@\(ref.label)") else { return result }
+            guard !ref.label.isEmpty, let range = standaloneRange(of: "@\(ref.label)", in: result) else { return result }
             return result.replacingCharacters(in: range, with: ref.xml)
         }
+    }
+
+    private static func standaloneRange(of needle: String, in text: String) -> Range<String.Index>? {
+        var searchStart = text.startIndex
+        while let range = text.range(of: needle, range: searchStart..<text.endIndex) {
+            let startsClean = range.lowerBound == text.startIndex || text[text.index(before: range.lowerBound)].isWhitespace
+            let endsClean = range.upperBound == text.endIndex
+                || text[range.upperBound].isWhitespace || text[range.upperBound].isPunctuation
+            if startsClean && endsClean { return range }
+            searchStart = text.index(after: range.lowerBound)
+        }
+        return nil
     }
 
     private static func rankGroup(_ items: [MentionCandidate], _ query: String) -> [MentionCandidate] {

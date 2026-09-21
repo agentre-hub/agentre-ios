@@ -5,14 +5,7 @@ import Foundation
 /// 机器详情页的两个中继端口：问一台机器要它的会话清单与计数，以及保存到手机时的
 /// attach + pull。一律走 `machine:<指纹>`，以 conversation_id 指明对话。
 public actor RelayMachineSessions: MachineSessionSource, MachineSessionTransfer {
-    private struct Conversation: Hashable {
-        let machine: String
-        let conversationID: String
-    }
-
     private let connection: RelayConnection
-    /// attach 交回的最高帧号，pull 据它判断本机游标是否越界。
-    private var highWater: [Conversation: Int64] = [:]
 
     public init(connection: RelayConnection) {
         self.connection = connection
@@ -36,15 +29,34 @@ public actor RelayMachineSessions: MachineSessionSource, MachineSessionTransfer 
         return MachineSessionCounts(total: response.total, running: response.running, waiting: response.waiting)
     }
 
+    /// 点名问这台机器要一条会话此刻的摘要（清单按 conversation_ids 收窄）；它已不在那台机器上时为 nil。
+    public func session(_ key: ConversationKey, on machineFingerprint: String) async throws -> MachineSession? {
+        var request = Agentre_Wire_SessionListRequest()
+        request.conversationIds = [key.conversationID]
+        let response: Agentre_Wire_SessionListResponse = try await connection.call(machine: machineFingerprint, .sessionList, request)
+        return response.sessions.first { summary in
+            let owner = summary.peerFingerprint.isEmpty ? machineFingerprint : summary.peerFingerprint
+            return summary.conversationID == key.conversationID && owner == key.machineFingerprint
+        }.map(MachineSession.init)
+    }
+
     // MARK: MachineSessionTransfer
 
-    public func attach(conversationID: String, peerFingerprint: String, on machineFingerprint: String) async throws -> Int64 {
+    /// 游标越过最高帧号时的回退归调用方（装配层在本地库上一并丢掉旧编号的帧），这里只报数。
+    public func attach(conversationID: String, peerFingerprint: String, on machineFingerprint: String) async throws -> Int64? {
         var request = Agentre_Wire_SessionAttachRequest()
         request.conversationID = conversationID
         request.peerFingerprint = peerFingerprint
-        let response: Agentre_Wire_SessionAttachResponse = try await connection.call(machine: machineFingerprint, .sessionAttach, request)
-        highWater[Conversation(machine: machineFingerprint, conversationID: conversationID)] = response.latestSeq
-        return response.latestSeq
+        let channel = await connection.channel(for: .machine(fingerprint: machineFingerprint))
+        return try await relayFailures { () async throws -> Int64? in
+            do {
+                let response: Agentre_Wire_SessionAttachResponse = try await channel.call(.sessionAttach, request)
+                return response.latestSeq
+            } catch RelayCallError.rejected(let code) where code == RelayProtocol.errorCodeNoActiveTurn {
+                // 那一轮的进程已随上一个对端进程消亡：接不回实时流，历史照拉（mirror_svc.catchUp）。
+                return nil
+            }
+        }
     }
 
     public func pull(conversationID: String, peerFingerprint: String, after cursor: Int64, on machineFingerprint: String) async throws -> PulledFrames {
@@ -52,11 +64,6 @@ public actor RelayMachineSessions: MachineSessionSource, MachineSessionTransfer 
         request.conversationID = conversationID
         request.peerFingerprint = peerFingerprint
         request.cursor = cursor
-        // 游标越过机器报的最高帧号，只说明那边的帧号重新起算了：从头拉，而不是永远什么都拉不到
-        // （mirror_svc.dropCursorAboveHighWater）。
-        if let latest = highWater[Conversation(machine: machineFingerprint, conversationID: conversationID)], cursor > latest {
-            request.cursor = 0
-        }
         request.limit = RelayProtocol.pullLimit
         let response: Agentre_Wire_SessionPullResponse = try await connection.call(machine: machineFingerprint, .sessionPull, request)
         let frames = try await relayFailures {

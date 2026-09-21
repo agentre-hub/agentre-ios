@@ -54,13 +54,20 @@ public struct DeviceAuthClient: DeviceAuthorizing, TokenRefreshing {
     public func refresh(refreshToken: String, server: ServerAddress) async throws -> TokenGrant {
         let request = try HTTPRequest.postJSON(server.endpoint("/v1/oauth/token/refresh"), RefreshBody(refreshToken: refreshToken))
         let response = try await transport.send(request)
-        switch response.status {
-        case 200..<300:
+        if response.isSuccess {
             return try CagoEnvelope.decodeData(TokenResponse.self, from: response).grant(status: response.status)
-        case 400..<500:
-            throw AuthError.refreshRejected
-        default:
-            throw AuthError.unexpectedResponse(status: response.status)
+        }
+        guard Self.isCredentialRejection(response) else { throw AuthError.unexpectedResponse(status: response.status) }
+        throw AuthError.refreshRejected
+    }
+
+    /// 服务端说这份凭据不作数了（与桌面端 server_svc.credentialRejection 同一判据）：判据是 OAuth 的
+    /// error 码——服务端把 invalid_grant 映射成 HTTP 400，单看状态码分不出它和被反代改坏的请求；
+    /// 401 / 403 留给换了鉴权前置的部署形态。限流、超时等其它失败都不是，不能据此登出。
+    private static func isCredentialRejection(_ response: HTTPResponse) -> Bool {
+        switch CagoEnvelope.oauthError(in: response) {
+        case "invalid_grant", "invalid_client": true
+        default: response.status == 401 || response.status == 403
         }
     }
 }

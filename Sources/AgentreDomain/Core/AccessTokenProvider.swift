@@ -56,15 +56,25 @@ public actor AccessTokenProvider {
         return try await task.value
     }
 
+    /// 刷新在路上时凭据可能已被登出清掉、或换成了另一次登录的：那时这次刷新的结果（成败都是）
+    /// 属于已经不在的那份登录，不落库、也不据它登出——否则登出后凭据会复活，或把新登录登出。
     private func refresh(_ current: Credentials) async throws -> String {
         do {
             let grant = try await refresher.refresh(refreshToken: current.refreshToken, server: server())
+            if let superseding = try supersedingCredentials(of: current) { return superseding.accessToken }
             let renewed = current.refreshed(with: grant, at: now())
             try credentials.saveCredentials(renewed)
             return renewed.accessToken
         } catch AuthError.refreshRejected {
+            if let superseding = try supersedingCredentials(of: current) { return superseding.accessToken }
             await onRejected()
             throw AuthError.refreshRejected
         }
+    }
+
+    /// 存着的已不是发起刷新时那一份：换成了别的登录就交出它；已登出抛 `signedOut`；仍是同一份为 nil。
+    private func supersedingCredentials(of current: Credentials) throws -> Credentials? {
+        guard let stored = try credentials.loadCredentials() else { throw AuthError.signedOut }
+        return stored.refreshToken == current.refreshToken ? nil : stored
     }
 }

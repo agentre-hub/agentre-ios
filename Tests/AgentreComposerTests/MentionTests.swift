@@ -31,6 +31,19 @@ struct MentionTests {
         #expect(ComposerMentions.serialize("看 @rack", mentions: refs) == #"看 <device fp="fp-r">rack</device>"#)
     }
 
+    @Test("只换完整的 @名字：更长名字里的前缀、贴着别的字的 @ 都不动；标点与行尾算边界")
+    func serializeRespectsBoundaries() {
+        let al: [MentionRef] = [.agent(id: 1, name: "Al")]
+        #expect(ComposerMentions.serialize("@Alice hi @Al", mentions: al) == #"@Alice hi <agent id="1">Al</agent>"#)
+        #expect(ComposerMentions.serialize("mail@Al @Al，看一下", mentions: al) == #"mail@Al <agent id="1">Al</agent>，看一下"#)
+        #expect(ComposerMentions.serialize("@Alice", mentions: al) == "@Alice")
+    }
+
+    @Test("名字为空的提及不换任何一处：不能把正文里随便哪个 @ 换掉")
+    func serializeSkipsEmptyLabel() {
+        #expect(ComposerMentions.serialize("写信到 a @ b", mentions: [.agent(id: 2, name: "")]) == "写信到 a @ b")
+    }
+
     @Test("只呈现纯文本的地方：提及 XML 还原成 @名字")
     func display() {
         #expect(ComposerMentions.displayText(#"请 <agent id="7">a&amp;b</agent> 看 <device fp="x">rack</device>"#) == "请 @a&b 看 @rack")

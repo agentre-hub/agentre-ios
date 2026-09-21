@@ -78,7 +78,7 @@ func stored(_ decoder: FakeDecoder, _ seq: Int64, _ event: TranscriptEvent) -> T
 }
 
 func liveFrame(_ decoder: FakeDecoder, _ seq: Int64?, _ event: TranscriptEvent, preview: Bool = false) -> LiveTranscriptFrame {
-    LiveTranscriptFrame(seq: seq, createtime: 0, payload: decoder.payload(event, preview: preview))
+    LiveTranscriptFrame(seq: seq, createtime: nil, payload: decoder.payload(event, preview: preview))
 }
 
 let machine = "machine-1"
@@ -104,6 +104,8 @@ actor FakeStore: ConversationStore {
         return key == summary.key ? frames.sorted { $0.seq < $1.seq } : []
     }
     func latestSeq(_ key: ConversationKey) -> Int64 { frames.map(\.seq).max() ?? 0 }
+    /// 屏外的同步把帧落进了库。
+    func append(_ more: [TranscriptFrame]) { frames += more }
     func markRead(_ key: ConversationKey) {}
     func delete(_ key: ConversationKey) {}
     func removeAll() {}
@@ -111,11 +113,11 @@ actor FakeStore: ConversationStore {
 }
 
 /// 伪中继：pull 按游标从一段「机器上的全部帧」里切页（与 agentred 的 ListSince 同义：
-/// 返回 seq > cursor 的升序帧，最多 limit 条），attach 交出测试可推帧的实时流。
+/// 返回 seq > cursor 的升序帧，最多 limit 条），attach 先补齐游标之后的帧、再交出测试可推帧的实时流。
 actor FakeRelay: TranscriptRelay {
-    let machineFrames: [TranscriptFrame]
+    private(set) var machineFrames: [TranscriptFrame]
     private(set) var pulls: [(cursor: Int64, limit: Int, peer: String)] = []
-    private(set) var attaches: [(ConversationKey, String)] = []
+    private(set) var attaches: [(key: ConversationKey, peer: String, after: Int64)] = []
     private var liveContinuation: AsyncStream<LiveTranscriptFrame>.Continuation?
     private var pendingLive: [LiveTranscriptFrame] = []
 
@@ -135,9 +137,13 @@ actor FakeRelay: TranscriptRelay {
         )
     }
 
-    func attach(_ key: ConversationKey, peerFingerprint: String) -> AsyncStream<LiveTranscriptFrame> {
-        attaches.append((key, peerFingerprint))
+    /// 与通道的 attach 同义：先补齐机器上 seq 大于 `after` 的帧（带源端 createtime），再接实时帧。
+    func attach(_ key: ConversationKey, peerFingerprint: String, after: Int64) -> AsyncStream<LiveTranscriptFrame> {
+        attaches.append((key, peerFingerprint, after))
         let (stream, continuation) = AsyncStream<LiveTranscriptFrame>.makeStream()
+        for frame in machineFrames where frame.seq > after {
+            continuation.yield(LiveTranscriptFrame(seq: frame.seq, createtime: frame.createtime, payload: frame.payload))
+        }
         for frame in pendingLive { continuation.yield(frame) }
         pendingLive = []
         liveContinuation = continuation
@@ -149,6 +155,9 @@ actor FakeRelay: TranscriptRelay {
     }
 
     func finish() { liveContinuation?.finish() }
+
+    /// 机器上又多了几帧。
+    func append(_ more: [TranscriptFrame]) { machineFrames += more }
 }
 
 /// 等一个条件成立（真实时间上限 3 秒）。

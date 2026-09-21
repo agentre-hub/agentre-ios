@@ -13,8 +13,21 @@ public final class LoginFlow {
         case signedIn
     }
 
-    public private(set) var state: State = .idle
-    public private(set) var serverAddress: ServerAddress
+    /// 这一屏的收场。上一次登录成功之后又登出了（主动、在「我」页换服务器、刷新被拒）就回到初始：
+    /// 那次的「已登录」不属于眼下这一屏。
+    public var state: State {
+        outcome == .signedIn && session.phase == .signedOut ? .idle : outcome
+    }
+
+    /// 当前服务器地址，每次都从存储读：「我」页也会改它（随即登出），登录屏与设备流必须跟着换。
+    public var serverAddress: ServerAddress {
+        _ = addressRevision
+        return servers.load()
+    }
+
+    private var outcome: State = .idle
+    /// 本屏改过地址时递增，让读地址的视图随之刷新。
+    private var addressRevision = 0
 
     @ObservationIgnored private let session: AppSession
     @ObservationIgnored private let deviceAuth: DeviceAuthorizing
@@ -40,7 +53,6 @@ public final class LoginFlow {
         self.opener = opener
         self.sleeper = sleeper
         self.now = now
-        self.serverAddress = servers.load()
     }
 
     /// RFC 8628 §3.5：收到 slow_down 时轮询间隔加 5 秒。
@@ -51,15 +63,15 @@ public final class LoginFlow {
     /// 发起设备流，直接打开带确认码的验证地址，再轮询到一个收场为止。
     public func signIn() async {
         guard state != .awaitingApproval else { return }
-        state = .awaitingApproval
-        state = await runDeviceFlow()
+        outcome = .awaitingApproval
+        outcome = await runDeviceFlow()
     }
 
     /// 改服务器地址。只接受合法的 http / https 地址；不合法时原地址不变。
     public func setServerAddress(_ text: String) -> Bool {
         guard let address = ServerAddress(string: text) else { return false }
         servers.save(address)
-        serverAddress = address
+        addressRevision += 1
         return true
     }
 
@@ -81,7 +93,14 @@ public final class LoginFlow {
             guard now().addingTimeInterval(interval.seconds) <= deadline else { return .expired }
             do {
                 try await sleeper.sleep(for: interval)
-                switch try await deviceAuth.pollToken(deviceCode: authorization.deviceCode, server: server) {
+                let poll: DeviceTokenPoll
+                do {
+                    poll = try await deviceAuth.pollToken(deviceCode: authorization.deviceCode, server: server)
+                } catch let error as URLError where Self.isTransient(error) {
+                    // 网络一时不通不是收场：确认码到期之前接着问。
+                    continue
+                }
+                switch poll {
                 case .pending:
                     continue
                 case .slowDown:
@@ -97,6 +116,17 @@ public final class LoginFlow {
             } catch {
                 return .failed
             }
+        }
+    }
+
+    /// 等一等就可能恢复的传输失败（断网、切网、超时、一时连不上）；证书、应答认不出之类不在此列。
+    private static func isTransient(_ error: URLError) -> Bool {
+        switch error.code {
+        case .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost, .cannotFindHost,
+             .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff, .callIsActive:
+            true
+        default:
+            false
         }
     }
 }

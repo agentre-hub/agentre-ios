@@ -68,7 +68,7 @@ actor FakeWorkspace: WorkspaceService {
     func releasePlan() { planGate?.resume(); planGate = nil }
 
     func agents() throws -> [WorkspaceAgent] {
-        if failAgents { throw WorkspaceError.unexpectedResponse(status: 500) }
+        if failAgents { throw AuthError.unexpectedResponse(status: 500) }
         return agentList
     }
 
@@ -80,7 +80,7 @@ actor FakeWorkspace: WorkspaceService {
             holdNextPlan = false
             await withCheckedContinuation { planGate = $0 }
         }
-        if failPlans { throw WorkspaceError.unexpectedResponse(status: 500) }
+        if failPlans { throw AuthError.unexpectedResponse(status: 500) }
         return planner(query)
     }
 }

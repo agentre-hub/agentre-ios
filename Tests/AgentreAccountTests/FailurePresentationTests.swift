@@ -148,24 +148,6 @@ struct FailurePresentationTests {
 @MainActor
 @Suite("没有可用的机器")
 struct NoMachineTests {
-    @Test("有一档可用就不是失败", arguments: [["available"], ["offline", "available"], ["project_path_missing", "available", "unpaired"]])
-    func anyAvailable(_ tiers: [String]) {
-        #expect(MachineUnavailableReason(availabilities: tiers) == nil)
-    }
-
-    @Test("全不可用时给出最能行动的那个原因", arguments: [
-        ([String](), MachineUnavailableReason.noDevice),
-        (["no_device"], .noDevice),
-        (["unpaired", "no_device"], .unpaired),
-        (["offline", "unpaired", "no_device"], .offline),
-        (["offline", "project_path_missing"], .projectPathMissing),
-        (["something_new"], .unspecified),
-        (["something_new", "offline"], .offline),
-    ])
-    func reason(_ tiers: [String], _ expected: MachineUnavailableReason) {
-        #expect(MachineUnavailableReason(availabilities: tiers) == expected)
-    }
-
     @Test("每个原因在屏上是一句不同的事实，不带服务端的取值原串")
     func eachReasonIsAFact() async throws {
         var seen: Set<String> = []

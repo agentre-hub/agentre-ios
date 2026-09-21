@@ -132,6 +132,56 @@ struct LoginFlowTests {
         #expect(credentials.stored == nil)
     }
 
+    @Test("轮询中途网络断了一下：不是收场，到期之前继续轮询")
+    func transientPollFailureKeepsPolling() async {
+        let auth = ScriptedDeviceAuth(polls: [
+            .success(.pending), .failure(URLError(.networkConnectionLost)), .failure(URLError(.notConnectedToInternet)),
+            .success(.authorized(.sample, deviceID: 42)),
+        ])
+        let (flow, session) = makeFlow(auth)
+
+        await flow.signIn()
+
+        #expect(flow.state == .signedIn)
+        #expect(session.phase == .signedIn)
+        #expect(auth.polledCodes.count == 4)
+    }
+
+    @Test("网络一直不通：轮询到本地到期为止，收场为过期")
+    func transientPollFailureUntilDeadline() async {
+        var authorization = DeviceAuthorization.sample
+        authorization.expiresIn = .seconds(12)
+        let auth = ScriptedDeviceAuth(
+            authorization: .success(authorization),
+            polls: [.failure(URLError(.networkConnectionLost)), .failure(URLError(.timedOut))]
+        )
+        let (flow, _) = makeFlow(auth)
+
+        await flow.signIn()
+
+        #expect(flow.state == .expired)
+        #expect(auth.polledCodes.count == 2)
+    }
+
+    @Test("登录后在「我」页换了服务器并登出：登录屏回到初始、显示新地址，再次登录按新地址发起")
+    func signOutAfterServerChange() async {
+        let auth = ScriptedDeviceAuth(polls: [.success(.authorized(.sample, deviceID: 42)), .success(.denied)])
+        let (flow, session) = makeFlow(auth)
+        await flow.signIn()
+        #expect(flow.state == .signedIn)
+
+        // 「我」页改地址：存下新地址，随即登出；登录流程本身没有经手。
+        let dev = ServerAddress(string: "http://docker.local:8443")!
+        servers.save(dev)
+        session.signOut()
+
+        #expect(flow.state == .idle)
+        #expect(flow.serverAddress == dev)
+        await flow.signIn()
+        #expect(auth.authorizedWith.map(\.1) == [.production, dev])
+        #expect(flow.state == .denied)
+    }
+
     @Test("服务器地址默认生产；非法地址被拒，合法地址被保存并用于发起")
     func serverAddress() async {
         let auth = ScriptedDeviceAuth(polls: [.success(.denied)])

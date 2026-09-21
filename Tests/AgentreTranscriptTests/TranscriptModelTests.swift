@@ -106,7 +106,38 @@ struct TranscriptModelTests {
         try await eventually("live frames merged") { !model.document.running }
         let blocks = model.document.messages.last?.blocks ?? []
         #expect(blocks == [.toolUse(readUse("a")), .toolUse(readUse("b"))])
-        #expect(await relay.attaches.first?.1 == "peer-1")
+        #expect(await relay.attaches.first?.peer == "peer-1")
+        await relay.finish()
+        await attach.value
+    }
+
+    @Test("离开对话屏期间同步落进库的帧，回来重新接上时补进转录：从转录自己读到的最新帧号接着补")
+    func reattachCatchesUpFromTheTimeline() async throws {
+        let (model, store, relay) = model(local: frames(1...60), machine: frames(1...60))
+        await model.load()
+        let first = Task { await model.attach() }
+        try await eventually("attached") { await relay.attaches.count == 1 }
+        await relay.finish()
+        await first.value
+
+        let away = frames(61...64)
+        await store.append(away)
+        await relay.append(away)
+        let second = Task { await model.attach() }
+        try await eventually("frames stored while away reach the timeline") { userTexts(model).count == 64 }
+        #expect(userTexts(model).suffix(4) == ["m61", "m62", "m63", "m64"])
+        #expect(await relay.attaches.map(\.after) == [60, 60])
+        await relay.finish()
+        await second.value
+    }
+
+    @Test("本地为空、历史已整段补拉回来：接上实时帧时从补拉到的最新帧号接着补，不再从头下载一遍")
+    func attachAfterBackfillDoesNotRedownload() async throws {
+        let (model, _, relay) = model(local: [], machine: frames(1...7), pageSize: 3)
+        await model.load()
+        let attach = Task { await model.attach() }
+        try await eventually("attached") { await relay.attaches.count == 1 }
+        #expect(await relay.attaches.map(\.after) == [7])
         await relay.finish()
         await attach.value
     }
@@ -143,5 +174,5 @@ struct TranscriptModelTests {
 struct FailingRelay: TranscriptRelay {
     struct Offline: Error {}
     func pull(_ key: ConversationKey, peerFingerprint: String, cursor: Int64, limit: Int) async throws -> TranscriptPage { throw Offline() }
-    func attach(_ key: ConversationKey, peerFingerprint: String) async throws -> AsyncStream<LiveTranscriptFrame> { throw Offline() }
+    func attach(_ key: ConversationKey, peerFingerprint: String, after: Int64) async throws -> AsyncStream<LiveTranscriptFrame> { throw Offline() }
 }

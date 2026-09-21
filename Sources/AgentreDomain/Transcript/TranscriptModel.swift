@@ -84,22 +84,23 @@ public struct SubagentState: Sendable, Equatable {
     public var taskID: String
     /// waiting | running | completed | partial | failed | canceled | skipped | unknown；空 = 没报过。
     public var status: String
+    /// local_agent（Agent）| local_bash（Bash）| …；空 = 没报过。决定它默认是不是后台任务。
+    public var kind: String
     public var subagentType: String
     public var taskDescription: String
     /// 0 = 没报过。
     public var durationMs: Int
     public var toolUses: Int
 
-    public init(taskID: String = "", status: String = "", subagentType: String = "", taskDescription: String = "", durationMs: Int = 0, toolUses: Int = 0) {
+    public init(taskID: String = "", status: String = "", kind: String = "", subagentType: String = "", taskDescription: String = "", durationMs: Int = 0, toolUses: Int = 0) {
         self.taskID = taskID
         self.status = status
+        self.kind = kind
         self.subagentType = subagentType
         self.taskDescription = taskDescription
         self.durationMs = durationMs
         self.toolUses = toolUses
     }
-
-    public var isTerminal: Bool { ["completed", "failed", "canceled"].contains(status) }
 }
 
 /// 一次工具调用的结果（线上的 tool_result）。
@@ -125,6 +126,8 @@ public struct PermissionRequest: Sendable, Equatable {
     public var input: [String: JSONValue]?
     public var resolved = false
     public var allowed = false
+    /// 决议是「本会话始终允许」。
+    public var alwaysAllow = false
 
     public init(requestID: String, toolCallID: String, toolName: String, input: [String: JSONValue]? = nil) {
         self.requestID = requestID
@@ -207,9 +210,10 @@ public struct TranscriptMessage: Sendable, Equatable, Identifiable {
     public var durationMs: Int
     /// 这条助手消息最近一次模型调用的总输入 token；0 = 没报过。
     public var totalInputTokens: Int
-    public var errorText: String
+    /// 这一轮的错误；nil = 没出错，空串 = 出错了但没带原话。
+    public var errorText: String?
 
-    public init(id: String, role: Role, text: String = "", blocks: [TranscriptBlock] = [], durationMs: Int = 0, totalInputTokens: Int = 0, errorText: String = "") {
+    public init(id: String, role: Role, text: String = "", blocks: [TranscriptBlock] = [], durationMs: Int = 0, totalInputTokens: Int = 0, errorText: String? = nil) {
         self.id = id
         self.role = role
         self.text = text
@@ -235,10 +239,7 @@ public struct TranscriptDocument: Sendable, Equatable {
 
     /// 上下文用量：窗口不为正时为 nil（整块不渲染）。
     public var contextUsage: ContextUsage? {
-        ContextUsage.compute(
-            messages: messages.map { ContextUsageMessage(role: $0.role == .assistant ? .assistant : .user, totalInputTokens: $0.totalInputTokens) },
-            contextWindow: contextWindow
-        )
+        ContextUsage.compute(messages: messages, contextWindow: contextWindow)
     }
 }
 
@@ -282,7 +283,7 @@ public enum TranscriptEvent: Sendable, Equatable {
     case toolCall(ToolUse)
     case toolResult(ToolResult)
     case permissionRequest(PermissionRequest)
-    case permissionResolved(requestID: String, allowed: Bool)
+    case permissionResolved(requestID: String, allowed: Bool, alwaysAllow: Bool = false)
     case questionRequest(QuestionRequest)
     case questionResolved(requestID: String)
     case subagent(SubagentUpdate)

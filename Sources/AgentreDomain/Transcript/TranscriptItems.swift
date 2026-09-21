@@ -39,13 +39,15 @@ public enum TranscriptItems {
                 }
                 if use.canonical?.kind == Canonical.Kind.agentSpawn {
                     items.append(.subagent(use, nil, children: steps(of: children[use.id] ?? [], messageID: messageID)))
-                } else {
-                    if let queue = pendingPermissions[use.name], let first = queue.first {
-                        pendingPermissions[use.name] = Array(queue.dropFirst())
-                        if case .permission(let request, _) = items[first] { items[first] = .permission(request, consumed: true) }
-                    }
-                    items.append(.tool(use, nil))
+                    // 与宿主同：没有调用 id 的 Subagent 不排进匿名结果的队列。
+                    if !use.id.isEmpty { pendingTools[use.id] = items.count - 1 }
+                    continue
                 }
+                if let queue = pendingPermissions[use.name], let first = queue.first {
+                    pendingPermissions[use.name] = Array(queue.dropFirst())
+                    if case .permission(let request, _) = items[first] { items[first] = .permission(request, consumed: true) }
+                }
+                items.append(.tool(use, nil))
                 if use.id.isEmpty { anonymousTools.append(items.count - 1) } else { pendingTools[use.id] = items.count - 1 }
             case .toolResult(let result):
                 if skipped.contains(result.toolCallID) { continue }

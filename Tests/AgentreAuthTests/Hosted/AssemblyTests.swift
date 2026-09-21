@@ -110,6 +110,52 @@ struct AssemblyTests {
         #expect(texts == ["new 1"])
     }
 
+    @Test("跟随接上即按机器此刻的清单刷新摘要：断线期间结束的一轮（边界帧不带号、补拉不回来）不再永远停在运行中")
+    func followRefreshesSummary() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.machine.add(
+            FakeMachine.Session(conversationID: "conv-1", title: "Done now", lifecycleState: "idle", waitingForInput: false),
+            frames: [WireNotification.textDelta("conv-1", seq: 0, "all green")]
+        )
+        let environment = try harness.environment()
+        // 本机最后一次看见它时，它还在跑、等你批准。
+        let key = try await environment.store.save(
+            MachineSession(conversationID: "conv-1", title: "Old", lifecycleState: "running", waitingForInput: true), via: "machine-a"
+        )
+        _ = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+
+        let row = try await eventually("summary refreshed") {
+            let row = try await environment.store.conversation(key)
+            return row?.lifecycleState == "idle" ? row : nil
+        }
+        #expect(!row.waitingForInput)
+        #expect(row.title == "Done now")
+        let list = try #require(harness.relay.calls(WireMethod.sessionList).first)
+        #expect(list.target == "machine:machine-a")
+    }
+
+    @Test("服务端关掉承载机的通道：跟随停下并如实说出来，不留一条无声冻住的会话")
+    func closedChannelIsReported() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", title: "Live"), frames: [])
+        let environment = try harness.environment()
+        let key = try await environment.store.save(MachineSession(conversationID: "conv-1", title: "Live"), via: "machine-a")
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        _ = try await eventually("followed") { harness.relay.calls(WireMethod.sessionAttach).isEmpty ? nil : true }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(services.failures.facts[key] == nil)
+
+        harness.relay.closeChannels("machine:machine-a")
+        let fact = try await eventually("failure reported") { services.failures.facts[key] }
+        #expect(fact == .noMachineAvailable(.offline))
+    }
+
     @Test("提及来源 = 工作区 Agent（按清单位置编号）+ 机器名册；面板的模型取服务端引擎目录的已启用模型，权限档位问承载机的 runtimeCapabilities")
     func composerSources() async throws {
         let harness = try Harness()

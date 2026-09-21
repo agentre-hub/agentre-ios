@@ -13,7 +13,7 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         let harness = await Harness.started()
         let adapter = RelayApprovalAnswering(connection: harness.connection, carrier: { _ in "carrier-fp" })
         let reply = ToolPermissionReply(conversation: key, peerFingerprint: "peer-1", requestID: "r1", disposition: disposition)
-        async let sent: Void = adapter.submitToolPermission(reply)
+        async let sent = adapter.submitToolPermission(reply)
         let (socket, id) = try await harness.machineChannel("carrier-fp")
         let request = try await socket.nextRequest(on: id, method: .runtimeSubmitToolPermission)
         let body = try request.body(Agentre_Wire_RuntimeSubmitToolPermissionRequest.self)
@@ -24,14 +24,14 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         #expect(body.alwaysAllowSession == disposition.alwaysAllowSession)
         #expect(body.denyReason.isEmpty)
         socket.respond(id, to: request, with: Agentre_Wire_PeerSessionControlResponse())
-        try await sent
+        #expect(try await sent == .accepted)
     }
 
-    @Test("已被别处处理过的一问照样算送达：对端说 already_handled 不是失败")
+    @Test("已被别处处理过的一问照样算送达（不是失败），但如实报出「别的端先答了」：结局不是本机这一答")
     func alreadyHandledIsDelivered() async throws {
         let harness = await Harness.started()
         let adapter = RelayApprovalAnswering(connection: harness.connection)
-        async let sent: Void = adapter.submitToolPermission(
+        async let sent = adapter.submitToolPermission(
             ToolPermissionReply(conversation: key, peerFingerprint: "", requestID: "r1", disposition: .reject)
         )
         let (socket, id) = try await harness.machineChannel("origin-fp")
@@ -39,7 +39,22 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         var response = Agentre_Wire_PeerSessionControlResponse()
         response.alreadyHandled = true
         socket.respond(id, to: request, with: response)
-        try await sent
+        #expect(try await sent == .alreadyHandled)
+    }
+
+    @Test("提问作答同样如实报出 already_handled")
+    func answerAlreadyHandled() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayApprovalAnswering(connection: harness.connection)
+        async let sent = adapter.submitAnswer(QuestionReply(
+            conversation: key, peerFingerprint: "", requestID: "q1", questions: ["Which DB?"], answers: [], skipped: true
+        ))
+        let (socket, id) = try await harness.machineChannel("origin-fp")
+        let request = try await socket.nextRequest(on: id, method: .runtimeSubmitAnswer)
+        var response = Agentre_Wire_PeerSessionControlResponse()
+        response.alreadyHandled = true
+        socket.respond(id, to: request, with: response)
+        #expect(try await sent == .alreadyHandled)
     }
 
     @Test("提问作答：问题原文、每问的标签与自填、跳过标志逐格带上")
@@ -54,7 +69,7 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
             ],
             skipped: false
         )
-        async let sent: Void = adapter.submitAnswer(reply)
+        async let sent = adapter.submitAnswer(reply)
         let (socket, id) = try await harness.machineChannel("carrier-fp")
         let request = try await socket.nextRequest(on: id, method: .runtimeSubmitAnswer)
         let body = try request.body(Agentre_Wire_RuntimeSubmitAnswerRequest.self)
@@ -67,14 +82,14 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         #expect(body.answers.map(\.otherText) == ["", "speed"])
         #expect(!body.skipped)
         socket.respond(id, to: request, with: Agentre_Wire_PeerSessionControlResponse())
-        try await sent
+        #expect(try await sent == .accepted)
     }
 
     @Test("跳过：answers 为空、skipped 为真")
     func skipsQuestion() async throws {
         let harness = await Harness.started()
         let adapter = RelayApprovalAnswering(connection: harness.connection)
-        async let sent: Void = adapter.submitAnswer(QuestionReply(
+        async let sent = adapter.submitAnswer(QuestionReply(
             conversation: key, peerFingerprint: "", requestID: "q1", questions: ["Which DB?"], answers: [], skipped: true
         ))
         let (socket, id) = try await harness.machineChannel("origin-fp")
@@ -83,7 +98,7 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         #expect(body.skipped)
         #expect(body.answers.isEmpty)
         socket.respond(id, to: request, with: Agentre_Wire_PeerSessionControlResponse())
-        try await sent
+        #expect(try await sent == .accepted)
     }
 
     @Test("错误应答与到期无应答都以领域失败收场（抛错即没送达）", arguments: FailureScenario.allCases)

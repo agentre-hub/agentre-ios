@@ -26,25 +26,18 @@ public struct WorkspaceClient: WorkspaceService {
         if let project = query.projectSyncID, !project.isEmpty { items.append(URLQueryItem(name: "project_sync_id", value: project)) }
         if let target = query.targetBackendSyncID, !target.isEmpty { items.append(URLQueryItem(name: "target_backend_sync_id", value: target)) }
         components?.queryItems = items
-        guard let url = components?.url else { throw WorkspaceError.unexpectedResponse(status: 0) }
+        guard let url = components?.url else { throw AuthError.unexpectedResponse(status: 0) }
         return try await get(PlanBody.self, url).domain
     }
 
     private func get<T: Decodable>(_ type: T.Type, _ url: URL) async throws -> T {
         let response = try await transport.send(HTTPRequest(method: "GET", url: url))
-        guard response.isSuccess else { throw WorkspaceError.unexpectedResponse(status: response.status) }
-        do {
-            return try CagoEnvelope.decoder.decode(Wrapped<T>.self, from: response.body).data
-        } catch {
-            throw WorkspaceError.unexpectedResponse(status: response.status)
-        }
+        guard response.isSuccess else { throw AuthError.unexpectedResponse(status: response.status) }
+        return try CagoEnvelope.decodeData(T.self, from: response)
     }
 }
 
 // 与服务端 JSON 一一对应；蛇形命名由 CagoEnvelope 的解码器统一转换。
-private struct Wrapped<T: Decodable>: Decodable {
-    let data: T
-}
 
 private struct AgentsBody: Decodable {
     let agents: [Agent]

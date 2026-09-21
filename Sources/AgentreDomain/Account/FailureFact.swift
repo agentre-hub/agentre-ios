@@ -119,18 +119,4 @@ public enum MachineUnavailableReason: Sendable, Equatable, Hashable, CaseIterabl
     case noDevice
     /// 服务端给了本客户端认不出的取值：只说没有可用的机器，不复述那个取值。
     case unspecified
-
-    /// 由各档的 availability 得出原因；有一档可用就不是失败，返回 nil。没有任何一档即没指定机器。
-    public init?(availabilities: [String]) {
-        if availabilities.contains("available") { return nil }
-        let known: [String: MachineUnavailableReason] = [
-            "project_path_missing": .projectPathMissing, "offline": .offline, "unpaired": .unpaired, "no_device": .noDevice,
-        ]
-        let reasons = Set(availabilities.compactMap { known[$0] })
-        if let first = Self.allCases.first(where: reasons.contains) {
-            self = first
-        } else {
-            self = availabilities.isEmpty ? .noDevice : .unspecified
-        }
-    }
 }

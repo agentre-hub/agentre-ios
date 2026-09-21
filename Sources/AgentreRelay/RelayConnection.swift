@@ -29,7 +29,8 @@ public actor RelayConnection {
     private var nextChannelNumber = 1
     private var runner: Task<Void, Never>?
     private var stopped = false
-    /// 连着拨号失败了几次；重拨按它退让，连上即归零。
+    /// 连着连不上了几次；重拨按它退让。拨号本身成功不算连上（URLSession 的拨号不等升级完成，
+    /// 服务端拒了升级也照样「拨通」），收到对端的第一帧才归零。
     private var failures = 0
 
     public init(
@@ -46,7 +47,8 @@ public actor RelayConnection {
         self.sleeper = sleeper
         self.random = random
         self.backoff = backoff
-        (signals, signalSink) = AsyncStream.makeStream()
+        // 没人读时只留最近的一段：信号那一路是账号级的推送，不能在内存里无限攒下去。
+        (signals, signalSink) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(32))
     }
 
     /// 开始拨号并保持连接（断线自动重拨）。
@@ -119,7 +121,6 @@ public actor RelayConnection {
     private func run() async {
         while !Task.isCancelled {
             if let socket = await dialOnce() {
-                failures = 0
                 await adopt(socket)
                 await read(socket)
                 await lose(socket)
@@ -151,6 +152,7 @@ public actor RelayConnection {
 
     private func read(_ socket: any RelaySocket) async {
         while let frame = try? await socket.receive() {
+            failures = 0
             await dispatch(frame)
         }
     }

@@ -28,15 +28,16 @@ private func durable(_ conversationID: String, seq: Int64) -> Agentre_Wire_Durab
     return frame
 }
 
-/// 收集一条通道交出的通知的 seq。
+/// 收集一条通道就某条对话交出的通知的 seq。
 private final class SeqCollector: @unchecked Sendable {
     private let lock = NSLock()
     private var seen: [Int64] = []
     var seqs: [Int64] { lock.withLock { seen } }
 
-    init(_ channel: RelayChannel) {
+    init(_ channel: RelayChannel, conversationID: String) async {
+        let notifications = await channel.subscribe(conversationID: conversationID)
         Task { [self] in
-            for await notification in channel.notifications {
+            for await notification in notifications {
                 lock.withLock { seen.append(notification.seq ?? -1) }
             }
         }
@@ -155,7 +156,7 @@ private final class SeqCollector: @unchecked Sendable {
         let harness = Harness()
         let target = RelayTarget.conversation(id: "conv-1")
         let (channel, socket, id) = try await harness.readyChannel(target)
-        let seen = SeqCollector(channel)
+        let seen = await SeqCollector(channel, conversationID: "conv-1")
 
         // 首次关注：从本地已有的 seq 3 起 attach + pull。
         async let attached = channel.attach(conversationID: "conv-1", after: 3)
@@ -342,6 +343,21 @@ private final class SeqCollector: @unchecked Sendable {
         socket.drop()
         let next = try await eventually("backoff after success") { harness.clock.pendingSleeps.first }
         #expect(next == .milliseconds(750))
+    }
+
+    @Test("拨号本身成功、连接却随即断掉（服务端拒了升级）：退让照样逐次加长，不按连上过归零")
+    func redialBackoffWhenSocketDiesAtOnce() async throws {
+        let harness = Harness()
+        await harness.connection.start()
+        var delays: [Duration] = []
+        for attempt in 0..<3 {
+            let socket = try await harness.dialer.socket(attempt)
+            socket.drop()
+            let delay = try await eventually("backoff #\(attempt)") { harness.clock.pendingSleeps.first }
+            delays.append(delay)
+            harness.clock.advance(by: delay)
+        }
+        #expect(delays == [.milliseconds(750), .milliseconds(1500), .seconds(3)])
     }
 
     // MARK: (g) 无人应答的 RPC 到期收场

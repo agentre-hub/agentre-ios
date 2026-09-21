@@ -6,7 +6,7 @@ import Foundation
 import SwiftUI
 import Testing
 
-/// 卡片接在转录的插入点上的视图层断言：读得到的事实、三档处置的顺序与分量、命中区。
+/// 卡片接在转录的插入点上的视图层断言：读得到的事实、三档处置的顺序、命中区。
 @MainActor
 @Suite("审批卡片")
 struct ApprovalCardScreenTests {
@@ -49,11 +49,6 @@ struct ApprovalCardScreenTests {
         #expect(await offline.labels().contains("pnpm test --filter ui"))
         let disabled = await offline.disabledLabels()
         #expect(dispositions.allSatisfy(disabled.contains), "\(disabled)")
-    }
-
-    @Test("三档的视觉分量：描边、浅底、主色实心")
-    func weights() {
-        #expect(PermissionDisposition.allCases.map(\.weight) == [.outline, .tinted, .solid])
     }
 
     @Test("别的工具：输入以缩进 JSON 单独成块")

@@ -83,11 +83,12 @@ public struct SteerQueue: Sendable, Equatable {
         items[index].cancellable = false
     }
 
-    /// 一轮结束：还剩的挪进 dropped 等用户处置；已有一份暂存着时不覆盖。已消费记录随这一轮作废。
+    /// 一轮结束：还剩的挪进 dropped 等用户处置；上一轮的还没处置时接在它后面，两轮的都不丢。
+    /// 已消费记录随这一轮作废。
     public mutating func endTurn() {
         consumed = []
         guard !items.isEmpty else { return }
-        if dropped.isEmpty { dropped = items }
+        dropped += items
         items = []
     }
 

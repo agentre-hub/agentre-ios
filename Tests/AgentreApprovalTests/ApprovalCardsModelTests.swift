@@ -26,11 +26,6 @@ struct ApprovalCardsModelTests {
         #expect(cards.state(of: request) == settled)
     }
 
-    @Test("三档自左到右按承诺范围排列：拒绝、本会话始终允许、仅本次允许")
-    func dispositionOrder() {
-        #expect(PermissionDisposition.allCases == [.reject, .allowForSession, .allowOnce])
-    }
-
     @Test("送达之前不落定、也不收第二次作答")
     func settlesOnlyAfterDelivery() async throws {
         let cards = model
@@ -66,9 +61,49 @@ struct ApprovalCardsModelTests {
         #expect(cards.state(of: permission(resolved: true, allowed: false)) == .denied)
         await cards.submit(.allowOnce, for: permission(resolved: true, allowed: false))
         #expect(await port.permissions.isEmpty)
-        // 本机点的是本会话始终允许，转录随后报已允许：落定为「已允许(本会话)」。
+        // 本机点的是本会话始终允许，转录随后报本会话始终允许：落定为「已允许(本会话)」。
         await cards.submit(.allowForSession, for: permission("p2"))
-        #expect(cards.state(of: permission("p2", resolved: true, allowed: true)) == .allowedForSession)
+        #expect(cards.state(of: permission("p2", resolved: true, allowed: true, alwaysAllow: true)) == .allowedForSession)
+    }
+
+    @Test("别的端先答了：本机这一答不当结局，卡片等转录里的决议；决议到了照决议落定")
+    func alreadyHandledWaitsForTheTranscript() async {
+        let cards = model
+        await port.setHandledElsewhere(true)
+        await cards.submit(.allowOnce, for: permission())
+        #expect(cards.state(of: permission()) == .open(submitting: true, failed: false))
+        #expect(cards.state(of: permission(resolved: true, allowed: false)) == .denied)
+
+        let asked = question()
+        await cards.skip(asked)
+        #expect(cards.state(of: asked) == .open(submitting: true))
+        #expect(cards.state(of: question(answered: true)) == .answered)
+    }
+
+    @Test("转录报的是本会话始终允许：即使本机没点过也落定为「已允许(本会话)」")
+    func transcriptAlwaysAllow() {
+        #expect(model.state(of: permission(resolved: true, allowed: true, alwaysAllow: true)) == .allowedForSession)
+    }
+
+    @Test("本机点的是本会话始终允许、转录报的是仅本次允许：照转录落定为「已允许」")
+    func transcriptOutcomeWinsOverLocalTap() async {
+        let cards = model
+        await cards.submit(.allowForSession, for: permission("p2"))
+        #expect(cards.state(of: permission("p2", resolved: true, allowed: true)) == .allowed)
+    }
+
+    @Test("没有请求 id 的卡片不作答：不发出空的 request_id，也不与别的无 id 卡片共用状态")
+    func emptyRequestIDIsNotSubmitted() async {
+        let cards = model
+        await cards.submit(.allowOnce, for: permission(""))
+        #expect(await port.permissions.isEmpty)
+        #expect(cards.state(of: permission("")) == .open(submitting: false, failed: false))
+        let asked = question("")
+        cards.setAnswer("main", at: 0, of: asked)
+        await cards.submitAnswers(for: asked)
+        await cards.skip(asked)
+        #expect(await port.answers.isEmpty)
+        #expect(cards.state(of: asked) == .open(submitting: false))
     }
 
     @Test("提问：每一问都填了才能提交；答案以自填标签发出，送达后为已回答")

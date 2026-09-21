@@ -86,6 +86,22 @@ struct AssemblySeamTests {
         #expect(try await store.conversation(key)?.waitingForInput == true)
     }
 
+    @Test("同一台承载机上两条同号会话（它自己的与它代转的他端的）：拉回的帧按会话键落进对的那一条")
+    func savingPortKeepsSameIDConversationsApart() async throws {
+        let directory = try TemporaryDirectory()
+        let store = try openStore(directory)
+        let own = try await store.save(summary("sess-1"), via: "carrier")
+        let relayed = try await store.save(summary("sess-1", peer: "origin"), via: "carrier")
+
+        let frames = try (1...2).map { seq in
+            PulledFrame(seq: Int64(seq), createtime: 5, payload: try event("sess-1", seq: 0, text: "origin \(seq)").serializedData())
+        }
+        try await store.record(frames, into: relayed, via: "carrier")
+        #expect(try await store.transcript(relayed).map(\.seq) == [1, 2])
+        #expect(try await store.transcript(own).isEmpty)
+        #expect(try await store.latestSeq(own) == 0)
+    }
+
     @Test("StartedConversationRecording：手机新建的对话以承载机为键落库，处于运行中")
     func startedRecording() async throws {
         let directory = try TemporaryDirectory()
@@ -105,6 +121,9 @@ struct AssemblySeamTests {
         #expect(row.backendType == "claudecode")
         #expect(row.lifecycleState == SavedConversation.Lifecycle.running)
         #expect(try await store.carrier(of: key) == "m-1")
+        // 刚从手机发出的一条：排在列表最前（最后活动是此刻），也不是未读——话是本机自己说的。
+        #expect(row.lastMessageAt == fixedNow)
+        #expect(!row.isUnread)
     }
 
     @Test("回合事件：开始、正常收场与出错收场分得开，插话取走带着执行端的句柄；别的帧不算")

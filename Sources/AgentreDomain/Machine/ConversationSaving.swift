@@ -31,8 +31,9 @@ public struct PulledFrames: Sendable, Equatable {
 /// 经中继认领一条会话并取它的转录（通道 `machine:<指纹>`，RPC 以 conversation_id 指明对话）。
 /// 适配器在装配层实现。
 public protocol MachineSessionTransfer: Sendable {
-    /// attach：认领这条会话，此后它的实时帧经这台机器送来。答复机器上的最大帧号。
-    func attach(conversationID: String, peerFingerprint: String, on machineFingerprint: String) async throws -> Int64
+    /// attach：认领这条会话，此后它的实时帧经这台机器送来。答复机器上的最大帧号；会话已中断
+    /// （接不回实时流，历史仍可拉）时机器不报，为 nil。
+    func attach(conversationID: String, peerFingerprint: String, on machineFingerprint: String) async throws -> Int64?
     /// pull：取 `cursor` 之后的一批持久帧。
     func pull(conversationID: String, peerFingerprint: String, after cursor: Int64, on machineFingerprint: String) async throws -> PulledFrames
 }

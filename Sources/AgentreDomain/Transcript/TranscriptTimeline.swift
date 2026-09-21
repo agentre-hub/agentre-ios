@@ -4,7 +4,7 @@ import Foundation
 ///
 /// - 带号帧按 seq 排序，同号只留先到的那份（机器是权威，同号即同一帧）；
 /// - 不带号的实时帧（轮次边界）排在它到达时已知的最大帧号之后；
-/// - 预览帧是过场：挂在末尾，下一条持久帧一到就被取代。
+/// - 预览帧是过场：挂在末尾，下一条更新的持久帧一到就被取代（向前补的更早帧不算）。
 public struct TranscriptTimeline: Sendable {
     private var numbered: [Int64: TranscriptEvent] = [:]
     private var sortedSeqs: [Int64] = []
@@ -23,14 +23,17 @@ public struct TranscriptTimeline: Sendable {
         }
         if let seq {
             guard numbered[seq] == nil else { return false }
+            // 只有比已知最新更新的帧才取代预览尾巴；向前补进来的更早帧与还在流的回复无关。
+            let supersedes = seq > (latestSeq ?? 0)
             numbered[seq] = event
             let index = sortedSeqs.partitioningIndex { $0 >= seq }
             sortedSeqs.insert(seq, at: index)
+            if supersedes { previews.removeAll() }
         } else {
             unnumbered.append((latestSeq ?? 0, nextOrder, event))
             nextOrder += 1
+            previews.removeAll()
         }
-        previews.removeAll()
         return true
     }
 

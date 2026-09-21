@@ -73,12 +73,13 @@ public final class TranscriptModel {
         await pullOlder()
     }
 
-    /// 接上实时帧，直到通道关闭。
+    /// 接上实时帧，直到通道关闭。从转录自己读到的最新帧号接着补：离开屏幕期间同步落进本地库的帧
+    /// 不在转录里，按库的游标补会把它们漏掉；刚整段补拉回来的历史也不必再下载一遍。
     public func attach() async {
         guard !attached else { return }
         attached = true
         defer { attached = false }
-        guard let stream = try? await relay.attach(conversation.key, peerFingerprint: conversation.peerFingerprint) else { return }
+        guard let stream = try? await relay.attach(conversation.key, peerFingerprint: conversation.peerFingerprint, after: timeline.latestSeq ?? 0) else { return }
         for await frame in stream {
             merge(live: [frame])
         }

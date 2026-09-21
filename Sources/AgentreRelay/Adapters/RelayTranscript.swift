@@ -7,19 +7,11 @@ import Foundation
 public struct RelayTranscript: TranscriptRelay {
     private let connection: RelayConnection
     private let carrier: RelayCarrier
-    private let localCursor: @Sendable (ConversationKey) async -> Int64
 
-    /// - Parameters:
-    ///   - carrier: 会话经哪台机器走；默认是会话键上的那台。
-    ///   - localCursor: 本机已有的最大帧号，attach 之后从它接着补齐；默认从头。
-    public init(
-        connection: RelayConnection,
-        carrier: @escaping RelayCarrier = { $0.machineFingerprint },
-        localCursor: @escaping @Sendable (ConversationKey) async -> Int64 = { _ in 0 }
-    ) {
+    /// - Parameter carrier: 会话经哪台机器走；默认是会话键上的那台。
+    public init(connection: RelayConnection, carrier: @escaping RelayCarrier = { $0.machineFingerprint }) {
         self.connection = connection
         self.carrier = carrier
-        self.localCursor = localCursor
     }
 
     public func pull(_ key: ConversationKey, peerFingerprint: String, cursor: Int64, limit: Int) async throws -> TranscriptPage {
@@ -36,11 +28,10 @@ public struct RelayTranscript: TranscriptRelay {
     }
 
     /// 先订阅再 attach，补齐拉回的帧与此后的实时帧都从这条流出来；重连后的重新 attach 与补齐由通道自己做。
-    /// 补齐帧带源端 createtime，实时帧与预览帧不带（0）——任务 4 的实时判据就是它。
-    public func attach(_ key: ConversationKey, peerFingerprint: String) async throws -> AsyncStream<LiveTranscriptFrame> {
+    /// 补齐帧带源端 createtime（可能是 0），实时帧与预览帧不带（nil）——任务 4 的实时判据就是它。
+    public func attach(_ key: ConversationKey, peerFingerprint: String, after cursor: Int64) async throws -> AsyncStream<LiveTranscriptFrame> {
         let channel = await connection.channel(for: .machine(fingerprint: await carrier(key)))
         let subscription = await channel.subscribe(conversationID: key.conversationID)
-        let cursor = await localCursor(key)
         _ = try await relayFailures {
             try await channel.attach(conversationID: key.conversationID, peerFingerprint: peerFingerprint, after: cursor)
         }
@@ -48,7 +39,7 @@ public struct RelayTranscript: TranscriptRelay {
         let forward = Task {
             for await notification in subscription {
                 guard let payload = try? notification.payload.serializedData() else { continue }
-                continuation.yield(LiveTranscriptFrame(seq: notification.seq, createtime: notification.createtime ?? 0, payload: payload))
+                continuation.yield(LiveTranscriptFrame(seq: notification.seq, createtime: notification.createtime, payload: payload))
             }
             continuation.finish()
         }

@@ -23,11 +23,11 @@ struct MachineDetailModelTests {
         let detail = model(source)
         await detail.load()
         #expect(detail.counts == MachineSessionCounts(total: 5, running: 2, waiting: 1))
-        #expect(detail.rows.map(\.id) == ["c0", "c1"])
+        #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1"])
         #expect(detail.hasMore)
         await detail.loadMore()
         await detail.loadMore()
-        #expect(detail.rows.map(\.id) == ["c0", "c1", "c2", "c3", "c4"])
+        #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1", "c2", "c3", "c4"])
         #expect(!detail.hasMore)
         await detail.loadMore()
         let requests = await source.requests
@@ -43,7 +43,7 @@ struct MachineDetailModelTests {
         await source.setSessions([session("new", title: "new")] + sessions(4))
         await detail.loadMore()
         await detail.loadMore()
-        #expect(detail.rows.map(\.id) == ["c0", "c1", "c2", "c3"])
+        #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1", "c2", "c3"])
     }
 
     @Test("改搜索词：游标回到起点，关键词原样交给机器，列表换成新的集合")
@@ -56,9 +56,9 @@ struct MachineDetailModelTests {
         await detail.loadMore()
         await detail.search("fix")
         #expect(detail.keyword == "fix")
-        #expect(detail.rows.map(\.id) == ["a", "c"])
+        #expect(detail.rows.map(\.session.conversationID) == ["a", "c"])
         await detail.loadMore()
-        #expect(detail.rows.map(\.id) == ["a", "c", "d"])
+        #expect(detail.rows.map(\.session.conversationID) == ["a", "c", "d"])
         let requests = await source.requests
         #expect(requests.map(\.cursor) == ["", "2", "", "2"])
         #expect(requests.map(\.keyword) == ["", "", "fix", "fix"])
@@ -76,7 +76,7 @@ struct MachineDetailModelTests {
         await source.release("al")
         await slow.value
         #expect(detail.keyword == "be")
-        #expect(detail.rows.map(\.id) == ["b"])
+        #expect(detail.rows.map(\.session.conversationID) == ["b"])
     }
 
     @Test("每行的已保存／未保存与本地库一致；经发起端回显的会话按发起端认")
@@ -129,6 +129,6 @@ struct MachineDetailModelTests {
         await source.setFailing(false)
         await detail.load()
         #expect(!detail.unreachable)
-        #expect(detail.rows.map(\.id) == ["c0", "c1"])
+        #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1"])
     }
 }

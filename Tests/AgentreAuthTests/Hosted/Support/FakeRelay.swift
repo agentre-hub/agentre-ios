@@ -50,6 +50,12 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
         for socket in open { socket.push(frame.data, toChannelsDeclaring: target) }
     }
 
+    /// 服务端判死声明了 `target` 的每条通道（空载荷）。
+    func closeChannels(_ target: String) {
+        let open = lock.withLock { sockets }
+        for socket in open { socket.push(Data(), toChannelsDeclaring: target) }
+    }
+
     fileprivate func respond(target: String, method: UInt32, payload: Data) -> Proto? {
         let call = Call(target: target, method: method, payload: ProtoFields(payload))
         let machine = lock.withLock {

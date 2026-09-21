@@ -188,6 +188,29 @@ final class FakeDialer: RelaySocketDialing, @unchecked Sendable {
 }
 
 /// 一条握手完成的真实中继通道，对端是伪 socket。
+/// 与装配层同一种接法：按对话订阅通道，每到一帧就落库（ConversationSync.follow）。
+/// 订阅在交回之前已经挂上，此后 attach 补齐拉回的帧不会漏掉。
+func follow(
+    _ conversationIDs: [String], on channel: RelayChannel, into store: LocalConversationStore, via machine: String
+) async -> Task<Void, Never> {
+    var streams: [AsyncStream<RelayNotification>] = []
+    for conversationID in conversationIDs {
+        streams.append(await channel.subscribe(conversationID: conversationID))
+    }
+    let subscriptions = streams
+    return Task {
+        await withTaskGroup(of: Void.self) { group in
+            for stream in subscriptions {
+                group.addTask {
+                    for await notification in stream {
+                        try? await store.record([IncomingFrame(notification)], via: machine)
+                    }
+                }
+            }
+        }
+    }
+}
+
 func readyChannel(_ target: RelayTarget) async throws -> (RelayConnection, RelayChannel, FakeSocket, String) {
     let dialer = FakeDialer()
     let connection = RelayConnection(

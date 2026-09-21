@@ -35,7 +35,23 @@ public struct RelayNotification: Sendable {
     public let createtime: Int64?
 }
 
+/// 一条对话上交出的一件事（`RelayChannel.events`）。
+public enum RelayConversationEvent: Sendable {
+    /// 一次 attach 完成：机器此刻的最高帧号。会话已中断（接不回实时流、只拉历史）时为 nil——
+    /// 对端没有答最高帧号。
+    case attached(latestSeq: Int64?)
+    case notification(RelayNotification)
+}
+
 extension Agentre_Wire_RpcNotification {
+    /// 预览帧：逐片段增量与过场状态，不带号、不入转录（协议 0.2.0）。
+    var isPreviewFrame: Bool {
+        switch payload {
+        case .runtimeEvent(let v), .autonomousTurnEvent(let v): v.preview
+        default: false
+        }
+    }
+
     /// 这条通知所属的对话与它的 seq（seq 为 0 表示非持久帧）。
     var durableKey: (conversationID: String, seq: Int64)? {
         switch payload {

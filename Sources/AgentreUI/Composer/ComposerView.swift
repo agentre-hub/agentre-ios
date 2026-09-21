@@ -23,11 +23,9 @@ public struct ComposerView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            if !model.queue.dropped.isEmpty {
-                droppedSection
-            } else if !model.queue.items.isEmpty {
-                queuedSection
-            }
+            // 上一轮没发出去的还等着处置时，这一轮排着的照样列出来：它们要看得见、撤得掉。
+            if !model.queue.dropped.isEmpty { droppedSection }
+            if !model.queue.items.isEmpty { queuedSection }
             if !model.candidates.isEmpty { candidateList }
             if isOffline {
                 ComposerOfflineText().padding(.horizontal, 16).padding(.top, 4)

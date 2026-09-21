@@ -46,12 +46,7 @@ public struct MachineSession: Sendable, Equatable, Identifiable {
 
     /// 这一行此刻的状态，与消息列表同一套判法。
     public var activity: ConversationActivity {
-        if waitingForInput { return .waiting }
-        switch lifecycleState {
-        case SavedConversation.Lifecycle.running: return .typing
-        case SavedConversation.Lifecycle.failed: return .failed
-        default: return .idle
-        }
+        ConversationActivity(lifecycleState: lifecycleState, waitingForInput: waitingForInput)
     }
 }
 

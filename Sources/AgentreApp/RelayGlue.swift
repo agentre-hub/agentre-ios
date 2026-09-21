@@ -22,8 +22,9 @@ struct RewindingTransfer: MachineSessionTransfer {
     let inner: any MachineSessionTransfer
     let store: LocalConversationStore
 
-    func attach(conversationID: String, peerFingerprint: String, on machineFingerprint: String) async throws -> Int64 {
+    func attach(conversationID: String, peerFingerprint: String, on machineFingerprint: String) async throws -> Int64? {
         let highWater = try await inner.attach(conversationID: conversationID, peerFingerprint: peerFingerprint, on: machineFingerprint)
+        guard let highWater else { return nil }
         let key = ConversationKey(
             machineFingerprint: peerFingerprint.isEmpty ? machineFingerprint : peerFingerprint, conversationID: conversationID
         )
@@ -46,14 +47,14 @@ struct TurnFeedingTranscript: TranscriptRelay {
         try await inner.pull(key, peerFingerprint: peerFingerprint, cursor: cursor, limit: limit)
     }
 
-    func attach(_ key: ConversationKey, peerFingerprint: String) async throws -> AsyncStream<LiveTranscriptFrame> {
-        let frames = try await inner.attach(key, peerFingerprint: peerFingerprint)
+    func attach(_ key: ConversationKey, peerFingerprint: String, after cursor: Int64) async throws -> AsyncStream<LiveTranscriptFrame> {
+        let frames = try await inner.attach(key, peerFingerprint: peerFingerprint, after: cursor)
         let feed = feed
         let (stream, continuation) = AsyncStream<LiveTranscriptFrame>.makeStream()
         let forward = Task {
             for await frame in frames {
                 continuation.yield(frame)
-                if frame.createtime == 0, let signal = TurnSignal(payload: frame.payload) {
+                if frame.createtime == nil, let signal = TurnSignal(payload: frame.payload) {
                     await feed(signal)
                 }
             }

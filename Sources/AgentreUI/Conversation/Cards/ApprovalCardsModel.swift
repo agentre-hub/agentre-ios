@@ -51,17 +51,16 @@ public final class ApprovalCardsModel {
 
     // MARK: 权限
 
-    /// 转录已落定的照转录；否则看本机作答走到哪一步。转录不带「本会话」这一格，
-    /// 本机点的是本会话始终允许时据此补上。
+    /// 转录已落定的照转录（决议帧带着「本会话」这一格）；否则看本机作答走到哪一步。
+    /// 别的端先答了的，本机这一答不是结局：等转录里的决议。
     public func state(of request: PermissionRequest) -> ApprovalPermissionState {
-        let local = permissions[request.requestID]
         if request.resolved {
             guard request.allowed else { return .denied }
-            return local == .delivered(.allowForSession) ? .allowedForSession : .allowed
+            return request.alwaysAllow ? .allowedForSession : .allowed
         }
-        switch local {
+        switch permissions[request.requestID] {
         case nil: return .open(submitting: false, failed: false)
-        case .sending: return .open(submitting: true, failed: false)
+        case .sending, .handledElsewhere: return .open(submitting: true, failed: false)
         case .failed: return .open(submitting: false, failed: true)
         case .delivered(.reject): return .denied
         case .delivered(.allowForSession): return .allowedForSession
@@ -69,16 +68,16 @@ public final class ApprovalCardsModel {
         }
     }
 
-    /// 发出一档处置；送达后落定，没送达回到待处置并标出失败。待处置之外的请求不收。
+    /// 发出一档处置；送达后落定，没送达回到待处置并标出失败。待处置之外的请求、没有请求号的请求不收。
     public func submit(_ disposition: PermissionDisposition, for request: PermissionRequest) async {
-        guard case .open(submitting: false, _) = state(of: request) else { return }
+        guard !request.requestID.isEmpty, case .open(submitting: false, _) = state(of: request) else { return }
         permissions[request.requestID] = .sending
         do {
-            try await answering.submitToolPermission(ToolPermissionReply(
+            let delivery = try await answering.submitToolPermission(ToolPermissionReply(
                 conversation: conversation.key, peerFingerprint: conversation.peerFingerprint,
                 requestID: request.requestID, disposition: disposition
             ))
-            permissions[request.requestID] = .delivered(disposition)
+            permissions[request.requestID] = delivery == .accepted ? .delivered(disposition) : .handledElsewhere
         } catch {
             permissions[request.requestID] = .failed
         }
@@ -91,7 +90,7 @@ public final class ApprovalCardsModel {
         if request.answered { return local == .delivered(skipped: true) ? .skipped : .answered }
         switch local {
         case nil: return .open(submitting: false)
-        case .sending: return .open(submitting: true)
+        case .sending, .handledElsewhere: return .open(submitting: true)
         case .expired: return .expired
         case .delivered(let skipped): return skipped ? .skipped : .answered
         }
@@ -140,7 +139,7 @@ public final class ApprovalCardsModel {
 
     /// 以每问选中的 label 作答；核对没过则不发出，只记下原因（宿主的两句报错）。
     public func submitAnswers(for request: QuestionRequest) async {
-        guard state(of: request) == .open(submitting: false) else { return }
+        guard !request.requestID.isEmpty, state(of: request) == .open(submitting: false) else { return }
         if let error = validate(request) {
             inputErrors[request.requestID] = error
             return
@@ -164,7 +163,7 @@ public final class ApprovalCardsModel {
     }
 
     public func skip(_ request: QuestionRequest) async {
-        guard state(of: request) == .open(submitting: false) else { return }
+        guard !request.requestID.isEmpty, state(of: request) == .open(submitting: false) else { return }
         await send(request, answers: [], skipped: true)
     }
 
@@ -172,11 +171,11 @@ public final class ApprovalCardsModel {
     private func send(_ request: QuestionRequest, answers: [QuestionAnswer], skipped: Bool) async {
         questions[request.requestID] = .sending
         do {
-            try await answering.submitAnswer(QuestionReply(
+            let delivery = try await answering.submitAnswer(QuestionReply(
                 conversation: conversation.key, peerFingerprint: conversation.peerFingerprint,
                 requestID: request.requestID, questions: request.questions.map(\.question), answers: answers, skipped: skipped
             ))
-            questions[request.requestID] = .delivered(skipped: skipped)
+            questions[request.requestID] = delivery == .accepted ? .delivered(skipped: skipped) : .handledElsewhere
             drafts[request.requestID] = nil
             selections[request.requestID] = nil
             inputErrors[request.requestID] = nil
@@ -199,6 +198,8 @@ private enum PermissionProgress: Equatable {
     case sending
     case failed
     case delivered(PermissionDisposition)
+    /// 送达了，但别的端先答了：结局等转录里的决议。
+    case handledElsewhere
 }
 
 /// 本机对一次提问的作答走到哪一步。
@@ -206,4 +207,6 @@ private enum QuestionProgress: Equatable {
     case sending
     case expired
     case delivered(skipped: Bool)
+    /// 送达了，但别的端先答了：结局等转录里的决议。
+    case handledElsewhere
 }

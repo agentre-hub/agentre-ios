@@ -26,6 +26,7 @@ public struct TranscriptRow: Sendable, Equatable, Identifiable {
         case subagent(SubagentRow)
         /// 审批 / 提问 / 计划审批：卡片视图由审批任务插入。
         case card(TranscriptCard)
+        /// 这一轮的错误原话；空串 = 没带原话，界面给出通用的一句。
         case error(String)
     }
 }
@@ -113,18 +114,6 @@ public struct SubagentRow: Sendable, Equatable {
 }
 
 // MARK: 上下文用量
-
-public struct ContextUsageMessage: Sendable, Equatable {
-    public enum Role: Sendable, Equatable { case user, assistant }
-
-    public var role: Role
-    public var totalInputTokens: Int?
-
-    public init(role: Role, totalInputTokens: Int?) {
-        self.role = role
-        self.totalInputTokens = totalInputTokens
-    }
-}
 
 /// 用量三档：正常 / 告警 / 危急。
 public enum UsageLevel: Sendable, Equatable {

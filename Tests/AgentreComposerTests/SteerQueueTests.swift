@@ -81,7 +81,7 @@ struct SteerQueueTests {
         #expect(queue.items == [QueuedSteer(id: "d-42", text: "等一下", cancellable: false, pending: false)])
     }
 
-    @Test("一轮结束：还剩的挪进 dropped 不静默清掉，已消费记录作废；已有一份暂存时不覆盖")
+    @Test("一轮结束：还剩的挪进 dropped 不静默清掉，已消费记录作废；已有一份暂存时接在后面，两轮的都不丢")
     func endTurnKeepsLeftovers() {
         var queue = settled("d-42", "等一下")
         queue.consume([ComposerConsumedSteer(queuedID: "x-1")])
@@ -90,7 +90,8 @@ struct SteerQueueTests {
         #expect(queue.dropped.map(\.text) == ["等一下"])
         queue.enqueue(id: "local-9", text: "再说")
         queue.endTurn()
-        #expect(queue.dropped.map(\.text) == ["等一下"])
+        #expect(queue.items.isEmpty)
+        #expect(queue.dropped.map(\.text) == ["等一下", "再说"])
         queue.clearDropped()
         #expect(queue.dropped.isEmpty)
         // 已消费记录随轮作废：上一轮的 x-1 不再挡住这一轮的认领。

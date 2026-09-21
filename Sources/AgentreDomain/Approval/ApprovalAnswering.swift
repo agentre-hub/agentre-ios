@@ -67,9 +67,17 @@ public struct QuestionReply: Sendable, Equatable {
     }
 }
 
+/// 一次作答送达之后，对端怎么说。
+public enum ApprovalDelivery: Sendable, Equatable {
+    /// 收下了这一答：结局就是本机的这一答。
+    case accepted
+    /// 别的端先答了：这一问已不再等人，但结局不是本机这一答，要等转录里的决议帧。
+    case alreadyHandled
+}
+
 /// 审批与提问的作答经宿主既有 RPC 发出：通道一律是 `machine:<承载机器指纹>`，
 /// 请求里以 conversation_id 指明对话。中继适配器归装配层。抛错即没送达。
 public protocol ApprovalAnswering: Sendable {
-    func submitToolPermission(_ reply: ToolPermissionReply) async throws
-    func submitAnswer(_ reply: QuestionReply) async throws
+    func submitToolPermission(_ reply: ToolPermissionReply) async throws -> ApprovalDelivery
+    func submitAnswer(_ reply: QuestionReply) async throws -> ApprovalDelivery
 }

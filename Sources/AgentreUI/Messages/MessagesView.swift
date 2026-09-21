@@ -101,14 +101,7 @@ struct MessageRow: View {
             .opacity(conversation.activity == .idle ? 0 : 1)
     }
 
-    private var statusToken: ColorToken {
-        switch conversation.activity {
-        case .waiting: .waiting
-        case .typing: .running
-        case .failed: .failure
-        case .idle: .textSecondary
-        }
-    }
+    private var statusToken: ColorToken { conversation.activity.statusToken }
 
     @ViewBuilder private var preview: some View {
         switch conversation.activity {
@@ -149,6 +142,18 @@ struct MessageRow: View {
                 .lineLimit(3)
         case nil:
             EmptyView()
+        }
+    }
+}
+
+extension ConversationActivity {
+    /// 状态点的颜色：消息列表与机器详情是同一套。
+    var statusToken: ColorToken {
+        switch self {
+        case .waiting: .waiting
+        case .typing: .running
+        case .failed: .failure
+        case .idle: .textSecondary
         }
     }
 }

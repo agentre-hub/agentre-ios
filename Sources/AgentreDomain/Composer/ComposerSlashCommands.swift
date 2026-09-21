@@ -1,7 +1,7 @@
 import Foundation
 
 // 斜杠命令的清单，规则移植自宿主 agentre-ui/src/chat-input/slash/registry.ts 与 filter.ts。
-// 选中之后只把字面文本填回输入框；`/compact` 在 CLI 不认它的后端上由发送那一处转成压缩调用。
+// 选中之后只把字面文本填回输入框；`/compact` 在摆得出它而 CLI 不认它的后端上由发送那一处转成压缩调用。
 
 public struct SlashCommand: Sendable, Equatable, Identifiable {
     public enum Builtin: String, Sendable {
@@ -33,9 +33,11 @@ public enum SlashCommands {
     /// 摆得出 `/compact` 的后端。
     private static let compactBackends: Set<String> = ["claudecode", "codex", "piagent"]
 
-    /// 这个后端的 CLI 自己认 `/compact` 吗；不认的要由宿主转成一次压缩调用。
-    public static func isNativeCompact(backendType: String) -> Bool {
-        nativeCompactBackends.contains(backendType)
+    /// 发出 `/compact` 时要由宿主转成一次压缩调用吗：摆得出这条命令、而 CLI 自己不认的后端才转
+    /// （与桌面端 chat-panel 只在有压缩通路时拦下同一口径）。别的后端照原文发出——没有压缩通路的
+    /// 后端收到压缩调用只会空跑一轮。
+    public static func isHostCompact(backendType: String) -> Bool {
+        compactBackends.contains(backendType) && !nativeCompactBackends.contains(backendType)
     }
 
     /// Skill 的触发字符：Claude Code 与 Pi 用 `/`，Codex 用 `$`；没有 Skill 一说的后端为 nil。

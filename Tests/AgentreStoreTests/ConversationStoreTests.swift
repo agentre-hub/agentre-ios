@@ -106,7 +106,7 @@ struct ConversationStoreTests {
         #expect(try await store.latestSeq(key("never-saved")) == 0)
 
         let (connection, channel, socket, id) = try await readyChannel(.machine(fingerprint: machine))
-        let following = Task { try await store.follow(channel.notifications.map(IncomingFrame.init), via: machine) }
+        let following = await follow(["conv-1"], on: channel, into: store, via: machine)
         defer { following.cancel() }
 
         async let attached = channel.attach(conversationID: "conv-1", after: cursor)
@@ -138,7 +138,7 @@ struct ConversationStoreTests {
         try await store.save(summary("conv-1"), via: machine)
 
         let (connection, channel, socket, id) = try await readyChannel(.machine(fingerprint: machine))
-        let following = Task { try await store.follow(channel.notifications.map(IncomingFrame.init), via: machine) }
+        let following = await follow(["conv-1", "conv-unsaved"], on: channel, into: store, via: machine)
         defer { following.cancel() }
 
         async let attached = channel.attach(conversationID: "conv-1", after: try await store.latestSeq(key("conv-1")))

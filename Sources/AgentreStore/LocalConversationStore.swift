@@ -25,6 +25,13 @@ public struct IncomingFrame: Sendable {
     var isLive: Bool { createtime == nil }
 }
 
+/// 跟随一条已保存会话要的三样：会话键、带给机器的发起端指纹、经哪台机器走。
+public struct FollowTarget: Sendable, Equatable {
+    public let key: ConversationKey
+    public let peerFingerprint: String
+    public let carrier: String
+}
+
 /// 手机自有的会话库（SwiftData，落在应用沙盒里的一个库文件上）。
 ///
 /// 与服务端 `mirror_svc` 同构：认领（`save`）→ attach → pull → 落自己的库。规则逐条对照它：
@@ -45,7 +52,7 @@ public actor LocalConversationStore: ConversationStore {
     private let directory: URL
     /// 库文件的上下文（它持有自己的容器）。删库文件重开时整个换掉。
     private var modelContext: ModelContext
-    private let now: @Sendable () -> Int64
+    let now: @Sendable () -> Int64
     /// 退出登录时删掉全部行的那一步。只有测试会换掉它（模拟删不掉）。
     private let clearRows: @Sendable (ModelContext) throws -> Void
     /// 从实时帧上看见、此刻还没落定的待决请求标识（mirror_svc 的 trackedSession.waiters）。
@@ -133,12 +140,18 @@ public actor LocalConversationStore: ConversationStore {
         try commit()
     }
 
-    /// 跟着一条帧流落库，直到它结束。App 把中继通道交出的通知接到这里。
-    public func follow<Frames: AsyncSequence & Sendable>(
-        _ frames: Frames, via machineFingerprint: String
-    ) async throws where Frames.Element == IncomingFrame {
-        for try await frame in frames {
-            try record([frame], via: machineFingerprint)
+    /// 让一批已知属于 `key` 那条会话的帧落库（补拉：会话键在手）。同一台承载机上可以有两条
+    /// 同号会话（它自己的与它代转的他端的），按会话键认行，不按承载机 + 会话号猜。
+    func record(_ frames: [IncomingFrame], into key: ConversationKey) throws {
+        guard let row = try fetchConversation(key) else { return }
+        try apply(frames.filter { !$0.payload.isPreview }, to: row)
+        try commit()
+    }
+
+    /// 全部已保存会话的跟随目标。只读摘要行，不解帧——库每变一次都要问一遍。
+    public func followTargets() throws -> [FollowTarget] {
+        try modelContext.fetch(FetchDescriptor<ConversationRecord>()).map {
+            FollowTarget(key: $0.key, peerFingerprint: $0.peerFingerprint, carrier: $0.viaFingerprint)
         }
     }
 

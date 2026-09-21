@@ -76,8 +76,21 @@ actor FakeComposerRelay: ComposerRelay {
 
     func drainPending(_ key: ConversationKey, peerFingerprint: String) async throws -> [ComposerConsumedSteer]? {
         calls.append(.drain)
+        if holdDrain {
+            holdDrain = false
+            await withCheckedContinuation { drainGate = $0 }
+        }
         try check("drain")
         return drained
+    }
+
+    /// 下一次信箱这一问挂起，直到 `releaseDrain()`：观察轮末接续在路上的那一段。
+    private var holdDrain = false
+    private var drainGate: CheckedContinuation<Void, Never>?
+    func holdNextDrain() { holdDrain = true }
+    func releaseDrain() { drainGate?.resume(); drainGate = nil }
+    nonisolated func waitForHeldDrain() async {
+        for _ in 0..<1_000 where await drainGate == nil { await Task.yield() }
     }
 
     func setPermissionMode(_ key: ConversationKey, peerFingerprint: String, mode: String) async throws {

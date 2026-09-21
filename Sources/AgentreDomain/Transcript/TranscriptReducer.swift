@@ -42,11 +42,12 @@ public enum TranscriptReducer {
                 append(.toolResult(result), anchor: entry.anchor)
             case .permissionRequest(let request):
                 append(.permission(request), anchor: entry.anchor)
-            case .permissionResolved(let requestID, let allowed):
+            case .permissionResolved(let requestID, let allowed, let alwaysAllow):
                 mutateLastBlock { block in
                     guard case .permission(var request) = block, request.requestID == requestID else { return false }
                     request.resolved = true
                     request.allowed = allowed
+                    request.alwaysAllow = alwaysAllow
                     block = .permission(request)
                     return true
                 }
@@ -72,9 +73,10 @@ public enum TranscriptReducer {
             case .turnDone(let done):
                 if let turn {
                     if done.durationMs > 0 { document.messages[turn].durationMs = done.durationMs }
-                    if !done.stopError.isEmpty, document.messages[turn].errorText.isEmpty { document.messages[turn].errorText = done.stopError }
+                    if !done.stopError.isEmpty, document.messages[turn].errorText?.isEmpty ?? true { document.messages[turn].errorText = done.stopError }
                 }
                 if done.contextWindow > 0 { document.contextWindow = done.contextWindow }
+                cancelRunningForegroundSubagents()
                 document.running = false
                 open = nil
             case .error(let message):
@@ -136,6 +138,32 @@ public enum TranscriptReducer {
             }
         }
 
+        /// 一轮收尾时把仍挂在 waiting / running 的前台派遣翻成 canceled（宿主 frames.ts 的
+        /// cancelRunningForegroundSubagents）。后台任务本就可以活过发起它的那一轮，不翻。
+        mutating func cancelRunningForegroundSubagents() {
+            for messageIndex in document.messages.indices {
+                for blockIndex in document.messages[messageIndex].blocks.indices {
+                    guard case .toolUse(var use) = document.messages[messageIndex].blocks[blockIndex],
+                          var state = use.subagent, state.status == "running" || state.status == "waiting",
+                          !Self.isBackground(use, kind: state.kind) else { continue }
+                    state.status = "canceled"
+                    use.subagent = state
+                    document.messages[messageIndex].blocks[blockIndex] = .toolUse(use)
+                }
+            }
+        }
+
+        /// 这次派遣是不是后台的：Agent（local_agent）默认后台，只有显式 run_in_background=false 才是前台；
+        /// Bash（local_bash）默认前台，只有显式 run_in_background=true 才是后台；其它 kind（含空）一律前台。
+        static func isBackground(_ use: ToolUse, kind: String) -> Bool {
+            let explicit: Bool? = if case .bool(let value)? = use.input?["run_in_background"] { value } else { nil }
+            switch kind {
+            case "local_agent": return explicit != false
+            case "local_bash": return explicit == true
+            default: return false
+            }
+        }
+
         /// 先按任务 id 找（恢复重开的 Subagent 沿用同一个任务），再按派生它的调用找。
         mutating func applySubagent(_ update: SubagentUpdate) {
             let info = update.info
@@ -145,6 +173,7 @@ public enum TranscriptReducer {
                 guard matches else { return false }
                 var state = use.subagent ?? SubagentState()
                 if !info.taskID.isEmpty { state.taskID = info.taskID }
+                if !info.kind.isEmpty { state.kind = info.kind }
                 if !info.subagentType.isEmpty { state.subagentType = info.subagentType }
                 if !info.taskDescription.isEmpty { state.taskDescription = info.taskDescription }
                 if info.durationMs > 0 { state.durationMs = info.durationMs }

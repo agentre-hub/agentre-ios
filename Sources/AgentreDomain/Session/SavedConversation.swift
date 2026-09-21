@@ -98,14 +98,9 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         return lastMessageAt > readMarker
     }
 
-    /// 这一行此刻的状态。等你处理压过运行中：对端停在你这儿，不是在输入。
+    /// 这一行此刻的状态。
     public var activity: ConversationActivity {
-        if waitingForInput { return .waiting }
-        switch lifecycleState {
-        case Lifecycle.running: return .typing
-        case Lifecycle.failed: return .failed
-        default: return .idle
-        }
+        ConversationActivity(lifecycleState: lifecycleState, waitingForInput: waitingForInput)
     }
 }
 
@@ -117,6 +112,19 @@ public enum ConversationActivity: Sendable, Equatable {
     case typing
     case failed
     case idle
+
+    /// 从摘要的两格判出来。等你处理压过运行中：对端停在你这儿，不是在输入。
+    public init(lifecycleState: String, waitingForInput: Bool) {
+        if waitingForInput {
+            self = .waiting
+            return
+        }
+        switch lifecycleState {
+        case SavedConversation.Lifecycle.running: self = .typing
+        case SavedConversation.Lifecycle.failed: self = .failed
+        default: self = .idle
+        }
+    }
 }
 
 /// 等你处理的那一件事。

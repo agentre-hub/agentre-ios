@@ -511,6 +511,23 @@
         }
       }
     },
+    "transcript.error.unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This turn failed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮出错了"
+          }
+        }
+      }
+    },
     "transcript.jumpToLatest": {
       "extractionState": "manual",
       "localizations": {
