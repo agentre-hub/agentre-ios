@@ -168,12 +168,12 @@ tasks:
     note: "2026-09-21 由任务 12 拆出（用户批准）。交付 65 条中继测试（含任务 3 原 23 条），全量 470 条过。已实现：RelayMachineSessions、RelayTranscript、WireTranscriptDecoder、RelayDispatcher、RelayApprovalAnswering、RelayComposer，RelayChannel 新增 subscribe(conversationID:)。留给任务 12 的四件：(1) 会话键里的机器是发起端而非承载端，各适配器收一个 carrier 查找，任务 12 必须以本地库的 viaFingerprint 供给，否则他端发起的会话会发往错误的机器；(2) FailureFact(presenting:) 不认 RelayFailure，屏上会得到 .unknown，装配处用 RelayFailure.fact；(3) 游标回退后须在同一步删掉本地库里高于高水位的旧帧，否则重拉的帧被当重复丢弃（本地库现无此操作，用户批准任务 12 加宽到本地库补上）；(4) ComposerSettingsSource 的模型列表与后端力度来自 REST 引擎目录，ComposerMentionSource 走 REST。"
 
 review:
-  status: running
-  axis: code
-  head: 2321282
-  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/code.md
-  fixes: [2321282]
-  note: "规格轴完成（6472956 → 2321282，八项发现全部修复，主会话重跑全量 502 条过）；其间一次流监控停顿，按同一回执续跑。"
+  status: passed
+  axis: none
+  head: null
+  receipt: null
+  fixes: [2321282, ffe3c8e]
+  note: "规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（中继补齐、摘要刷新、审批卡、输入区、登录等，全修；主会话重跑全量 536 条过）。代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。"
 
 verification:
   status: pending
