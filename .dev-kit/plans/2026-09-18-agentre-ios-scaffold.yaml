@@ -169,11 +169,11 @@ tasks:
 
 review:
   status: running
-  axis: spec
-  head: 37c78c9
-  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/spec.md
-  fixes: []
-  note: null
+  axis: code
+  head: 2321282
+  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/code.md
+  fixes: [2321282]
+  note: "规格轴完成（6472956 → 2321282，八项发现全部修复，主会话重跑全量 502 条过）；其间一次流监控停顿，按同一回执续跑。"
 
 verification:
   status: pending
