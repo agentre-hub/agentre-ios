@@ -36,6 +36,10 @@ context:
   - "全量测试必须用全新的构建目录（-derivedDataPath 指向新目录）：2026-09-21 批次六之后，复用默认 DerivedData 的增量构建没把新加的 .xcstrings 编进 SPM 资源包，330 条里 5 个包假红（本地化守卫 222 处 resolved != catalog）；同一机制反向也能假绿。README 的命令须在收尾时改"
   - "编排决定（不在规格内，为并发而设）：每个功能自成一个 SwiftPM target，自带目录、自带 <Feature>.xcstrings 与自带测试目标；Package.swift 与 project.yml 由任务 2 一次性声明全部 target 后即冻结，其余任务只在自己的目录内写。没有这条，Localizable.xcstrings 与清单会成为所有界面任务的共享写入，并发就不存在"
 
+  - "修复轮已核实：agentred 的 SetPermissionMode 经 resolveSessionCapability → resolveSession，会话不在内存表即回 ErrNoActiveTurn（agentre/internal/daemon/handlers/runtime.go:1286-1304、:1454-1462、:1682-1689）；一轮 fanout 结束即 unregister 删掉该格（:940、:1871-1876）。控制台同一 RPC 两轮之间同样失败（SessionDetailView.tsx:1289-1309 的 catch 回滚并报「权限档位没改成」），宿主真正靠的是每一轮 runtime.run 带 permissionMode（agentre-server/frontend/src/components/session/useSessionSend.ts:301），起手档位取 reduceSessionState(events).permissionMode（SessionDetailView.tsx:1240、:1273）。手机 RelayComposer.run 不设 permission_mode（Sources/AgentreRelay/Adapters/RelayComposer.swift:47-66），RuntimeRunRequest 有 permission_mode = 16（agentre/pkg/wire/proto/agentre/wire/wire.proto 的 RuntimeRunRequest）"
+  - "修复轮已核实：回到前台只调 services.resume()（Sources/AgentreApp/AppRootView.swift:45-53）；TranscriptModel.attach() 在实时流结束后 defer 复位 attached 即返回，无人再调（Sources/AgentreUI/Conversation/TranscriptModel.swift:78-87）——根因待任务 17 以测试证实"
+  - "修复轮已核实：审批卡英文文案为 Reject / Always Allow This Session / Allow Once（Sources/AgentreUI/Conversation/Cards/Cards.xcstrings），宿主英文原文相同（agentre/frontend/packages/agentre-ui/src/i18n/locales/en/transcript.json:210-211）；现有 inlineCard 测试以 [zh-Hans, en] 参数化但只断言次序（Tests/AgentreApprovalTests/ApprovalCardScreenTests.swift:32-39）"
+  - "修复轮已核实：Agentre.xcodeproj 不入库、由 project.yml 经 xcodegen 生成（project.yml:1）；Debug 构建有 NSAllowsLocalNetworking，明文 http://localhost 可连；外观可在 App「我」页自设"
 tasks:
   - id: 1
     goal: "agentre 仓内：Go 侧产出一批二进制金向量与各自的期望字段值，一份 Swift 测试解码后字段逐一相等、再编码回去由 Go 解得相等消息（不以字节逐一相等为判据）；向量的新鲜度由 Go 侧守卫冻结；签入的 Swift 与重跑 buf generate 不一致时守卫失败；仓内出现第二份生成的 wire Swift 时守卫失败；本任务不得改动 wire.pb.go / wire_pb.ts / 既有 fixtures 任何一个字节。产物与其构建声明推送到 origin，供本仓钉 revision。"
@@ -167,16 +171,57 @@ tasks:
     commit: aa85d34
     note: "2026-09-21 由任务 12 拆出（用户批准）。交付 65 条中继测试（含任务 3 原 23 条），全量 470 条过。已实现：RelayMachineSessions、RelayTranscript、WireTranscriptDecoder、RelayDispatcher、RelayApprovalAnswering、RelayComposer，RelayChannel 新增 subscribe(conversationID:)。留给任务 12 的四件：(1) 会话键里的机器是发起端而非承载端，各适配器收一个 carrier 查找，任务 12 必须以本地库的 viaFingerprint 供给，否则他端发起的会话会发往错误的机器；(2) FailureFact(presenting:) 不认 RelayFailure，屏上会得到 .unknown，装配处用 RelayFailure.fact；(3) 游标回退后须在同一步删掉本地库里高于高水位的旧帧，否则重拉的帧被当重复丢弃（本地库现无此操作，用户批准任务 12 加宽到本地库补上）；(4) ComposerSettingsSource 的模型列表与后端力度来自 REST 引擎目录，ComposerMentionSource 走 REST。"
 
+  # ── 修复轮（2026-09-21 用户批准「开修复轮」；取自运行验证报告 e2e/scratch/2026-09-18-agentre-ios-scaffold/report.md 的三项不成立 + 驱动转正式 UI 测试） ──
+  - id: 15
+    goal: "审批卡英文下三枚处置同处一行且右对齐：手机端英文中间一档改为「Allow for Session」（中文仍为宿主原文「本会话始终允许」）；界面测试在 zh-Hans 与 en 两种语言、iPhone 17 宽度下断言三枚按钮的几何——同一行（纵向位置一致）、右缘对齐卡片内容右缘、自左到右拒绝 / 本会话 / 仅本次——且先对现状跑出英文下的失败（旧测试只断言次序，是假绿）。"
+    deps: []
+    files: [agentre-ios/Sources/AgentreUI/Conversation/Cards/, agentre-ios/Tests/AgentreApprovalTests/]
+    model: mid
+    interfaces: null
+    status: todo
+    commit: null
+    note: null
+
+  - id: 16
+    goal: "权限模式随每一轮发送生效：runtime.run 带上当前生效的档位；两轮之间切档只改本机当前档、不呈现失败，下一轮随 run 生效；一轮正在跑时额外调 runtime.setPermissionMode，那一次的失败才如实呈现；起手档位 = 用户这次选的 → 转录里执行端报过的当前档（permission_mode_changed）→ 执行端报的默认档。伪中继（含宿主闭环测试的 FakeRelay）照搬 agentred：会话不在跑时 setPermissionMode 回 ErrNoActiveTurn、run 带的 permission_mode 被记下可查；先让「两轮之间切档后发一句」的测试在现状下失败（现状：界面报 Not changed，且 run 不带档位）。"
+    deps: []
+    files: [agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreRelay/Adapters/RelayComposer.swift, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
+    model: strong
+    interfaces: null
+    status: todo
+    commit: null
+    note: null
+
+  - id: 17
+    goal: "挂起回前台后打开着的对话屏续上：连接断开后转录的实时跟随在回到前台（scenePhase .active）或网络恢复时重新 attach，从转录自己的最新帧号接着补，其间已落库的帧与刚发出的用户消息都在屏上、不丢不重；先用测试复现现状（attach 流结束后无人再接，屏上停在断开前、刚发的消息消失），证实根因后再修。"
+    deps: [15, 16]
+    files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
+    model: strong
+    interfaces: "TranscriptModel.start/attach（Sources/AgentreUI/Conversation/TranscriptModel.swift:50-87）；SignedInServices.resume（AppRootView.swift:45-53 调用处）"
+    status: todo
+    commit: null
+    note: null
+
+  - id: 18
+    goal: "仓库内一个 XCUITest target 驱动真实构建的 Agentre：测试进程在本机起伪 HTTP 服务端（设备流、账号、机器名册、设备、引擎目录等 REST）与伪中继（/v1/relay/client 的 WebSocket、信封、逐通道握手、machine: 通道上的 wire RPC 与实时帧，行为照搬 agentred，含任务 16 的档位语义），App 在登录屏把服务器地址改到它；走登录 → 机器 → 机器详情保存到手机 → 新建对话并发出 → 审批 Allow Once → 两轮之间切权限模式后再发一句 → 挂起回前台、打开着的对话屏续上 → 撤销本机回到登录屏；整条在 zh-Hans × en、浅色 × 深色（经 App 自己的外观设置）四种组合下各跑一遍，每步断言可见结果并留截图附件；加入 Agentre scheme 的 test，使 README 的全量命令覆盖它；scratch 里的手写驱动由它取代。"
+    deps: [15, 16, 17]
+    files: [agentre-ios/project.yml, agentre-ios/UITests/, agentre-ios/Sources/AgentreApp/, agentre-ios/README.md, agentre-ios/.gitignore]
+    model: strong
+    interfaces: "wire 生成类型 Agentre_Wire_*（经 AgentreKit 包的 AgentreWire 依赖）；中继信封 = 2 字节大端通道 ID 长度 + UTF-8 id + payload（agentre/pkg/wire/relayenvelope/relayenvelope.go:21-31）；宿主闭环测试的 FakeServer / FakeRelay（Tests/AgentreAuthTests/Hosted/Support/）可作形状参照但它们是进程内端口替身、不是网络服务"
+    status: todo
+    commit: null
+    note: "project.yml 自任务 2 冻结；用户批准驱动转正式 UI 测试 target，即批准本任务为加 target 而解冻 project.yml，只加该 target 与 scheme 条目。Package.swift 仍冻结。"
+
 review:
-  status: passed
+  status: pending
   axis: none
   head: null
   receipt: null
-  fixes: [2321282, ffe3c8e]
-  note: "规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（中继补齐、摘要刷新、审批卡、输入区、登录等，全修；主会话重跑全量 536 条过）。代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。"
+  fixes: []
+  note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。"
 
 verification:
-  status: reported
-  report: e2e/scratch/2026-09-18-agentre-ios-scaffold/report.md
-  head: 7531c98
-  note: "dev 上真实运行（授权见报告）。holds 16 项；does not hold 3 项：英文下审批三钮未排成一行、两轮之间切权限模式显示 Not changed（原因未定位）、挂起回前台时打开着的对话屏未续上且刚发的消息从屏上消失（本地库已补齐）；not observed 若干（版本不等、搜索、离线机器详情、从项目挑、队列 / 斜杠 / 提及 / 模型档位、断网与令牌刷新、真机拇指可达）。"
+  status: pending
+  report: null
+  head: null
+  note: "首轮运行验证（head 7531c98）已报告于 e2e/scratch/2026-09-18-agentre-ios-scaffold/report.md：holds 16、does not hold 3（英文审批三钮竖排、两轮之间切权限模式 Not changed、回前台对话屏未续上），用户选择开修复轮（任务 15–18）。修复轮收尾后重新运行验证。"
