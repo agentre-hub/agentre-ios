@@ -1,5 +1,5 @@
 spec: docs/specs/2026-09-18-agentre-ios-scaffold.md
-status: ready
+status: running
 mode: subagent
 worktree: "none: 用户选择在当前 checkout 上开专用分支 2026-09-18-agentre-ios-scaffold"
 
@@ -26,14 +26,14 @@ context:
 
 tasks:
   - id: 1
-    goal: "agentre 仓内：一份 Swift 测试把 23 份 fixtures/*.json 解码再编码得到与 Go/TS 同样的字节；新鲜度守卫在签入的 Swift 与重跑 buf generate 不一致时失败；仓内出现第二份生成的 wire Swift 时守卫失败；重新生成不得改动 wire.pb.go / wire_pb.ts / fixtures 任何一个字节。产物与其构建声明推送到 origin，供本仓钉 revision。"
+    goal: "agentre 仓内：Go 侧产出一批二进制金向量与各自的期望字段值，一份 Swift 测试解码后字段逐一相等、再编码回去由 Go 解得相等消息（不以字节逐一相等为判据）；向量的新鲜度由 Go 侧守卫冻结；签入的 Swift 与重跑 buf generate 不一致时守卫失败；仓内出现第二份生成的 wire Swift 时守卫失败；本任务不得改动 wire.pb.go / wire_pb.ts / 既有 fixtures 任何一个字节。产物与其构建声明推送到 origin，供本仓钉 revision。"
     deps: []
-    files: [agentre/pkg/wire/buf.gen.yaml, agentre/pkg/wire/swift/, agentre/pkg/wire/guard/, agentre/frontend/packages/agentre-wire/package.json, agentre/frontend/packages/agentre-wire/src/__tests__/public-boundary.test.ts, agentre/frontend/pnpm-lock.yaml, agentre/Makefile, agentre/pkg/wire/README.md, agentre/go.sum, agentre/pkg/wire/go.sum]
+    files: [agentre/pkg/wire/buf.gen.yaml, agentre/pkg/wire/swift/, agentre/pkg/wire/goldenvectors/, agentre/pkg/wire/guard/, agentre/frontend/packages/agentre-wire/package.json, agentre/frontend/packages/agentre-wire/src/__tests__/public-boundary.test.ts, agentre/frontend/pnpm-lock.yaml, agentre/Makefile, agentre/pkg/wire/README.md, agentre/go.sum, agentre/pkg/wire/go.sum]
     model: strong
     interfaces: null
-    status: todo
+    status: doing
     commit: null
-    note: "跨仓：提交只落在 agentre 仓，与本仓分开。必须推送后本仓才能钉 revision（规格「形态与边界」）。"
+    note: "跨仓：提交只落在 agentre 仓，与本仓分开。必须推送后本仓才能钉 revision（规格「形态与边界」）。2026-09-21 首次派单返回 stuck 且经主会话核实属实：规格的 wire 编解码测试接缝指错了判据——fixtures/ 那 23 份 JSON 是手写领域 codec（src/codec.gen.ts，由 tsgen_test.go 产出）的金样本，不是 protobuf 产物的；protojson 往返只有 5/23 结构相同。等规格修订后重新派单。"
   - id: 2
     goal: "登录屏发起设备流（注入伪 HTTP）：授权中 / 过期 / 被拒 / 成功四种收场各有断言，成功后令牌与本地生成的持久指纹进钥匙串并落到三标签骨架；刷新同一时刻只进行一次。同时立起后续任务全部消费的地基：project.yml、按层分模块且依赖方向由清单结构性强制的本地包（并一次性声明全部 target）、设计 token 层（深浅两套齐全、引用未定义 token 是构建期错误、视图源码无硬编码色值、每个前景 token 在 bg/surface/surface-2 上过对比度阈值）、字符串目录及其缺语言与拼接守卫、44×44pt 命中区修饰符与逐屏不重叠断言。"
     deps: [1]
