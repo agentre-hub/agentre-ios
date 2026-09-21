@@ -1,0 +1,44 @@
+import Foundation
+
+/// 一个可选的模型：供应商键 + 模型键（SetModelTargetRequest 的两格）。
+public struct ComposerModelChoice: Sendable, Equatable, Hashable {
+    public var providerKey: String
+    public var modelKey: String
+
+    public init(providerKey: String, modelKey: String) {
+        self.providerKey = providerKey
+        self.modelKey = modelKey
+    }
+}
+
+/// 面板上三项的当前取值与可选范围。
+public struct ComposerSettings: Sendable, Equatable {
+    /// 当前生效的权限档位。
+    public var permissionMode: String
+    /// 执行端报的可选档位；空 = 这个后端没有权限门。
+    public var permissionModes: [String]
+    public var model: ComposerModelChoice?
+    public var models: [ComposerModelChoice]
+    /// 会话行上的思考档位；空 = 跟随后端配置。
+    public var reasoningEffort: String
+    /// 后端配置的档位，会话行为空时由它兜底；空 = 后端也没配。
+    public var backendReasoningEffort: String
+
+    /// 五个档位，从弱到强，与宿主 reasoning-effort-picker 同一张表。
+    public static let reasoningEffortLevels = ["low", "medium", "high", "xhigh", "max"]
+
+    public init(
+        permissionMode: String = "", permissionModes: [String] = [], model: ComposerModelChoice? = nil, models: [ComposerModelChoice] = [],
+        reasoningEffort: String = "", backendReasoningEffort: String = ""
+    ) {
+        self.permissionMode = permissionMode
+        self.permissionModes = permissionModes
+        self.model = model
+        self.models = models
+        self.reasoningEffort = reasoningEffort
+        self.backendReasoningEffort = backendReasoningEffort
+    }
+
+    /// 有效档位：会话行上的值非空时是它，为空时是后端配置的档位；都空时是空（界面标注「默认」）。
+    public var effectiveReasoningEffort: String { reasoningEffort.isEmpty ? backendReasoningEffort : reasoningEffort }
+}

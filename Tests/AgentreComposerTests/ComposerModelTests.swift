@@ -1,0 +1,274 @@
+import AgentreDomain
+@testable import AgentreUI
+import Testing
+
+/// 输入区的视图模型：发送与排队、轮末接续、就地触发、面板三项的切换与删除会话。
+@MainActor
+@Suite("输入区模型")
+struct ComposerModelTests {
+    // MARK: 发送与排队
+
+    @Test("空闲时发送：开新一轮，输入框清空")
+    func idleSendRuns() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.text = "修构建"
+        await model.send()
+        #expect(await relay.calls == [.run("修构建", compact: false)])
+        #expect(model.text.isEmpty)
+    }
+
+    @Test("一轮运行中：输入框不禁用，发送进入队列（插话），不开新一轮；应答带回句柄后可撤")
+    func runningSendQueues() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "顺便看下测试"
+        #expect(model.canSend)
+        await model.send()
+        #expect(await relay.calls == [.steer(queuedID: "local-1", text: "顺便看下测试")])
+        #expect(model.text.isEmpty)
+        #expect(model.queue.items == [QueuedSteer(id: "exec-local-1", text: "顺便看下测试", cancellable: true, pending: false)])
+        // 还能接着排下一条。
+        model.text = "再一条"
+        #expect(model.canSend)
+    }
+
+    @Test("排队的插话没排进去：从队列拿掉，字还回输入框")
+    func steerFails() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("steer")
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "等一下"
+        await model.send()
+        #expect(model.queue.items.isEmpty)
+        #expect(model.text == "等一下")
+        #expect(model.failure == .send)
+    }
+
+    @Test("空白消息不发")
+    func blankNotSent() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.text = "  \n"
+        #expect(!model.canSend)
+        await model.send()
+        #expect(await relay.calls.isEmpty)
+    }
+
+    @Test("后端取走了一条：它从队列里消失")
+    func consumed() async throws {
+        let model = composer()
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        model.steersConsumed([ComposerConsumedSteer(queuedID: "exec-local-1", text: "a")])
+        #expect(model.queue.items.isEmpty)
+    }
+
+    @Test("撤回一条：按执行端句柄撤，撤掉即消失")
+    func cancel() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await model.cancelQueued("exec-local-1")
+        #expect(await relay.calls.last == .cancel("exec-local-1"))
+        #expect(model.queue.items.isEmpty)
+    }
+
+    @Test("撤回失败：这条留在原位、转成撤不掉")
+    func cancelRefused() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("cancel")
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await model.cancelQueued("exec-local-1")
+        #expect(model.queue.items == [QueuedSteer(id: "exec-local-1", text: "a", cancellable: false, pending: false)])
+    }
+
+    @Test("一轮正常收场：问执行端信箱里还剩什么，取回的几条空一行合并成下一轮")
+    func turnEndContinues() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        model.text = "b"
+        await model.send()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-local-1", text: "a"), ComposerConsumedSteer(queuedID: "exec-local-2", text: "b")])
+        await model.turnEnded(normally: true)
+        #expect(await relay.calls.suffix(2) == [.drain, .run("a\n\nb", compact: false)])
+        #expect(model.queue.items.isEmpty)
+        #expect(model.queue.dropped.isEmpty)
+        #expect(!model.isTurnRunning)
+    }
+
+    @Test("承载机不答信箱这一问：还排着的挪进「未发送」，可恢复为草稿")
+    func turnEndUndrainable() async throws {
+        let relay = FakeComposerRelay()
+        await relay.set(drained: nil)
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await model.turnEnded(normally: true)
+        #expect(model.queue.dropped.map(\.text) == ["a"])
+        #expect(await !relay.calls.contains(.run("a", compact: false)))
+        model.text = "已有"
+        model.restoreDropped()
+        #expect(model.text == "已有\n\na")
+        #expect(model.queue.dropped.isEmpty)
+    }
+
+    @Test("出错或中断的一轮：不问信箱、不接续，还排着的挪进「未发送」；丢弃即清掉")
+    func turnAborted() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await model.turnEnded(normally: false)
+        #expect(await !relay.calls.contains(.drain))
+        #expect(model.queue.dropped.map(\.text) == ["a"])
+        model.discardDropped()
+        #expect(model.queue.dropped.isEmpty)
+    }
+
+    @Test("非 claudecode 的后端上 /compact 转成一次压缩调用，不当普通消息发")
+    func compact() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(backend: "codex", relay: relay)
+        model.text = "/compact"
+        await model.send()
+        #expect(await relay.calls == [.run("/compact", compact: true)])
+        let native = FakeComposerRelay()
+        let claude = composer(backend: "claudecode", relay: native)
+        claude.text = "/compact"
+        await claude.send()
+        #expect(await native.calls == [.run("/compact", compact: false)])
+    }
+
+    // MARK: 斜杠命令
+
+    @Test("键入 / 就地给出候选；Skill 目录向承载机要，按会话工作目录解析")
+    func slashCandidates() async throws {
+        let relay = FakeComposerRelay()
+        await relay.set(skills: [ComposerSkillSource(name: "deploy", description: "上线")])
+        let model = composer(relay: relay)
+        model.edit(text: "/", cursor: 1)
+        try await eventually("skills") { model.candidates.count == 2 }
+        #expect(await relay.calls == [.skills(machine: "fp-mini", backend: "claudecode", cwd: "/srv/app")])
+        #expect(model.candidates.map(\.title) == ["/compact", "/deploy"])
+        model.edit(text: "/dep", cursor: 4)
+        #expect(model.candidates.map(\.title) == ["/deploy"])
+        model.select(model.candidates[0])
+        #expect(model.text == "/deploy ")
+        #expect(model.cursor == 8)
+        #expect(model.candidates.isEmpty)
+        // 目录只要一次。
+        model.edit(text: "/deploy /", cursor: 9)
+        #expect(await relay.calls.count == 1)
+    }
+
+    @Test("Skill 目录要不到：候选只剩内置命令，输入照常")
+    func slashSkillsFail() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("skills")
+        let model = composer(relay: relay)
+        model.edit(text: "看 /", cursor: 3)
+        try await eventually("asked") { await relay.calls.count == 1 }
+        #expect(model.candidates.map(\.title) == ["/compact"])
+    }
+
+    @Test("光标离开触发位：候选收起")
+    func slashDismiss() async throws {
+        let model = composer()
+        model.edit(text: "/co", cursor: 3)
+        #expect(!model.candidates.isEmpty)
+        model.edit(text: "/co x", cursor: 5)
+        #expect(model.candidates.isEmpty)
+    }
+
+    // MARK: 提及
+
+    @Test("键入 @ 就地给出 Agent 与设备候选；选中后正文以提及 XML 发出")
+    func mentions() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.edit(text: "请 @re", cursor: 5)
+        try await eventually("mentions") { !model.candidates.isEmpty }
+        #expect(model.candidates.map(\.title) == ["reviewer", "writer"])
+        model.select(model.candidates[0])
+        #expect(model.text == "请 @reviewer ")
+        model.text += "看下"
+        await model.send()
+        #expect(await relay.calls == [.run(#"请 <agent id="7">reviewer</agent> 看下"#, compact: false)])
+    }
+
+    // MARK: 面板三项
+
+    @Test("载入这条会话的三项当前取值；切换经中继写入，成功后面板标注新值")
+    func settings() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        await model.load()
+        #expect(model.settings == sampleSettings)
+        await model.setPermissionMode("plan")
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        await model.setReasoningEffort("max")
+        #expect(await relay.calls == [.permission("plan"), .model("anthropic", "claude-opus"), .effort("max")])
+        #expect(model.settings?.permissionMode == "plan")
+        #expect(model.settings?.model?.modelKey == "claude-opus")
+        #expect(model.settings?.effectiveReasoningEffort == "max")
+    }
+
+    @Test("选中的就是当前值：不写；写失败：保持原值并如实说没改成")
+    func settingsNoopAndFailure() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("effort")
+        let model = composer(relay: relay)
+        await model.load()
+        await model.setPermissionMode("acceptEdits")
+        #expect(await relay.calls.isEmpty)
+        await model.setReasoningEffort("low")
+        #expect(model.settings?.reasoningEffort == "")
+        #expect(model.settings?.effectiveReasoningEffort == "high")
+        #expect(model.failure == .change)
+    }
+
+    @Test("思考档位：会话行为空时有效档位取后端配置，都空时是默认")
+    func effectiveEffort() {
+        var settings = sampleSettings
+        #expect(settings.effectiveReasoningEffort == "high")
+        settings.backendReasoningEffort = ""
+        #expect(settings.effectiveReasoningEffort == "")
+    }
+
+    // MARK: 删除
+
+    @Test("删除会话：机器上删掉，本地库也删掉，交回宿主")
+    func delete() async throws {
+        let relay = FakeComposerRelay()
+        let store = FakeConversationStore()
+        let model = composer(relay: relay, store: store)
+        #expect(await model.deleteConversation())
+        #expect(await relay.calls == [.delete])
+        #expect(await store.deleted == [key])
+    }
+
+    @Test("机器上没删成：本地一条不动")
+    func deleteFails() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("delete")
+        let store = FakeConversationStore()
+        let model = composer(relay: relay, store: store)
+        #expect(await !model.deleteConversation())
+        #expect(await store.deleted.isEmpty)
+        #expect(model.failure == .delete)
+    }
+}
