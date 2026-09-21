@@ -30,6 +30,9 @@ context:
   - "任务 3 交付的中继面（e8cb28d，全量 78 条过）：公开 API 在 Sources/AgentreRelay/（RelayConnection、RelayChannel、RelayTypes 等）与 Sources/AgentreDomain/Ports/Relay.swift；通道由 channel(for:) 取得，同一目标复用同一通道；状态经 statusUpdates 推出；重连后按 seq 游标补齐并去重，补齐期间的实时帧先缓冲；服务端关闭的通道变 .closed 不自动重开，由消费方再调 channel(for:)"
   - "2026-09-21 用户批准重切：应用入口 Sources/AgentreApp/ 在任务 2 之后只归任务 12「装配」所有。任务 4–10 的每一屏以构造参数接收领域端口，交付可独立测试的视图与视图模型，不接进 App、不写 AgentreApp；中继 → 本地库的那一行转换（RelayNotification → IncomingFrame）也归任务 12，因为 AgentreStore 不能 import AgentreRelay"
   - "手机上一切会话通道按 machine:<指纹> 寻址：服务端只对保存名单里的对话解析 conversation: 目标（agentre-server/internal/service/relay_svc/target.go:8-12）；本地库存了每条会话的承载机器指纹（任务 11，5d913cc），RPC 以 conversation_id 参数指明对话"
+  - "界面任务 5–10 在各自的 AgentreDomain/<Feature>/ 里声明需要走中继的端口（会话列表、计数、attach/pull、审批作答、发消息、派发……），用替身测；这些端口的中继适配器一律在任务 12 实现（Sources/AgentreRelay/ 在任务 3 之后归任务 12）。REST 端口则由各任务自己的 AgentreREST/<Feature>/ 实现"
+  - "命中区检查器（AgentreTestSupport，任务 2，已冻结）在 ScrollView 里看不到任何元素，只在 List 里看得到（任务 4 返回）。因此每屏的命中区测试必须另外断言「发现的目标数 = 本屏放的可点元素数」，发现零个即失败——否则就是一条恒过的假绿。可滚动的列表优先用 List；用不了 List 的屏（如转录）若无法让检查器看见元素，返回 stuck 而非放过"
+  - "任务 4 交付后的领域面（cfc00fd，全量 112 条过）：ConversationStore 协议新增 changes()，其它任务里的替身须实现它；帧是否为实时帧按「不带 createtime」判定，这是中继今天投递实时帧的形状，任务 12 的转换须保持"
   - "编排决定（不在规格内，为并发而设）：每个功能自成一个 SwiftPM target，自带目录、自带 <Feature>.xcstrings 与自带测试目标；Package.swift 与 project.yml 由任务 2 一次性声明全部 target 后即冻结，其余任务只在自己的目录内写。没有这条，Localizable.xcstrings 与清单会成为所有界面任务的共享写入，并发就不存在"
 
 tasks:
@@ -75,8 +78,8 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Tests/AgentreMessagesTests/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDomain/Session/]
     model: mid
     interfaces: "任务 11 的 SessionStore（列表读取、已读位、补齐驱动）；任务 2 的 L10n、HitTarget/assertHitTargets"
-    status: doing
-    commit: null
+    status: done
+    commit: cfc00fd
     note: "2026-09-21 随重切加宽到本地库（用户批准）与 AgentreDomain/Session/（同属任务 11 的产物，任务 4 独占一批，无并发写）。follow 规则原件：agentre-server/internal/service/mirror_svc/mirror.go:544-667（follow / followTurn / followWaiter）。"
   - id: 5
     goal: "机器名册与在线态取自 REST 工作区端点；机器详情现问机器要会话（sessionList），游标翻页不重不漏、改搜索词即回到起点、界面只承诺匹配标题；每行分得清已保存与未保存，未保存者给出「保存到手机」——保存即 attach 并按游标 pull 进本地库，此后它出现在消息列表；顶部三个计数取自 sessionCounts；机器离线时该屏无会话可列且呈现为「不在线」，已保存的会话不受影响。"
@@ -84,7 +87,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreREST/Machine/, agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Tests/AgentreMachineTests/]
     model: mid
     interfaces: "任务 11 的 SessionStore.save/contains；任务 3 的 RelayClient（machine: 通道）"
-    status: todo
+    status: doing
     commit: null
     note: null
   - id: 6
@@ -93,7 +96,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Transcript/, agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
     model: strong
     interfaces: "任务 3 的 RelayClient.attach/pull 与帧投递；任务 4 的 SessionSummary（打开会话时连哪台由 device_fingerprint 给出）"
-    status: todo
+    status: doing
     commit: null
     note: "四个纯函数的原件与用例见 context，规则逐条对齐，不另立一套。"
   - id: 7
@@ -120,7 +123,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Sources/AgentreREST/Workspace/, agentre-ios/Sources/AgentreUI/NewConversation/, agentre-ios/Tests/AgentreNewConversationTests/]
     model: mid
     interfaces: "任务 2 的 HTTPTransport；任务 11 的 SessionStore（新对话落库后即出现在列表）"
-    status: todo
+    status: doing
     commit: null
     note: "继承纯函数的原件与用例见 context。"
   - id: 10
@@ -129,12 +132,12 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreREST/Account/, agentre-ios/Sources/AgentreUI/Me/, agentre-ios/Tests/AgentreAccountTests/]
     model: mid
     interfaces: "任务 2 的 AuthSession、TokenStore、L10n"
-    status: todo
+    status: doing
     commit: null
     note: null
 
   - id: 12
-    goal: "装配：应用入口组装全部具体实现——中继帧经那一行转换接进本地库，任务 4–10 的各屏接进三标签骨架与导航，一切会话通道按 machine: 寻址；机器侧最高 seq 低于本机游标时游标回退（对照服务端 dropCursorAboveHighWater）；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
+    goal: "装配：实现任务 5–10 在领域层声明的全部中继端口适配器（均按 machine: 寻址）；应用入口组装全部具体实现——中继帧经那一行转换接进本地库，任务 4–10 的各屏接进三标签骨架与导航，一切会话通道按 machine: 寻址；机器侧最高 seq 低于本机游标时游标回退（对照服务端 dropCursorAboveHighWater）；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
     deps: [5, 6, 7, 8, 9, 10]
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
