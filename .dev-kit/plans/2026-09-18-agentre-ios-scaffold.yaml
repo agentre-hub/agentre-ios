@@ -115,9 +115,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Tests/AgentreComposerTests/]
     model: mid
     interfaces: "任务 6 的 ContextUsage 与 TranscriptStore；任务 3 的 RelayClient.call/notifications"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: f9ff7ed
+    note: "留给任务 12：Composer 各中继端口的适配器；提及来源 ComposerMentionSource 走 REST（/v1/workspace/agents 与 /v1/devices，对照控制台 SessionComposer.tsx:184-187），可在应用入口用任务 9 的 WorkspaceClient 与任务 5 的 MachineRosterClient 组合实现；turnStarted / turnEnded(normally:) / steersConsumed 事件须由装配层从转录帧喂入。"
   - id: 9
     goal: "新建对话入口给出搜索、最近用过与全部 Agent，每行呈现解析出的目标机器或具体的不可用原因并压暗；「从项目里挑」一路的继承在客户端算成纯函数（直接与继承互斥、同一 Agent 不重复、祖先由近及远、成环时列不全而非卡死）；选中 Agent 落到草稿对话，输入区上方两枚 chip；发出第一条消息时先经 machine: 通道派发、成功后立即落进本地库，落库失败时对话不被当成未创建而是如实呈现「已开始但未入列」并可重试；机器面板逐档列出次序号、机器名、后端种类，不可用档压暗并写明宿主的三种原因，手动指定后给出交回自动挑；覆盖只对这一次生效；发出第一条消息后 chip 行退场。"
     deps: [4]
