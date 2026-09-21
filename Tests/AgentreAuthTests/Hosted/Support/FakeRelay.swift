@@ -56,19 +56,25 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
         for socket in open { socket.push(Data(), toChannelsDeclaring: target) }
     }
 
-    fileprivate func respond(target: String, method: UInt32, payload: Data) -> Proto? {
+    /// 一次请求的应答：结果，或 RpcError（码 + 原文）。
+    enum Reply {
+        case result(Proto)
+        case error(code: Int64, message: String)
+    }
+
+    fileprivate func respond(target: String, method: UInt32, payload: Data) -> Reply {
         let call = Call(target: target, method: method, payload: ProtoFields(payload))
         let machine = lock.withLock {
             recorded.append(call)
             return machinesByTarget[target]
         }
         if method == WireMethod.authAccount {
-            return Proto { r in
+            return .result(Proto { r in
                 r.bool(1, true)
                 r.string(3, RelayProtocol.version)
-            }
+            })
         }
-        return machine?.answer(call)
+        return machine?.answer(call) ?? .error(code: -32601, message: "not implemented")
     }
 }
 
@@ -101,20 +107,21 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
         let method = UInt32(request.varint(1))
         let answer = relay.respond(target: target, method: method, payload: request.bytes(2) ?? Data())
         let response: Proto
-        if let answer {
+        switch answer {
+        case .result(let result):
             response = Proto { f in
                 f.varint(1, rpc.varint(1))
                 f.message(3, Proto { r in
                     r.varint(1, UInt64(method))
-                    r.bytes(2, answer.data)
+                    r.bytes(2, result.data)
                 })
             }
-        } else {
+        case .error(let code, let message):
             response = Proto { f in
                 f.varint(1, rpc.varint(1))
                 f.message(5, Proto { e in
-                    e.int(1, -32601)
-                    e.string(2, "not implemented")
+                    e.int(1, code)
+                    e.string(2, message)
                 })
             }
         }
@@ -145,6 +152,10 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 }
 
 /// 伪机器：一份会话清单与每条会话的持久帧，按 wire 方法作答。
+///
+/// 控制面照搬 agentred：会话只在一轮跑着时登记在内存表里（runtime.run 登记、一轮收场即摘掉），
+/// 不在表里时 runtime.setPermissionMode 回「没有进行中的一轮」
+/// （agentre/internal/daemon/handlers/runtime.go:1454-1462、:1682-1689，码 rpcerror.CodeRuntimeNoActiveTurn）。
 final class FakeMachine: @unchecked Sendable {
     struct Session {
         var conversationID: String
@@ -161,6 +172,8 @@ final class FakeMachine: @unchecked Sendable {
     private let lock = NSLock()
     private var sessions: [Session] = []
     private var frames: [String: [(seq: Int64, notification: Proto)]] = [:]
+    /// 此刻有一轮在跑的会话（agentred 的 RuntimeHandlers.sessions）。
+    private var activeTurns: Set<String> = []
 
     init(fingerprint: String) {
         self.fingerprint = fingerprint
@@ -173,72 +186,92 @@ final class FakeMachine: @unchecked Sendable {
         }
     }
 
-    func answer(_ call: FakeRelay.Call) -> Proto? {
+    /// 这一轮收场：agentred 在 fanout 结束时把会话从内存表里摘掉。
+    func finishTurn(_ conversationID: String) {
+        _ = lock.withLock { activeTurns.remove(conversationID) }
+    }
+
+    func answer(_ call: FakeRelay.Call) -> FakeRelay.Reply {
         lock.withLock {
             switch call.method {
-            case WireMethod.sessionList:
-                return Proto { r in
-                    for session in sessions {
-                        r.message(1, Proto { s in
-                            s.string(1, session.conversationID)
-                            s.string(2, session.peerFingerprint)
-                            s.string(4, session.title)
-                            s.string(7, session.cwd)
-                            s.string(9, session.backendType)
-                            s.string(10, session.lifecycleState)
-                            s.bool(11, session.waitingForInput)
-                            s.int(12, Int64(frames[session.conversationID]?.count ?? 0))
-                            s.int(13, session.lastMessageAt)
-                        })
-                    }
-                    r.int(4, Int64(sessions.count))
+            case WireMethod.runtimeSetPermissionMode:
+                guard activeTurns.contains(call.payload.string(1)) else {
+                    return .error(code: -32010, message: "agentruntime: no active turn for session")
                 }
-            case WireMethod.sessionCounts:
-                return Proto { r in
-                    r.int(1, Int64(sessions.count))
-                    r.int(2, Int64(sessions.count { $0.lifecycleState == "running" }))
-                    r.int(3, Int64(sessions.count { $0.waitingForInput }))
-                }
-            case WireMethod.sessionAttach:
-                let id = call.payload.string(1)
-                return Proto { r in
-                    r.string(1, id)
-                    r.int(4, Int64(frames[id]?.count ?? 0))
-                }
-            case WireMethod.sessionPull:
-                let id = call.payload.string(1)
-                let cursor = call.payload.int(3)
-                let page = (frames[id] ?? []).filter { $0.seq > cursor }
-                return Proto { r in
-                    for frame in page {
-                        r.message(1, Proto { d in
-                            d.int(1, frame.seq)
-                            d.message(2, frame.notification)
-                            d.int(3, 1_700_000_000_000 + frame.seq)
-                        })
-                    }
-                    r.int(2, page.last?.seq ?? cursor)
-                    r.int(4, frames[id]?.isEmpty == false ? 1 : 0)
-                }
-            case WireMethod.runtimeCapabilities:
-                return Proto { r in
-                    r.message(2, Proto { m in
-                        m.string(1, "default")
-                        m.string(1, "plan")
-                        m.string(2, "default")
+                return .result(Proto())
+            case WireMethod.runtimeRun:
+                let id = call.payload.string(3)
+                activeTurns.insert(id)
+                return .result(Proto { $0.string(1, id) })
+            default:
+                return .result(sessionAnswer(call))
+            }
+        }
+    }
+
+    /// 会话取材与其余方法的应答；调用方持锁。
+    private func sessionAnswer(_ call: FakeRelay.Call) -> Proto {
+        switch call.method {
+        case WireMethod.sessionList:
+            return Proto { r in
+                for session in sessions {
+                    r.message(1, Proto { s in
+                        s.string(1, session.conversationID)
+                        s.string(2, session.peerFingerprint)
+                        s.string(4, session.title)
+                        s.string(7, session.cwd)
+                        s.string(9, session.backendType)
+                        s.string(10, session.lifecycleState)
+                        s.bool(11, session.waitingForInput)
+                        s.int(12, Int64(frames[session.conversationID]?.count ?? 0))
+                        s.int(13, session.lastMessageAt)
                     })
                 }
-            case WireMethod.runtimeRun:
-                return Proto { $0.string(1, call.payload.string(3)) }
-            case WireMethod.runtimeSteer:
-                return Proto { r in
-                    r.string(1, call.payload.string(3))
-                    r.bool(2, true)
-                }
-            default:
-                // 其余（作答、Skill 目录……）一律空应答：解成对应消息的默认值。
-                return Proto()
+                r.int(4, Int64(sessions.count))
             }
+        case WireMethod.sessionCounts:
+            return Proto { r in
+                r.int(1, Int64(sessions.count))
+                r.int(2, Int64(sessions.count { $0.lifecycleState == "running" }))
+                r.int(3, Int64(sessions.count { $0.waitingForInput }))
+            }
+        case WireMethod.sessionAttach:
+            let id = call.payload.string(1)
+            return Proto { r in
+                r.string(1, id)
+                r.int(4, Int64(frames[id]?.count ?? 0))
+            }
+        case WireMethod.sessionPull:
+            let id = call.payload.string(1)
+            let cursor = call.payload.int(3)
+            let page = (frames[id] ?? []).filter { $0.seq > cursor }
+            return Proto { r in
+                for frame in page {
+                    r.message(1, Proto { d in
+                        d.int(1, frame.seq)
+                        d.message(2, frame.notification)
+                        d.int(3, 1_700_000_000_000 + frame.seq)
+                    })
+                }
+                r.int(2, page.last?.seq ?? cursor)
+                r.int(4, frames[id]?.isEmpty == false ? 1 : 0)
+            }
+        case WireMethod.runtimeCapabilities:
+            return Proto { r in
+                r.message(2, Proto { m in
+                    m.string(1, "default")
+                    m.string(1, "plan")
+                    m.string(2, "default")
+                })
+            }
+        case WireMethod.runtimeSteer:
+            return Proto { r in
+                r.string(1, call.payload.string(3))
+                r.bool(2, true)
+            }
+        default:
+            // 其余（作答、Skill 目录……）一律空应答：解成对应消息的默认值。
+            return Proto()
         }
     }
 }

@@ -122,7 +122,8 @@ final class SignedInServices {
         workspace = WorkspaceClient(transport: environment.transport, server: server)
         mentions = RESTMentionSource(workspace: workspace, machines: directory)
         settings = ComposerSettingsAdapter(
-            catalog: EngineCatalogClient(transport: environment.transport, server: server), connection: connection, carrier: carrier
+            catalog: EngineCatalogClient(transport: environment.transport, server: server), connection: connection, carrier: carrier,
+            store: store
         )
         messages = MessagesModel(store: store)
         machines = MachinesModel(roster: roster)

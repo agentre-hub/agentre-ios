@@ -49,6 +49,14 @@ public struct ComposerSettings: Sendable, Equatable {
         )
     }
 
+    /// 起手的权限档位（用户这次还没选时）：转录里执行端最后报过的当前档，它须在这台机器报的可选范围里
+    /// 才算数；否则是执行端报的默认档。与控制台 SessionDetailView 的起手值同一取法：不校验范围的话，
+    /// 一档别的后端才有的档位会随每一轮 runtime.run 过线，被执行端整轮顶回来。
+    public static func startingPermissionMode(reported: String?, allowed: [String], defaultMode: String) -> String {
+        guard let reported, !reported.isEmpty, allowed.contains(reported) else { return defaultMode }
+        return reported
+    }
+
     /// 有效档位：会话行上的值非空时是它，为空时是后端配置的档位；都空时是空（界面标注「默认」）。
     public var effectiveReasoningEffort: String { reasoningEffort.isEmpty ? backendReasoningEffort : reasoningEffort }
 }

@@ -23,7 +23,13 @@ let sampleSettings = ComposerSettings(
 // MARK: 伪端口
 
 /// 记下每一次中继调用；应答可按方法预设。
+///
+/// 控制面照搬 agentred：会话只在一轮跑着时登记（run 登记、`finishTurn()` 摘掉），不在时
+/// setPermissionMode 回「没有进行中的一轮」（agentre/internal/daemon/handlers/runtime.go:1454-1462、:1682-1689）。
 actor FakeComposerRelay: ComposerRelay {
+    /// agentruntime.ErrNoActiveTurn 的替身。
+    struct NoActiveTurn: Error {}
+
     enum Call: Equatable {
         case run(String, compact: Bool)
         case abort
@@ -38,6 +44,10 @@ actor FakeComposerRelay: ComposerRelay {
     }
 
     private(set) var calls: [Call] = []
+    /// 每一轮 run 带过去的权限档位，按调用次序。
+    private(set) var runPermissionModes: [String] = []
+    /// 执行端此刻登记着一轮在跑。
+    private(set) var activeTurn = false
     var steerHandle: (@Sendable (String) -> ComposerSteerHandle)? = { ComposerSteerHandle(queuedID: "exec-\($0)", cancellable: true) }
     var drained: [ComposerConsumedSteer]? = []
     var skills: [ComposerSkillSource] = []
@@ -47,14 +57,20 @@ actor FakeComposerRelay: ComposerRelay {
     func set(skills: [ComposerSkillSource]) { self.skills = skills }
     func fail(_ method: String) { failing.insert(method) }
     func set(steerHandle: (@Sendable (String) -> ComposerSteerHandle)?) { self.steerHandle = steerHandle }
+    /// 执行端登记一轮（别的端开的也算）。
+    func startTurn() { activeTurn = true }
+    /// 这一轮收场：执行端把会话从内存表里摘掉。
+    func finishTurn() { activeTurn = false }
 
     private func check(_ method: String) throws {
         if failing.contains(method) { throw URLError(.notConnectedToInternet) }
     }
 
-    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool) async throws {
+    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws {
         calls.append(.run(text, compact: compact))
+        runPermissionModes.append(permissionMode)
         try check("run")
+        activeTurn = true
     }
 
     func abort(_ key: ConversationKey, peerFingerprint: String) async throws {
@@ -96,6 +112,7 @@ actor FakeComposerRelay: ComposerRelay {
     func setPermissionMode(_ key: ConversationKey, peerFingerprint: String, mode: String) async throws {
         calls.append(.permission(mode))
         try check("permission")
+        guard activeTurn else { throw NoActiveTurn() }
     }
 
     func setModelTarget(_ key: ConversationKey, peerFingerprint: String, providerKey: String, modelKey: String) async throws {

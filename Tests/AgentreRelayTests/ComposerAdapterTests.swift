@@ -37,10 +37,10 @@ private func answer<Request: SwiftProtobuf.Message>(
 }
 
 @Suite struct ComposerAdapterTests {
-    @Test("发送：runtimeRun 带 conversation_id、发起端、会话的工作目录 / 标题 / Agent / 后端与来源设备")
+    @Test("发送：runtimeRun 带 conversation_id、发起端、会话的工作目录 / 标题 / Agent / 后端、本机当前的权限档位与来源设备")
     func runSendsTurn() async throws {
         let harness = await Harness.started()
-        async let sent: Void = composer(harness).run(key, peerFingerprint: "peer-1", text: "go on", compact: false)
+        async let sent: Void = composer(harness).run(key, peerFingerprint: "peer-1", text: "go on", compact: false, permissionMode: "plan")
         let body = try await answer(harness, .runtimeRun, as: Agentre_Wire_RuntimeRunRequest.self, with: Agentre_Wire_RuntimeRunResponse())
         try await sent
         #expect(body.conversationID == "conv-1")
@@ -51,6 +51,7 @@ private func answer<Request: SwiftProtobuf.Message>(
         #expect(body.title == "Fix login")
         #expect(body.agentSyncID == "agent-1")
         #expect(body.backend.type == "claudecode")
+        #expect(body.permissionMode == "plan")
         #expect(body.sourceDevice == "phone-fp")
         #expect(body.sourceDeviceName == "My iPhone")
     }
@@ -58,11 +59,34 @@ private func answer<Request: SwiftProtobuf.Message>(
     @Test("压缩：compact 为真且不带正文")
     func runCompacts() async throws {
         let harness = await Harness.started()
-        async let sent: Void = composer(harness).run(key, peerFingerprint: "peer-1", text: "/compact", compact: true)
+        async let sent: Void = composer(harness).run(key, peerFingerprint: "peer-1", text: "/compact", compact: true, permissionMode: "")
         let body = try await answer(harness, .runtimeRun, as: Agentre_Wire_RuntimeRunRequest.self, with: Agentre_Wire_RuntimeRunResponse())
         try await sent
         #expect(body.compact)
         #expect(body.userText.isEmpty)
+        #expect(body.permissionMode.isEmpty)
+    }
+
+    @Test("转录里执行端最后报过的权限档位：取最后一次非空的 permission_mode_changed（自主轮的也算），没报过为 nil")
+    func reportedPermissionMode() throws {
+        func frame(_ seq: Int64, autonomous: Bool = false, _ build: (inout Agentre_Wire_RuntimeEventNotification) -> Void) throws -> TranscriptFrame {
+            var event = Agentre_Wire_RuntimeEventNotification()
+            event.conversationID = "conv-1"
+            build(&event)
+            var notification = Agentre_Wire_RpcNotification()
+            if autonomous { notification.autonomousTurnEvent = event } else { notification.runtimeEvent = event }
+            return TranscriptFrame(seq: seq, createtime: 0, payload: try notification.serializedData())
+        }
+        func mode(_ value: String) -> (inout Agentre_Wire_RuntimeEventNotification) -> Void {
+            { $0.permissionModeChanged.mode = value }
+        }
+        let text = try frame(9) { $0.textDelta.text = "ok" }
+        #expect(RelayComposer.reportedPermissionMode(in: []) == nil)
+        #expect(RelayComposer.reportedPermissionMode(in: [text]) == nil)
+        #expect(RelayComposer.reportedPermissionMode(in: [try frame(1, mode("default")), try frame(2, mode("plan")), text]) == "plan")
+        #expect(RelayComposer.reportedPermissionMode(in: [try frame(1, mode("plan")), try frame(2, mode(""))]) == "plan")
+        #expect(RelayComposer.reportedPermissionMode(in: [try frame(1, mode("plan")), try frame(2, autonomous: true, mode("acceptEdits"))]) == "acceptEdits")
+        #expect(RelayComposer.reportedPermissionMode(in: [TranscriptFrame(seq: 1, createtime: 0, payload: Data([0xFF]))]) == nil)
     }
 
     @Test("插话：runtimeSteer 带本端句柄与正文，交回执行端的句柄")
@@ -206,7 +230,7 @@ private func answer<Request: SwiftProtobuf.Message>(
     func failuresAreDomainFacts(_ scenario: FailureScenario) async throws {
         typealias Call = @Sendable (RelayComposer) async throws -> Void
         let calls: [(Agentre_Wire_RpcMethod, Call)] = [
-            (.runtimeRun, { try await $0.run(key, peerFingerprint: "", text: "x", compact: false) }),
+            (.runtimeRun, { try await $0.run(key, peerFingerprint: "", text: "x", compact: false, permissionMode: "") }),
             (.runtimeAbort, { try await $0.abort(key, peerFingerprint: "") }),
             (.runtimeSteer, { _ = try await $0.steer(key, peerFingerprint: "", queuedID: "q", text: "x") }),
             (.runtimeCancelSteer, { _ = try await $0.cancelSteer(key, peerFingerprint: "", queuedID: "q") }),

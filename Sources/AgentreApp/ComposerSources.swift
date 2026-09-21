@@ -83,22 +83,30 @@ struct EngineCatalogClient: Sendable {
     }
 }
 
-/// 输入区面板三项：权限档位问承载机的 runtimeCapabilities，模型目录取服务端引擎目录，
+/// 输入区面板三项：权限档位的可选范围与默认档问承载机的 runtimeCapabilities，起手档位先认本地库转录里
+/// 执行端报过的当前档（permission_mode_changed），模型目录取服务端引擎目录，
 /// 会话此刻用的模型与思考档位取自本地库那一行（机器清单的 model_key / reasoning_effort）。
 /// 后端配置的档位在引擎目录里只对后端所在的那台机器下发，手机拿不到。
 struct ComposerSettingsAdapter: ComposerSettingsSource {
     let catalog: EngineCatalogClient
     let connection: RelayConnection
     let carrier: RelayCarrier
+    let store: any ConversationStore
 
     func settings(for conversation: SavedConversation) async throws -> ComposerSettings {
         let machine = await carrier(conversation.key)
         async let models = try? catalog.models()
         async let modes = try? connection.permissionModes(backendType: conversation.backendType, on: machine)
-        let (choices, permission) = await (models, modes)
+        async let frames = try? store.transcript(conversation.key)
+        let (choices, permission, transcript) = await (models, modes, frames)
+        let reported = RelayComposer.reportedPermissionMode(in: transcript ?? [])
+        // 机器没答上来时范围无从校验：照用报过的那一档（控制台同此）。
+        let starting = permission.map {
+            ComposerSettings.startingPermissionMode(reported: reported, allowed: $0.allowed, defaultMode: $0.defaultMode)
+        } ?? reported ?? ""
         return ComposerSettings(
             conversation: conversation,
-            permissionMode: permission?.defaultMode ?? "",
+            permissionMode: starting,
             permissionModes: permission?.allowed ?? [],
             models: choices ?? []
         )

@@ -136,6 +136,7 @@ enum WireMethod {
     static let runtimeCapabilities: UInt32 = 8
     static let runtimeSteer: UInt32 = 9
     static let runtimeDrainPending: UInt32 = 11
+    static let runtimeSetPermissionMode: UInt32 = 14
     static let runtimeSubmitToolPermission: UInt32 = 16
     static let runtimeRun: UInt32 = 17
     static let sessionCounts: UInt32 = 59
@@ -169,6 +170,11 @@ enum WireNotification {
             r.string(3, tool)
             r.bytes(4, Data(input.utf8))
         })
+    }
+
+    /// 执行端报的当前权限档位（permission_mode_changed）。
+    static func permissionModeChanged(_ conversationID: String, seq: Int64, _ mode: String) -> Proto {
+        runtimeEvent(conversationID, seq: seq, 6, Proto { $0.string(1, mode) })
     }
 
     static func turnStarted(_ conversationID: String) -> Proto {

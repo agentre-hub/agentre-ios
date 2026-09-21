@@ -91,6 +91,8 @@ public final class ComposerModel {
 
     private var key: ConversationKey { conversation.key }
     private var peer: String { conversation.peerFingerprint }
+    /// 本机此刻生效的权限档位，随每一轮 runtime.run 带过去；面板还没载入时为空（执行端按默认档跑）。
+    private var permissionMode: String { settings?.permissionMode ?? "" }
 
     /// 输入框从不因一轮在跑而禁用：那时发出的话进入队列。只有开新一轮的调用在飞时不能再发。
     public var canSend: Bool {
@@ -129,7 +131,7 @@ public final class ComposerModel {
             // 不认 /compact 的 CLI 上把这一句转成压缩调用，否则模型会一本正经地回答「/compact」。
             let compact = trimmed == "/compact" && SlashCommands.isHostCompact(backendType: conversation.backendType)
             do {
-                try await relay.run(key, peerFingerprint: peer, text: body, compact: compact)
+                try await relay.run(key, peerFingerprint: peer, text: body, compact: compact, permissionMode: permissionMode)
             } catch {
                 restore(draft)
             }
@@ -177,7 +179,7 @@ public final class ComposerModel {
         let next = drained.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n")
         guard !next.isEmpty else { return }
         do {
-            try await relay.run(key, peerFingerprint: peer, text: next, compact: false)
+            try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: permissionMode)
         } catch {
             restore((text: ComposerMentions.displayText(next), mentions: []))
         }
@@ -315,8 +317,17 @@ public final class ComposerModel {
 
     // MARK: 面板三项
 
+    /// 权限档位随每一轮发送带过去（与控制台 useSessionSend、桌面端 usePermissionMode 同一口径）：
+    /// 两轮之间只改本机记下的当前档，下一轮随 runtime.run 生效——此时执行端已把会话收掉，去问它
+    /// 只会得到「没有进行中的一轮」。一轮正在跑时再额外让它即刻生效，那一次没改成才如实呈现。
     public func setPermissionMode(_ mode: String) async {
-        guard let settings, settings.permissionMode != mode else { return }
+        guard var settings, settings.permissionMode != mode else { return }
+        guard isTurnRunning else {
+            failure = nil
+            settings.permissionMode = mode
+            self.settings = settings
+            return
+        }
         await change({ try await self.relay.setPermissionMode(self.key, peerFingerprint: self.peer, mode: mode) }) { $0.permissionMode = mode }
     }
 

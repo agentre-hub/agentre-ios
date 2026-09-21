@@ -44,7 +44,7 @@ public struct RelayComposer: ComposerRelay {
         self.skillGrants = skillGrants
     }
 
-    public func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool) async throws {
+    public func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws {
         let summary = await conversation(key)
         var request = Agentre_Wire_RuntimeRunRequest()
         request.conversationID = key.conversationID
@@ -61,6 +61,8 @@ public struct RelayComposer: ComposerRelay {
         } else {
             request.userText = text
         }
+        // 档位随每一轮过线（控制台 useSessionSend.ts 同此）：两轮之间执行端没有会话可改，只认这一格。
+        request.permissionMode = permissionMode
         request.sourceDevice = source.fingerprint
         request.sourceDeviceName = source.name
         let _: Agentre_Wire_RuntimeRunResponse = try await connection.call(machine: await carrier(key), .runtimeRun, request)
@@ -159,5 +161,22 @@ public struct RelayComposer: ComposerRelay {
         }
         let response: Agentre_Wire_SkillCommandsResponse = try await connection.call(machine: machineFingerprint, .skillsCommands, request)
         return response.commands.map { ComposerSkillSource(name: $0.name, description: $0.description_p) }
+    }
+}
+
+extension RelayComposer {
+    /// 转录里执行端最后一次报的当前权限档位（permission_mode_changed，空档不算）；没报过为 nil。
+    /// 与控制台 reduceSessionState 的 permissionMode 同一取法。
+    public static func reportedPermissionMode(in frames: [TranscriptFrame]) -> String? {
+        frames.reversed().lazy.compactMap { frame -> String? in
+            guard let notification = try? Agentre_Wire_RpcNotification(serializedBytes: frame.payload) else { return nil }
+            switch notification.payload {
+            case .runtimeEvent(let event), .autonomousTurnEvent(let event):
+                guard case .permissionModeChanged(let changed) = event.event, !changed.mode.isEmpty else { return nil }
+                return changed.mode
+            default:
+                return nil
+            }
+        }.first
     }
 }

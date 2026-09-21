@@ -39,7 +39,9 @@ public struct ComposerSkillSource: Sendable, Equatable {
 /// setModelTarget / setSessionReasoningEffort / sessionDelete / skillCommands。
 public protocol ComposerRelay: Sendable {
     /// 在这条对话上开新一轮。`compact` 为真时这一轮是一次上下文压缩（RuntimeRunRequest.compact）。
-    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool) async throws
+    /// `permissionMode` 是本机此刻生效的权限档位，随每一轮带过去（RuntimeRunRequest.permission_mode）；
+    /// 空 = 不知道，由执行端按它的默认档跑。
+    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws
     /// 把运行中的这一轮停下来（runtimeAbort）。
     func abort(_ key: ConversationKey, peerFingerprint: String) async throws
     /// 一轮运行中插一句话。`queuedID` 是本端铸的号，执行端回显或换成它自己的。
@@ -49,6 +51,7 @@ public protocol ComposerRelay: Sendable {
     /// 轮末问执行端插话信箱里还剩什么，顺手取走。
     /// nil = 承载机不答这一问（桌面端托管的会话由它自己在轮末接续，不该去抢）。
     func drainPending(_ key: ConversationKey, peerFingerprint: String) async throws -> [ComposerConsumedSteer]?
+    /// 让正在跑的这一轮即刻换档。执行端只对在跑的一轮认这一问：一轮收场后它回「没有进行中的一轮」。
     func setPermissionMode(_ key: ConversationKey, peerFingerprint: String, mode: String) async throws
     func setModelTarget(_ key: ConversationKey, peerFingerprint: String, providerKey: String, modelKey: String) async throws
     /// 空串是一个要写入的值：改回跟随后端配置。

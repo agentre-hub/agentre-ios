@@ -34,7 +34,7 @@ struct AssemblyTests {
         try await services.approvals.submitToolPermission(ToolPermissionReply(
             conversation: key, peerFingerprint: "origin-desktop", requestID: "perm-1", disposition: .allowOnce
         ))
-        try await services.composerRelay.run(key, peerFingerprint: "origin-desktop", text: "hi", compact: false)
+        try await services.composerRelay.run(key, peerFingerprint: "origin-desktop", text: "hi", compact: false, permissionMode: "")
 
         let approval = try #require(harness.relay.calls(WireMethod.runtimeSubmitToolPermission).first)
         #expect(approval.target == "machine:machine-a")
@@ -179,6 +179,96 @@ struct AssemblyTests {
         #expect(capabilities.target == "machine:machine-a")
         #expect(capabilities.payload.string(1) == "claudecode")
         #expect(harness.server.requests.contains { $0.url.path() == "/v1/engine/snapshot" })
+    }
+
+    @Test("两轮之间切档：只改本机当前档、不去问执行端也不报失败，下一轮 runtime.run 带上它")
+    func permissionModeRidesTheNextRun() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let environment = try harness.environment()
+        let key = try await savedElsewhere(harness, environment)
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let composer = try #require(await services.conversationModel(for: key)).composer
+        await composer.load()
+        #expect(composer.settings?.permissionMode == "default")
+
+        await composer.setPermissionMode("plan")
+        #expect(composer.failure == nil)
+        #expect(composer.settings?.permissionMode == "plan")
+        #expect(harness.relay.calls(WireMethod.runtimeSetPermissionMode).isEmpty)
+
+        composer.edit(text: "go on", cursor: 5)
+        await composer.send()
+        let run = try #require(harness.relay.calls(WireMethod.runtimeRun).first)
+        #expect(run.target == "machine:machine-a")
+        #expect(run.payload.string(16) == "plan")
+        #expect(composer.failure == nil)
+    }
+
+    @Test("一轮在跑时切档：额外调 runtime.setPermissionMode 即刻生效；执行端答没有进行中的一轮时如实报没改成、面板照旧")
+    func permissionModeDuringATurn() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let environment = try harness.environment()
+        let key = try await savedElsewhere(harness, environment)
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let screen = try #require(await services.conversationModel(for: key))
+        let attached = Task { await screen.transcript.start() }
+        defer { attached.cancel() }
+        _ = try await eventually("transcript attached") {
+            harness.relay.calls(WireMethod.sessionAttach).count >= 1 ? true : nil
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        let composer = screen.composer
+        await composer.load()
+
+        // 手机开的这一轮：执行端登记着它，切档即刻生效。
+        composer.edit(text: "go on", cursor: 5)
+        await composer.send()
+        harness.relay.notify("machine:machine-a", WireNotification.turnStarted("conv-1"))
+        _ = try await eventually("turn running") { composer.isTurnRunning ? true : nil }
+        await composer.setPermissionMode("plan")
+        let applied = try #require(harness.relay.calls(WireMethod.runtimeSetPermissionMode).first)
+        #expect(applied.target == "machine:machine-a")
+        #expect(applied.payload.string(1) == "conv-1")
+        #expect(applied.payload.string(3) == "plan")
+        #expect(composer.failure == nil)
+        #expect(composer.settings?.permissionMode == "plan")
+
+        // 执行端已把这一轮收掉、收场帧还没到：那一次失败如实呈现，面板仍标注原档。
+        harness.machine.finishTurn("conv-1")
+        await composer.setPermissionMode("default")
+        #expect(harness.relay.calls(WireMethod.runtimeSetPermissionMode).count == 2)
+        #expect(composer.failure == .change)
+        #expect(composer.settings?.permissionMode == "plan")
+    }
+
+    @Test("起手档位：转录里执行端最后报过的当前档；报过的档不在这台机器的可选范围里时退回执行端的默认档")
+    func startingPermissionModeFromTheTranscript() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let environment = try harness.environment()
+        let key = try await savedElsewhere(harness, environment)
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let conversation = try #require(try await environment.store.conversation(key))
+
+        try await environment.store.record([
+            PulledFrame(seq: 1, createtime: 1, payload: WireNotification.permissionModeChanged("conv-1", seq: 1, "default").data),
+            PulledFrame(seq: 2, createtime: 2, payload: WireNotification.permissionModeChanged("conv-1", seq: 2, "plan").data),
+            PulledFrame(seq: 3, createtime: 3, payload: WireNotification.textDelta("conv-1", seq: 3, "ok").data),
+        ], into: key, via: "machine-a")
+        #expect(try await services.settings.settings(for: conversation).permissionMode == "plan")
+
+        try await environment.store.record([
+            PulledFrame(seq: 4, createtime: 4, payload: WireNotification.permissionModeChanged("conv-1", seq: 4, "bypassPermissions").data),
+        ], into: key, via: "machine-a")
+        #expect(try await services.settings.settings(for: conversation).permissionMode == "default")
     }
 
     @Test("输入区的回合事件由转录的实时帧喂入：开始 → 运行中，插话被取走即出队，结束 → 不再运行、无残留")

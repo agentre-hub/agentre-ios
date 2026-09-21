@@ -294,6 +294,8 @@ struct ComposerModelTests {
         let model = composer(relay: relay)
         await model.load()
         #expect(model.settings == sampleSettings)
+        model.turnStarted()
+        await relay.startTurn()
         await model.setPermissionMode("plan")
         await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
         await model.setReasoningEffort("max")
@@ -301,6 +303,82 @@ struct ComposerModelTests {
         #expect(model.settings?.permissionMode == "plan")
         #expect(model.settings?.model?.modelKey == "claude-opus")
         #expect(model.settings?.effectiveReasoningEffort == "max")
+    }
+
+    @Test("两轮之间切档：只改本机当前档、不去问执行端也不报失败；下一轮与轮末接续的那一轮都带上它")
+    func permissionModeBetweenTurns() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        await model.load()
+        await model.setPermissionMode("plan")
+        #expect(model.failure == nil)
+        #expect(model.settings?.permissionMode == "plan")
+        #expect(await relay.calls.isEmpty)
+
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.calls == [.run("go on", compact: false)])
+        #expect(await relay.runPermissionModes == ["plan"])
+
+        // 这一轮收场、执行端摘掉会话；两轮之间再切一次，下一轮与它轮末接续的那一轮都带新档。
+        model.turnStarted()
+        await relay.finishTurn()
+        await model.turnEnded(normally: true)
+        await model.setPermissionMode("default")
+        #expect(model.failure == nil)
+        #expect(!(await relay.calls.contains(.permission("default"))))
+        model.edit(text: "next", cursor: 4)
+        await model.send()
+        model.turnStarted()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "q", text: "and lint")])
+        await relay.finishTurn()
+        await model.turnEnded(normally: true)
+        #expect(model.failure == nil)
+        #expect(await relay.runPermissionModes == ["plan", "default", "default"])
+    }
+
+    @Test("面板还没载入：发送照常，不带档位（执行端按默认档跑）")
+    func permissionModeUnknown() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.runPermissionModes == [""])
+    }
+
+    @Test("一轮在跑时切档：额外让执行端即刻换档；它答没有进行中的一轮时如实说没改成、面板照旧，下一轮仍带原档")
+    func permissionModeDuringATurn() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        await model.load()
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        model.turnStarted()
+        await model.setPermissionMode("plan")
+        #expect(await relay.calls.last == .permission("plan"))
+        #expect(model.failure == nil)
+        #expect(model.settings?.permissionMode == "plan")
+
+        await relay.finishTurn()
+        await model.setPermissionMode("default")
+        #expect(await relay.calls.last == .permission("default"))
+        #expect(model.failure == .change)
+        #expect(model.settings?.permissionMode == "plan")
+
+        await model.turnEnded(normally: false)
+        model.edit(text: "next", cursor: 4)
+        await model.send()
+        #expect(await relay.runPermissionModes == ["acceptEdits", "plan"])
+    }
+
+    @Test("起手档位：转录里报过且在可选范围里的那一档，否则是执行端的默认档")
+    func startingPermissionMode() {
+        let allowed = ["default", "acceptEdits", "plan"]
+        #expect(ComposerSettings.startingPermissionMode(reported: "plan", allowed: allowed, defaultMode: "default") == "plan")
+        #expect(ComposerSettings.startingPermissionMode(reported: nil, allowed: allowed, defaultMode: "default") == "default")
+        #expect(ComposerSettings.startingPermissionMode(reported: "", allowed: allowed, defaultMode: "default") == "default")
+        #expect(ComposerSettings.startingPermissionMode(reported: "bypassPermissions", allowed: allowed, defaultMode: "default") == "default")
+        #expect(ComposerSettings.startingPermissionMode(reported: "plan", allowed: [], defaultMode: "") == "")
     }
 
     @Test("选中的就是当前值：不写；写失败：保持原值并如实说没改成")
