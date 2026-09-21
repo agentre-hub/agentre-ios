@@ -140,10 +140,10 @@ tasks:
   - id: 12
     goal: "装配（12b）：应用入口组装全部具体实现——任务 14 的中继适配器、各任务的 REST 客户端、本地库（含它对 ConversationSaving / StartedConversationRecording 的遵从，以及中继帧 → IncomingFrame 的转换：IncomingFrame 在 AgentreStore，中继不能 import 它）、提及来源（任务 9 的 WorkspaceClient 与任务 5 的 MachineRosterClient 组合）、输入区的回合事件（turnStarted / turnEnded(normally:) / steersConsumed）由转录帧喂入、每条会话一个 ApprovalCardsModel 接进转录的 card 参数；任务 4–10 的各屏接进三标签骨架与导航；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
     deps: [14]
-    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
+    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Sources/AgentreStore/, agentre-ios/Tests/AgentreStoreTests/]
     model: strong
     interfaces: "任务 14 的全部中继适配器；任务 2/5/9/10 的 REST 客户端；任务 11/13 的 LocalConversationStore 与 IncomingFrame；任务 4–10 各屏的公开视图与其构造参数；各任务 note 里留给任务 12 的接线说明"
-    status: todo
+    status: doing
     commit: null
     note: "2026-09-21 用户批准新增；同日又批准拆为 14（适配器）与 12（装配）两段，以免超出单个实现者的上下文。任务 11 返回揭出：AgentreApp 在任务 2 之后无人拥有，中继 → 本地库的转换只存在于测试里。"
 
@@ -163,9 +163,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/]
     model: strong
     interfaces: "任务 3 的 RelayConnection / RelayChannel；任务 5–10 在 AgentreDomain/<Feature>/ 声明的端口；AgentreWire 生成类型"
-    status: doing
-    commit: null
-    note: "2026-09-21 由任务 12 拆出（用户批准）。依赖 AgentreStore 的适配（ConversationSaving、StartedConversationRecording、IncomingFrame 转换）不在此，归任务 12——中继不能 import 本地库。"
+    status: done
+    commit: aa85d34
+    note: "2026-09-21 由任务 12 拆出（用户批准）。交付 65 条中继测试（含任务 3 原 23 条），全量 470 条过。已实现：RelayMachineSessions、RelayTranscript、WireTranscriptDecoder、RelayDispatcher、RelayApprovalAnswering、RelayComposer，RelayChannel 新增 subscribe(conversationID:)。留给任务 12 的四件：(1) 会话键里的机器是发起端而非承载端，各适配器收一个 carrier 查找，任务 12 必须以本地库的 viaFingerprint 供给，否则他端发起的会话会发往错误的机器；(2) FailureFact(presenting:) 不认 RelayFailure，屏上会得到 .unknown，装配处用 RelayFailure.fact；(3) 游标回退后须在同一步删掉本地库里高于高水位的旧帧，否则重拉的帧被当重复丢弃（本地库现无此操作，用户批准任务 12 加宽到本地库补上）；(4) ComposerSettingsSource 的模型列表与后端力度来自 REST 引擎目录，ComposerMentionSource 走 REST。"
 
 review:
   status: pending
