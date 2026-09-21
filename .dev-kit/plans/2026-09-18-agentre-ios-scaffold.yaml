@@ -22,6 +22,11 @@ context:
   - "中继侧会话取材的形状：SessionListRequest{keyword,limit,cursor,conversation_ids}→{sessions,cursor,has_more,total}（新到旧）、SessionCountsResponse{total,running,waiting}、SessionAttachResponse{latest_seq}、SessionPullResponse{notifications,cursor,has_more,oldest_seq}，SessionSummary 带 waiting_for_input/latest_seq/last_message_at/lifecycle_state，DurableNotification 带 seq 与源端 createtime（agentre/pkg/wire/proto/agentre/wire/wire.proto:500,537,548,615,627,641）"
   - "账号可见性：daemon 在调用方账号等于自己登录账号时列出全部会话，不限发起端（agentre/internal/daemon/handlers/session_catchup.go:58-59,367-380）；waiting_for_input 由 backend 现算、从不落库（同文件:382-387）——机器详情页因此能列出桌面端上开的会话供保存"
   - "服务端 mirror_svc 就是「认领机器 → attach → pull → 落自己的库」这一形状的既有先例，手机侧的本地库与它同构（agentre-server/internal/service/mirror_svc/）"
+  - "设备流轮询的错误映射：authorization_pending→400、slow_down→429、expired_token→410、access_denied→403，响应体带 error 字段，成功体裹在 cago 的 data 信封里（agentre-server/internal/controller/device_ctr/device.go:311-318，常量 internal/service/device_svc/device.go:231-234）。slow_down 不是收场：按 RFC 8628 §3.5 把轮询间隔加 5 秒后继续等"
+  - "模拟器：2026-09-21 经用户同意删除唯一的 iOS 18.3.1 运行时（对部署目标 26.0 无用），改装 iOS 27 运行时；数据卷此前 99% 满、仅余 7.5 GiB。Mac 上 swift test 的 data-protection 钥匙串返回 -34018（缺授权），故钥匙串与命中区的无障碍树检查必须跑在模拟器上"
+  - "全仓测试命令（任务 2 立，README.md）：git submodule update --init && xcodegen generate && xcodebuild test -project Agentre.xcodeproj -scheme Agentre -destination 'platform=iOS Simulator,name=iPhone 17' -collect-test-diagnostics never DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR；2026-09-21 主会话在 6759111 上跑：退出 0，55 条全过。DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR 不可省——没有它，热构建会放过 AgentreUI 里越层的 import"
+  - "任务 2 留给后续任务的约束（其返回所报，已由全量通过佐证）：.hitTarget() 只挂在 Button 上——模拟器实测在按钮外加 frame/contentShape 不会扩大落点，所以后续界面的一切可点元素都须是 Button，不得用 onTapGesture/Toggle/Picker 绕开（否则要改 AgentreDesign，而那不在任何后续任务的写入集内）；需要真实钥匙串的测试只能跑在宿主 App 的 AgentreHostedTests 里，其源码限于 Tests/AgentreAuthTests/Hosted，后续任务用 TokenStore 端口的替身即可"
+  - "AgentreWire（Vendor/agentre/pkg/wire/swift）只含 protobuf 生成消息：protocolVersion 只是握手消息上的字段（wire.pb.swift:775 等），文件选项里的 0.2.0 不进 Swift 产物；中继信封也不在其中，是 Go 手写的 agentre/pkg/wire/relayenvelope/relayenvelope.go（2 字节大端长度 + UTF-8 通道 ID + 载荷，MaxChannelIDBytes 128，读上限 = 载荷上限 + MaxEnvelopeBytes），且其注释写明客户端一个通道 ID 都不自己造、只回送服务端发来的那个（:24-27）"
   - "编排决定（不在规格内，为并发而设）：每个功能自成一个 SwiftPM target，自带目录、自带 <Feature>.xcstrings 与自带测试目标；Package.swift 与 project.yml 由任务 2 一次性声明全部 target 后即冻结，其余任务只在自己的目录内写。没有这条，Localizable.xcstrings 与清单会成为所有界面任务的共享写入，并发就不存在"
 
 tasks:
@@ -40,8 +45,8 @@ tasks:
     files: [agentre-ios/project.yml, agentre-ios/Package.swift, agentre-ios/Package.resolved, agentre-ios/.gitmodules, agentre-ios/Vendor/agentre, agentre-ios/Sources/AgentreTestSupport/, agentre-ios/Sources/AgentreRelay/Placeholder.swift, agentre-ios/Tests/AgentreRelayTests/Placeholder.swift, agentre-ios/Tests/AgentreStoreTests/Placeholder.swift, agentre-ios/Tests/AgentreMessagesTests/Placeholder.swift, agentre-ios/Tests/AgentreMachineTests/Placeholder.swift, agentre-ios/Tests/AgentreTranscriptTests/Placeholder.swift, agentre-ios/Tests/AgentreApprovalTests/Placeholder.swift, agentre-ios/Tests/AgentreComposerTests/Placeholder.swift, agentre-ios/Tests/AgentreNewConversationTests/Placeholder.swift, agentre-ios/Tests/AgentreAccountTests/Placeholder.swift, agentre-ios/Sources/AgentreDomain/Core/, agentre-ios/Sources/AgentreDomain/Ports/Http.swift, agentre-ios/Sources/AgentreDomain/Ports/Auth.swift, agentre-ios/Sources/AgentreREST/Core/, agentre-ios/Sources/AgentreREST/Auth/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDesign/, agentre-ios/Sources/AgentreUI/Login/, agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/Tests/AgentreDesignTests/, agentre-ios/README.md, agentre-ios/.gitignore]
     model: strong
     interfaces: "任务 1 已推送的 revision 6c34e5bc73c541620b151ed1289f48ef5ac515a0（origin = git@github.com:agentre-hub/agentre.git）；以 submodule 挂在 Vendor/agentre，SPM 路径 Vendor/agentre/pkg/wire/swift，product 与模块名 AgentreWire，生成类型前缀 Agentre_Wire_"
-    status: todo
-    commit: null
+    status: done
+    commit: 6759111
     note: "2026-09-21 用户批准加宽 files：SwiftPM 拒绝没有源文件的 target、测试 target 之间不能互相 import，故任务 2 须在后续每个 target 目录放占位文件（归属后续任务，它们均排在任务 2 之后，不构成并发写），并新立 AgentreTestSupport 库 target 承载后续测试共用的 assertHitTargets 与伪 HTTP；后续任务只在自己的测试目录里放各自的替身，不写 AgentreTestSupport。"
   - id: 3
     goal: "注入伪传输下：一条通道上的并发请求按 id 路由互不串道；conversation: 与 machine: 两条通道共存于一条物理连接；逐通道握手出示设备 access token；断线后重握手、重 attach、按 seq 游标 pull，重复帧只应用一次；版本不等即停止重试该通道并给出「更新 App」这一事实而非错误码；重拨指数退让、封顶、带抖动；无人应答的 RPC 到期收场。"
@@ -49,7 +54,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreDomain/Ports/Relay.swift, agentre-ios/Tests/AgentreRelayTests/]
     model: strong
     interfaces: "AgentreWire 消息类型与 RelayEnvelope；任务 2 的 AuthSession（取当前 access token）、TransportPort"
-    status: todo
+    status: doing
     commit: null
     note: null
   - id: 11
