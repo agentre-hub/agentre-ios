@@ -1,0 +1,95 @@
+# XcodeGen 规格：Agentre.xcodeproj 由它生成，不入库（见 .gitignore）。
+# 本文件与 Package.swift 一样由脚手架任务一次性声明后冻结。
+#
+# 应用目标只做装配：全部代码在本地包 AgentreKit（Package.swift）里，
+# 这里是唯一同时 import 全部具体实现的地方。
+name: Agentre
+options:
+  bundleIdPrefix: com.agentrehub
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+    # 没有配置 Apple 团队：DEVELOPMENT_TEAM 刻意留空，本轮只对模拟器构建与测试。
+    CODE_SIGN_STYLE: Automatic
+    # import 了清单里没声明的模块即构建失败（层次方向的结构性强制）。本地包的 target
+    # 不吃这里的设置，所以 README 的全仓测试命令在命令行上同样传这一项。
+    DIAGNOSE_MISSING_TARGET_DEPENDENCIES: YES_ERROR
+packages:
+  AgentreKit:
+    path: .
+targets:
+  Agentre:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/AgentreApp
+        excludes:
+          - "Debug-Info.plist"
+    dependencies:
+      - package: AgentreKit
+        product: AgentreKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.agentrehub.agentre
+        PRODUCT_NAME: Agentre
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Agentre
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+      configs:
+        # 与开发环境（http://docker.local:8443）联调要的明文 HTTP 与本地网络例外只在
+        # Debug：它由这份局部 plist 并入生成的 Info.plist，Release 不引用它。
+        Debug:
+          INFOPLIST_FILE: Sources/AgentreApp/Debug-Info.plist
+  # 以应用为宿主的测试：只放离不开应用身份的用例（真实钥匙串）。
+  # 其余测试都是 AgentreKit 的包测试目标，见下方 scheme。
+  AgentreHostedTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/AgentreAuthTests/Hosted
+    dependencies:
+      - target: Agentre
+      - package: AgentreKit
+        product: AgentreKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.agentrehub.agentre.hostedtests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Agentre.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Agentre
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  Agentre:
+    build:
+      targets:
+        Agentre: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - AgentreHostedTests
+        - package: AgentreKit/AgentreAuthTests
+        - package: AgentreKit/AgentreDesignTests
+        - package: AgentreKit/AgentreRelayTests
+        - package: AgentreKit/AgentreStoreTests
+        - package: AgentreKit/AgentreMessagesTests
+        - package: AgentreKit/AgentreMachineTests
+        - package: AgentreKit/AgentreTranscriptTests
+        - package: AgentreKit/AgentreApprovalTests
+        - package: AgentreKit/AgentreComposerTests
+        - package: AgentreKit/AgentreNewConversationTests
+        - package: AgentreKit/AgentreAccountTests
+    archive:
+      config: Release
