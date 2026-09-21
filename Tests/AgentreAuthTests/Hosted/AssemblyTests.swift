@@ -252,23 +252,32 @@ struct AssemblyTests {
         let harness = try Harness()
         defer { harness.cleanUp() }
         try harness.signIn()
+        // 帧只能来自机器：本机库里有而机器上没有的帧，跟随接上时会按机器的高水位整段回退。
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", peerFingerprint: "origin-desktop"), frames: [
+            WireNotification.permissionModeChanged("conv-1", seq: 0, "default"),
+            WireNotification.permissionModeChanged("conv-1", seq: 0, "plan"),
+            WireNotification.textDelta("conv-1", seq: 0, "ok"),
+        ])
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-2", peerFingerprint: "origin-desktop"), frames: [
+            WireNotification.permissionModeChanged("conv-2", seq: 0, "bypassPermissions"),
+        ])
         let environment = try harness.environment()
-        let key = try await savedElsewhere(harness, environment)
+        let reported = try await savedElsewhere(harness, environment)
+        let foreign = try await environment.store.save(
+            MachineSession(conversationID: "conv-2", peerFingerprint: "origin-desktop", backendType: "claudecode", lifecycleState: "idle"),
+            via: harness.machine.fingerprint
+        )
         let services = environment.startServices()
         defer { Task { await environment.tearDown() } }
-        let conversation = try #require(try await environment.store.conversation(key))
+        _ = try await eventually("transcripts pulled from the machine") {
+            let pulled = (try await environment.store.latestSeq(reported), try await environment.store.latestSeq(foreign))
+            return pulled == (3, 1) ? true : nil
+        }
 
-        try await environment.store.record([
-            PulledFrame(seq: 1, createtime: 1, payload: WireNotification.permissionModeChanged("conv-1", seq: 1, "default").data),
-            PulledFrame(seq: 2, createtime: 2, payload: WireNotification.permissionModeChanged("conv-1", seq: 2, "plan").data),
-            PulledFrame(seq: 3, createtime: 3, payload: WireNotification.textDelta("conv-1", seq: 3, "ok").data),
-        ], into: key, via: "machine-a")
+        let conversation = try #require(try await environment.store.conversation(reported))
         #expect(try await services.settings.settings(for: conversation).permissionMode == "plan")
-
-        try await environment.store.record([
-            PulledFrame(seq: 4, createtime: 4, payload: WireNotification.permissionModeChanged("conv-1", seq: 4, "bypassPermissions").data),
-        ], into: key, via: "machine-a")
-        #expect(try await services.settings.settings(for: conversation).permissionMode == "default")
+        let other = try #require(try await environment.store.conversation(foreign))
+        #expect(try await services.settings.settings(for: other).permissionMode == "default")
     }
 
     @Test("输入区的回合事件由转录的实时帧喂入：开始 → 运行中，插话被取走即出队，结束 → 不再运行、无残留")
