@@ -33,6 +33,7 @@ context:
   - "界面任务 5–10 在各自的 AgentreDomain/<Feature>/ 里声明需要走中继的端口（会话列表、计数、attach/pull、审批作答、发消息、派发……），用替身测；这些端口的中继适配器一律在任务 12 实现（Sources/AgentreRelay/ 在任务 3 之后归任务 12）。REST 端口则由各任务自己的 AgentreREST/<Feature>/ 实现"
   - "命中区检查器（AgentreTestSupport，任务 2，已冻结）在 ScrollView 里看不到任何元素，只在 List 里看得到（任务 4 返回）。因此每屏的命中区测试必须另外断言「发现的目标数 = 本屏放的可点元素数」，发现零个即失败——否则就是一条恒过的假绿。可滚动的列表优先用 List；用不了 List 的屏（如转录）若无法让检查器看见元素，返回 stuck 而非放过"
   - "任务 4 交付后的领域面（cfc00fd，全量 112 条过）：ConversationStore 协议新增 changes()，其它任务里的替身须实现它；帧是否为实时帧按「不带 createtime」判定，这是中继今天投递实时帧的形状，任务 12 的转换须保持"
+  - "全量测试必须用全新的构建目录（-derivedDataPath 指向新目录）：2026-09-21 批次六之后，复用默认 DerivedData 的增量构建没把新加的 .xcstrings 编进 SPM 资源包，330 条里 5 个包假红（本地化守卫 222 处 resolved != catalog）；同一机制反向也能假绿。README 的命令须在收尾时改"
   - "编排决定（不在规格内，为并发而设）：每个功能自成一个 SwiftPM target，自带目录、自带 <Feature>.xcstrings 与自带测试目标；Package.swift 与 project.yml 由任务 2 一次性声明全部 target 后即冻结，其余任务只在自己的目录内写。没有这条，Localizable.xcstrings 与清单会成为所有界面任务的共享写入，并发就不存在"
 
 tasks:
@@ -87,25 +88,25 @@ tasks:
     files: [agentre-ios/Sources/AgentreREST/Machine/, agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Tests/AgentreMachineTests/]
     model: mid
     interfaces: "任务 11 的 SessionStore.save/contains；任务 3 的 RelayClient（machine: 通道）"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 0144561
+    note: "留给任务 12：MachineSessionSource 与 MachineSessionTransfer 的中继适配器，以及 LocalConversationStore 对 ConversationSaving 的遵从（SaveToPhoneTests 里的 LocalStoreWriter 示范了形状）。并发期间聚焦测试跑在 /tmp 的单 target 镜像里，镜像下 LocalizationTests 找不到字符串表，未验到 Machines.xcstrings——由批次末的全量补验。"
   - id: 6
     goal: "先把宿主的转录规则移植成带用例的纯函数再渲染：汇总类目顺序固定，失败与后台计数永不截断，失败判据同时认结果错误标志与命令退出码且折叠展开同判；运行中不出耗时；运行中自动展开、落定自动收起；仅运行态按阈值省略并给出带汇总的省略行；Subagent 折叠态一行；活动块不套容器；工具档按规范类型→输入形状→中性兜底且不查工具名表；四类卡片不进块；上下文环三档变色、浮层只读、窗口不为正时整块不渲染；历史先读本地库、不足时经 pull 按 oldest_seq/has_more 向后补（不读服务端转录端点），与实时帧按 seq 合流；上滚即停自动跟随并给出带新增计数的回到最新。"
     deps: [4]
     files: [agentre-ios/Sources/AgentreDomain/Transcript/, agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
     model: strong
     interfaces: "任务 3 的 RelayClient.attach/pull 与帧投递；任务 4 的 SessionSummary（打开会话时连哪台由 device_fingerprint 给出）"
-    status: doing
-    commit: null
-    note: "四个纯函数的原件与用例见 context，规则逐条对齐，不另立一套。"
+    status: done
+    commit: aa6f98b
+    note: "四个纯函数的原件与用例见 context，规则逐条对齐。补缺（63f1aaa）抓到两处真缺陷：滚动接线只认带手势的滚动、回到最新滚不回底部。"
   - id: 7
     goal: "审批卡片内联于转录流、不升起模态：呈现请求种类、等宽的完整输入、执行目录与命令合成的一块，以及宿主原文原序的三档处置（描边 / 浅底 / 主色实心）；输入过长时收成摘要并可展开；AskUserQuestion 复用同一形态；作答经宿主既有 RPC 发出后卡片落定；三枚按钮命中区各 44×44 且两枚允许之间有可证的死区；任何位置都没有危险启发式。"
     deps: [6]
     files: [agentre-ios/Sources/AgentreDomain/Approval/, agentre-ios/Sources/AgentreUI/Conversation/Cards/, agentre-ios/Tests/AgentreApprovalTests/]
     model: mid
     interfaces: "任务 6 的 TranscriptStore 与卡片插入点；任务 3 的 RelayClient.call"
-    status: todo
+    status: doing
     commit: null
     note: null
   - id: 8
@@ -114,7 +115,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Tests/AgentreComposerTests/]
     model: mid
     interfaces: "任务 6 的 ContextUsage 与 TranscriptStore；任务 3 的 RelayClient.call/notifications"
-    status: todo
+    status: doing
     commit: null
     note: null
   - id: 9
@@ -123,18 +124,18 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Sources/AgentreREST/Workspace/, agentre-ios/Sources/AgentreUI/NewConversation/, agentre-ios/Tests/AgentreNewConversationTests/]
     model: mid
     interfaces: "任务 2 的 HTTPTransport；任务 11 的 SessionStore（新对话落库后即出现在列表）"
-    status: doing
-    commit: null
-    note: "继承纯函数的原件与用例见 context。"
+    status: done
+    commit: 1dee0be
+    note: "继承纯函数的原件与用例见 context。留给任务 12：NewConversationDispatching 与 StartedConversationRecording 的适配器（测试里的 StoreRecorder 示范了映射）。并发期间聚焦测试跑在 /tmp 单 target 镜像，设计守卫未扫到本任务文件——由批次末的全量补验。"
   - id: 10
     goal: "「我」给出账号信息、可改且默认指向生产的服务器地址、已授权设备列表与撤销、语言、外观与退出登录；刷新被拒即回到登录屏并清空钥匙串与本地会话库；退出登录同样清空两者，换账号后读不到上一个账号的任何会话行；「没有可用的机器」呈现为带原因的事实而非无限等待；每一处用户可见的失败都是被重述为用户语言的事实，由一道覆盖错误呈现层的守卫证明其中不出现错误码或对端原串。"
     deps: [4]
     files: [agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreREST/Account/, agentre-ios/Sources/AgentreUI/Me/, agentre-ios/Tests/AgentreAccountTests/]
     model: mid
     interfaces: "任务 2 的 AuthSession、TokenStore、L10n"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 77d868c
+    note: "返回所报、主会话已核实或须收尾处理的两条：(1) 服务端只允许设备令牌撤销它自己（agentre-server/internal/controller/device_ctr/device.go:164-167，target != callerID → 403），规格承诺的撤销其它设备在本轮不变式下做不到，界面改为列出全部设备、其它设备注明去网页控制台撤销——规格待改。(2) 原话：If clearing the local store fails twice, rows can remain. Sign-out still clears the Keychain so the user is not stuck half signed out, but the previous account rows stay readable in that case——违反「换账号后读不到上一个账号的任何会话行」，修复需动本地库，留规格核对轴。"
 
   - id: 12
     goal: "装配：实现任务 5–10 在领域层声明的全部中继端口适配器（均按 machine: 寻址）；应用入口组装全部具体实现——中继帧经那一行转换接进本地库，任务 4–10 的各屏接进三标签骨架与导航，一切会话通道按 machine: 寻址；机器侧最高 seq 低于本机游标时游标回退（对照服务端 dropCursorAboveHighWater）；宿主 App 里的集成测试以伪服务端走完一整条闭环：登录 → 在机器详情保存一条会话 → 消息列表见它等你处理 → 打开读完转录 → 批准一次并发一句话 → 冷启动离线仍读得到历史。"
