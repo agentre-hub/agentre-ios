@@ -17,7 +17,7 @@ struct TranscriptScreenTests {
     }
 
     /// 一轮已落定的对话：一个 3 步的活动块、一个 Subagent、一步单独成行、一张待批准卡。
-    func settledModel() async -> TranscriptModel {
+    func settledModel(tall: Bool = false) async -> TranscriptModel {
         let spawn = use("sp", "Task", input: ["prompt": "go"], canonical: Canonical(kind: "agent.spawn", fields: ["taskDescription": "查日志"]))
         var events: [TranscriptEvent] = [
             .userMessage("修一下构建"), .turnStarted, .textDelta("先看看。"),
@@ -40,6 +40,10 @@ struct TranscriptScreenTests {
             .permissionRequest(PermissionRequest(requestID: "p1", toolCallID: "", toolName: "Bash", input: ["command": "rm -rf build"])),
             .turnDone(TurnDone(durationMs: 6600)),
         ]
+        if tall {
+            // 内容高过一屏：视口停在顶上、不在底部，「不跟随」才是真实可达的状态。
+            events += (1...20).map { .userMessage("补充说明 \($0)") }
+        }
         let frames = events.enumerated().map { stored(decoder, Int64($0.offset + 1), $0.element) }
         let model = TranscriptModel(
             conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"),
@@ -51,7 +55,7 @@ struct TranscriptScreenTests {
 
     @Test("每个可点元素都是补满 44×44 且互不重叠的按钮；检查器发现的数目等于放置的数目")
     func hitTargets() async throws {
-        let model = await settledModel()
+        let model = await settledModel(tall: true)
         // 上滚离开底部且其间来了新内容：回到最新的入口出现。
         model.userScrolledAway()
         await model.merge(live: [liveFrame(decoder, 1000, .userMessage("又一句"))])

@@ -11,8 +11,6 @@ public struct TranscriptView<Card: View>: View {
     private let agentName: String
     private let card: (TranscriptCard) -> Card
 
-    @State private var userIsScrolling = false
-
     /// - Parameters:
     ///   - agentName: 署名（由宿主给出）。
     ///   - card: 审批 / 提问 / 计划审批卡片的视图。
@@ -40,15 +38,22 @@ public struct TranscriptView<Card: View>: View {
             .environment(\.defaultMinListRowHeight, 0)
             .scrollContentBackground(.hidden)
             .background(.token(.bg))
-            .onScrollPhaseChange { _, phase in
-                userIsScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
-            }
-            .onScrollGeometryChange(for: Bool.self) { geometry in
-                geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 32
-            } action: { _, atBottom in
-                // 只认用户自己的滚动：内容增长把底部推远不算「上滚」。
-                guard userIsScrolling else { return }
-                if atBottom { model.reachedBottom() } else { model.userScrolledAway() }
+            .onScrollGeometryChange(for: ScrollPosition.self) { geometry in
+                ScrollPosition(
+                    offset: geometry.contentOffset.y,
+                    contentHeight: geometry.contentSize.height,
+                    atBottom: geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 32
+                )
+            } action: { old, new in
+                // 只认内容不变时视口自己的移动：内容增减（含首次布局、补进历史）带动的偏移不算滚动。
+                // 移到底部即恢复跟随；离开底部只认往上走——跟随的滚动只往下走。
+                // 首次布局时内容还是空的，安全区内边距会把偏移挪一下，那不是滚动。
+                guard new.contentHeight > 0, abs(new.contentHeight - old.contentHeight) < 1, abs(new.offset - old.offset) > 1 else { return }
+                if new.atBottom {
+                    if !model.follow.isFollowing { model.reachedBottom() }
+                } else if new.offset < old.offset, model.follow.isFollowing {
+                    model.userScrolledAway()
+                }
             }
             .onChange(of: model.rows) {
                 guard model.follow.isFollowing, let last = model.rows.last else { return }
@@ -57,8 +62,8 @@ public struct TranscriptView<Card: View>: View {
             .safeAreaInset(edge: .bottom) {
                 if !model.follow.isFollowing {
                     JumpToLatestButton(unseen: model.follow.unseen) {
+                        if let last = model.rows.last { proxy.scrollTo(last.id, anchor: .bottom) }
                         model.jumpToLatest()
-                        if let last = model.rows.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                     }
                     .padding(.bottom, 8)
                 }
@@ -73,6 +78,13 @@ extension TranscriptView where Card == EmptyView {
     public init(model: TranscriptModel, agentName: String) {
         self.init(model: model, agentName: agentName) { _ in EmptyView() }
     }
+}
+
+/// 视口相对内容的位置。
+fileprivate struct ScrollPosition: Equatable {
+    var offset: CGFloat
+    var contentHeight: CGFloat
+    var atBottom: Bool
 }
 
 /// 回到最新：上滚离开底部时出现，标明其间新增了多少。
