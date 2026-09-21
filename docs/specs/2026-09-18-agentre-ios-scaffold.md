@@ -29,7 +29,7 @@
 | 1 | iOS 端只经 `agentre-server` 中继接入，不做局域网直连 agentred | 中继是唯一外网可达且已有完整 RPC 面的通道。被否：局域网直连——需要自签证书固定、设备发现与 `auth.direct` 凭据三套新逻辑；且 agentred 只对 `desktop` 种类的凭据下发直连凭据与地址（`agentre/docs/architecture.md` 的远程执行一节），`mobile` 本就拿不到 |
 | 2 | 以 `mobile` 设备种类走 RFC 8628 设备流取得设备 access token，并以该令牌直接连 `/v1/relay/client` | `/v1/relay/client` 的 client 侧同时接受原生端设备 access token 与浏览器票据；`isAddressableKind()`（只认 desktop/agentred）仅约束 `/v1/relay/daemon`，client 侧无种类门。被否：复用网页的 relay ticket——那是为浏览器设头限制而生的两分钟短票，原生端用它只会白白引入续期逻辑 |
 | 3 | 逐通道握手的凭据即设备 access token，由 agentred 回调服务端 `/v1/credentials/introspect` 核验 | 该端点走 `auth_svc.BearerResolver`，不区分种类；设备凭据的 `PeerFingerprint` 即该设备自身指纹（`internal/service/device_svc/bearer.go:68`）。被否：为移动端新增一类凭据——服务端会因此产生变更，违反本轮不变式 |
-| 4 | `wire.proto` 的 Swift 产物由 `agentre` 仓生成并持有，本仓以 SPM 钉不可变 revision 消费 | 与工作区既有不变式同形：`agentre/` 拥有产物，消费方钉已推送的不可变 revision。协议兼容判据是版本号逐字相等（当前 **`0.2.0`**，见 `agentre/pkg/wire/proto/agentre/wire/wire.proto:46`；版本取自该文件选项而非任何一侧的字面量），钉不准即握手被拒。被否：本仓自带一份 `.proto` 自行生成——同一 schema 出现第二个主人，与既有的「全工作区只有一份 `wire.pb.go`」守卫精神相悖 |
+| 4 | `wire.proto` 的 Swift 产物由 `agentre` 仓生成并持有，本仓以 **git submodule** 钉不可变 revision、SPM 以本地路径依赖消费 | 与工作区既有不变式同形：`agentre/` 拥有产物，消费方钉已推送的不可变 revision。钉法用 submodule 而非 SPM 的 `url:revision:`，因为后者**只认仓库根目录的清单**——实测以 revision 拉 `agentre` 仓得到 `error: the package manifest at '/Package.swift' cannot be accessed`，而 Swift 产物的清单在 `pkg/wire/swift/`；Go 原生支持嵌套 module（`pkg/wire` 自带 `go.mod`），Swift 不支持。被否：把清单移到 `agentre` 仓根目录——桌面端仓根多出一份 Swift 清单，且每次构建 iOS 都要让 SwiftPM 克隆整个桌面仓。协议兼容判据是版本号逐字相等（当前 **`0.2.0`**，见 `agentre/pkg/wire/proto/agentre/wire/wire.proto:46`；版本取自该文件选项而非任何一侧的字面量），钉不准即握手被拒。被否：本仓自带一份 `.proto` 自行生成——同一 schema 出现第二个主人，与既有的「全工作区只有一份 `wire.pb.go`」守卫精神相悖 |
 | 5 | 移动端自有一套设计语言，不复用 `@agentre-hub/agentre-ui` 的视觉 | 该包是 React 实现，Swift 侧无法消费；且手机的信息密度、触达区与主导作业（审批）与桌面/控制台不同。被否：照搬控制台配色与密度——会得到一个被压窄的网页而不是一个 iOS 应用 |
 | 6 | 主色沿用桌面端品牌蓝，但「运行中」交给绿色 | 品牌一致性由主色承担；蓝色接管「可交互」后，若再兼表「运行中」则同一颜色承担两种语义。被否：以电光青柠同时表主操作与运行中——性格鲜明但与既有品牌脱节，且语义重载 |
 | 7 | 深色与浅色两套主题都做，随系统切换 | iOS 用户期待跟随系统。代价是每个色值出两套并各自过对比度 |
@@ -47,7 +47,7 @@
 
 ## 形态与边界
 
-本仓 `agentre-ios` 是工作区中与 `agentre`、`agentre-server`、`agentre-hub` 并列的第四个独立 git 仓库，独立提交。它对 `agentre` 仓有且只有一条依赖：承载 wire 协议 Swift 产物的 SPM 包，钉一个已推送的不可变 revision。
+本仓 `agentre-ios` 是工作区中与 `agentre`、`agentre-server`、`agentre-hub` 并列的第四个独立 git 仓库，独立提交。它对 `agentre` 仓有且只有一条依赖：以 git submodule（`Vendor/agentre`）钉一个已推送的不可变 revision，SPM 以本地路径 `Vendor/agentre/pkg/wire/swift` 依赖其中的 `AgentreWire`（生成类型前缀 `Agentre_Wire_`）。submodule 取 `origin`（GitHub）的地址——跨仓钉位一律走 GitHub，与 `agentre-server` 钉 Go module 同一条路。升级协议就是把 submodule 挪到一个新的已推送 revision，那一次提交只含这一处 gitlink 变化。
 
 代码主体位于本仓的本地 Swift 包中，应用目标只作为组装层存在。模块之间的依赖方向单向向下，且该方向由包清单结构性强制——声明外的模块无法被 import，不依赖评审或文本扫描守卫：
 

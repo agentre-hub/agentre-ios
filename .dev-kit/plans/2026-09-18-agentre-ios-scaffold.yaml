@@ -31,18 +31,18 @@ tasks:
     files: [agentre/pkg/wire/buf.gen.yaml, agentre/pkg/wire/swift/, agentre/pkg/wire/goldenvectors/, agentre/pkg/wire/guard/, agentre/frontend/packages/agentre-wire/package.json, agentre/frontend/packages/agentre-wire/src/__tests__/public-boundary.test.ts, agentre/frontend/pnpm-lock.yaml, agentre/Makefile, agentre/pkg/wire/README.md, agentre/go.sum, agentre/pkg/wire/go.sum]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: "跨仓：提交只落在 agentre 仓，与本仓分开。必须推送后本仓才能钉 revision（规格「形态与边界」）。2026-09-21 首次派单返回 stuck 且经主会话核实属实：规格的 wire 编解码测试接缝指错了判据——fixtures/ 那 23 份 JSON 是手写领域 codec（src/codec.gen.ts，由 tsgen_test.go 产出）的金样本，不是 protobuf 产物的；protojson 往返只有 5/23 结构相同。等规格修订后重新派单。"
+    status: done
+    commit: 6c34e5bc
+    note: "跨仓：提交只落在 agentre 仓，与本仓分开。必须推送后本仓才能钉 revision（规格「形态与边界」）。2026-09-21 首次派单返回 stuck 且经主会话核实属实：规格的 wire 编解码测试接缝指错了判据——fixtures/ 那 23 份 JSON 是手写领域 codec（src/codec.gen.ts，由 tsgen_test.go 产出）的金样本，不是 protobuf 产物的；protojson 往返只有 5/23 结构相同。等规格修订后重新派单。2026-09-21 第二次返回 complete（6c34e5bc，已推 origin），但主会话以消费方身份实测：`.package(url: file:///…/agentre, revision: 6c34e5bc…)` → `error: the package manifest at '/Package.swift' cannot be accessed`——SwiftPM 按 revision 拉依赖只认仓库根目录的清单，goal 里「供本仓钉 revision」未成立，退回 doing 待补。用户选定以 git submodule 钉（不改 agentre 仓），主会话实测：submodule 钉 6c34e5bc + `.package(path: \"Vendor/agentre/pkg/wire/swift\")`，消费方引用 Agentre_Wire_SessionListRequest → `swift build` 退出 0、Build complete。任务 1 以此收口。"
   - id: 2
     goal: "登录屏发起设备流（注入伪 HTTP）：授权中 / 过期 / 被拒 / 成功四种收场各有断言，成功后令牌与本地生成的持久指纹进钥匙串并落到三标签骨架；刷新同一时刻只进行一次。同时立起后续任务全部消费的地基：project.yml、按层分模块且依赖方向由清单结构性强制的本地包（并一次性声明全部 target）、设计 token 层（深浅两套齐全、引用未定义 token 是构建期错误、视图源码无硬编码色值、每个前景 token 在 bg/surface/surface-2 上过对比度阈值）、字符串目录及其缺语言与拼接守卫、44×44pt 命中区修饰符与逐屏不重叠断言。"
     deps: [1]
-    files: [agentre-ios/project.yml, agentre-ios/Package.swift, agentre-ios/Package.resolved, agentre-ios/Sources/AgentreDomain/Core/, agentre-ios/Sources/AgentreDomain/Ports/Http.swift, agentre-ios/Sources/AgentreDomain/Ports/Auth.swift, agentre-ios/Sources/AgentreREST/Core/, agentre-ios/Sources/AgentreREST/Auth/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDesign/, agentre-ios/Sources/AgentreUI/Login/, agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/Tests/AgentreDesignTests/, agentre-ios/README.md, agentre-ios/.gitignore]
+    files: [agentre-ios/project.yml, agentre-ios/Package.swift, agentre-ios/Package.resolved, agentre-ios/.gitmodules, agentre-ios/Vendor/agentre, agentre-ios/Sources/AgentreTestSupport/, agentre-ios/Sources/AgentreRelay/Placeholder.swift, agentre-ios/Tests/AgentreRelayTests/Placeholder.swift, agentre-ios/Tests/AgentreStoreTests/Placeholder.swift, agentre-ios/Tests/AgentreMessagesTests/Placeholder.swift, agentre-ios/Tests/AgentreMachineTests/Placeholder.swift, agentre-ios/Tests/AgentreTranscriptTests/Placeholder.swift, agentre-ios/Tests/AgentreApprovalTests/Placeholder.swift, agentre-ios/Tests/AgentreComposerTests/Placeholder.swift, agentre-ios/Tests/AgentreNewConversationTests/Placeholder.swift, agentre-ios/Tests/AgentreAccountTests/Placeholder.swift, agentre-ios/Sources/AgentreDomain/Core/, agentre-ios/Sources/AgentreDomain/Ports/Http.swift, agentre-ios/Sources/AgentreDomain/Ports/Auth.swift, agentre-ios/Sources/AgentreREST/Core/, agentre-ios/Sources/AgentreREST/Auth/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreDesign/, agentre-ios/Sources/AgentreUI/Login/, agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/Tests/AgentreDesignTests/, agentre-ios/README.md, agentre-ios/.gitignore]
     model: strong
-    interfaces: "任务 1 的 SPM product AgentreWire（模块名与仓内 Package.swift 路径）、ProtocolVersion.current、RelayEnvelope.wrap/unwrap、RPC 方法表"
+    interfaces: "任务 1 已推送的 revision 6c34e5bc73c541620b151ed1289f48ef5ac515a0（origin = git@github.com:agentre-hub/agentre.git）；以 submodule 挂在 Vendor/agentre，SPM 路径 Vendor/agentre/pkg/wire/swift，product 与模块名 AgentreWire，生成类型前缀 Agentre_Wire_"
     status: todo
     commit: null
-    note: null
+    note: "2026-09-21 用户批准加宽 files：SwiftPM 拒绝没有源文件的 target、测试 target 之间不能互相 import，故任务 2 须在后续每个 target 目录放占位文件（归属后续任务，它们均排在任务 2 之后，不构成并发写），并新立 AgentreTestSupport 库 target 承载后续测试共用的 assertHitTargets 与伪 HTTP；后续任务只在自己的测试目录里放各自的替身，不写 AgentreTestSupport。"
   - id: 3
     goal: "注入伪传输下：一条通道上的并发请求按 id 路由互不串道；conversation: 与 machine: 两条通道共存于一条物理连接；逐通道握手出示设备 access token；断线后重握手、重 attach、按 seq 游标 pull，重复帧只应用一次；版本不等即停止重试该通道并给出「更新 App」这一事实而非错误码；重拨指数退让、封顶、带抖动；无人应答的 RPC 到期收场。"
     deps: [2]
