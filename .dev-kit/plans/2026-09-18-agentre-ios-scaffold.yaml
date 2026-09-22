@@ -234,11 +234,11 @@ tasks:
 
 review:
   status: running
-  axis: spec
-  head: 03a6614
-  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/spec-2.md
-  fixes: []
-  note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。"
+  axis: code
+  head: 8395987
+  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/code-2.md
+  fixes: [8395987]
+  note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。 修复轮规格轴 d9ccc8d → 8395987（十一项，全修；主会话重跑全量 572 条 + UI 4 条过）。"
 
 verification:
   status: pending
