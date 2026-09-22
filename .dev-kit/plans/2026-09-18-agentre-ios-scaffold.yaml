@@ -218,9 +218,19 @@ tasks:
     files: [agentre-ios/Sources/AgentreStore/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: "TurnFeedingTranscript 只把不带 createtime 的实时帧递成 TurnSignal（Sources/AgentreApp/RelayGlue.swift:40-66），注释写明补齐的历史回合不能再触发轮末接续；主线界面流程 UITests/MainlineUITests.swift"
+    status: done
+    commit: 492f58f
+    note: "2026-09-22 用户批准新增（任务 18 发现：回合结束只认实时帧，后台期间结束的那一轮回前台后停止钮不消失）。 首派 stuck：手机新建的对话由 LocalConversationStore.record(StartedConversation) 以承载机为发起端落库（Sources/AgentreStore/LocalConversationStore+Ports.swift:41-56），机器清单里该会话 peer_fingerprint 是手机，RelayMachineSessions.session 按 owner == key.machineFingerprint 匹配（Sources/AgentreRelay/Adapters/RelayMachineSessions.swift:37-40）永远落空，摘要不刷新、输入区收不到轮末。用户批准加宽到本地库，改为发起端 = 本机。 完成记录：RED 宿主两例（停止钮不消失、剩余插话未接续）与本地库两例（键取成机器指纹、机器详情再保存多出一行）；GREEN 宿主两次 24/24、Store 18、Composer 74。退回一次（中文深色偶发）：父提交 10/10 过、本提交 16/22 过，:175 为真缺陷——回前台时摘要刷新、补回的行与键盘同时到来，转录停在最新行之上；根在 TranscriptView 只在行变化时滚底，不在本任务写入集。用户批准：「四组合稳定通过」移交任务 20。范围外待办：ComposerPanel 会话信息「机器」一行显示 key.machineFingerprint（即发起端，手机新建的对话显示本机指纹），要显示承载机需 SavedConversation 带承载机字段；Tests/AgentreNewConversationTests/Support.swift 的 StoreRecorder 仍按旧形状落库。"
+
+  - id: 20
+    goal: "对话屏处于跟随最新时，可见高度或布局变化（键盘弹回、回前台、行增删同时到来）后仍贴在最新一行，最新回复可见；用户已上滚时不被拉回；先以测试复现停在最新行之上；主线界面流程中文深色组合连续至少 10 次通过，其余三组合各通过一次。"
+    deps: [19]
+    files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
+    model: strong
+    interfaces: "TranscriptView 仅在行变化时滚到底（Sources/AgentreUI/Conversation/TranscriptView.swift）；复现入口 UITests/MainlineUITests.swift:175（中文深色，492f58f 上 4/22 次失败）"
     status: doing
     commit: null
-    note: "2026-09-22 用户批准新增（任务 18 发现：回合结束只认实时帧，后台期间结束的那一轮回前台后停止钮不消失）。 首派 stuck：手机新建的对话由 LocalConversationStore.record(StartedConversation) 以承载机为发起端落库（Sources/AgentreStore/LocalConversationStore+Ports.swift:41-56），机器清单里该会话 peer_fingerprint 是手机，RelayMachineSessions.session 按 owner == key.machineFingerprint 匹配（Sources/AgentreRelay/Adapters/RelayMachineSessions.swift:37-40）永远落空，摘要不刷新、输入区收不到轮末。用户批准加宽到本地库，改为发起端 = 本机。"
+    note: "2026-09-22 用户批准新增，承接任务 19 退回中查明的回归。"
 
 review:
   status: pending
