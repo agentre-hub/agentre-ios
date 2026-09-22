@@ -174,6 +174,8 @@ final class MainlineUITests: XCTestCase {
         app.activate()
         screen.expectOnScreen(screen.text(Self.secondReply), "the reply produced while in the background, on the open conversation")
         screen.expectOnScreen(screen.text(Self.secondMessage), "the just-sent message after returning to the foreground")
+        // 那一轮在后台期间收场，收场帧一帧也没推过来：输入区照机器此刻的会话状态回到不在运行。
+        screen.expectGone(screen.button(copy("Composer", "composer.stop")), "stop button once the turn that ended in the background")
         XCTAssertGreaterThan(server.read { $0.relay.upgrades }, upgradesBefore, "the relay was not redialled")
         screen.expectAppearance(dark: dark, "conversation after returning to the foreground")
         screen.shot("17 foreground resumed")

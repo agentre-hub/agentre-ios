@@ -69,6 +69,8 @@ final class SignedInServices {
     @ObservationIgnored let approvals: RelayApprovalAnswering
     @ObservationIgnored let composerRelay: RelayComposer
     @ObservationIgnored let dispatcher: RelayDispatcher
+    /// 新建的对话落库：发起端是本机（与机器报的 peer_fingerprint 同一个指纹，也是派单时的来源设备）。
+    @ObservationIgnored let startedRecorder: StartedConversationRecorder
     @ObservationIgnored let workspace: WorkspaceClient
     @ObservationIgnored let machineDirectory: MachineDirectory
     @ObservationIgnored let mentions: RESTMentionSource
@@ -119,6 +121,7 @@ final class SignedInServices {
             skillGrants: { _, _, _ in [] }
         )
         dispatcher = RelayDispatcher(connection: connection, source: source)
+        startedRecorder = StartedConversationRecorder(store: store, origin: source.fingerprint)
         workspace = WorkspaceClient(transport: environment.transport, server: server)
         mentions = RESTMentionSource(workspace: workspace, machines: directory)
         settings = ComposerSettingsAdapter(
@@ -131,13 +134,23 @@ final class SignedInServices {
         let failures = SyncFailures()
         self.failures = failures
         let recovered = RecoveredFollows()
-        sync = ConversationSync(connection: connection, store: store) { key, fact in
-            await failures.set(fact, for: key)
-            if fact == nil { await recovered.notify(key) }
-        }
+        sync = ConversationSync(
+            connection: connection, store: store,
+            onFailure: { key, fact in
+                await failures.set(fact, for: key)
+                if fact == nil { await recovered.notify(key) }
+            },
+            onLifecycle: { key, lifecycle in await recovered.reconcile(key, lifecycle: lifecycle) }
+        )
         // 跟随重新接上了承载机：那条会话若正开着、实时流已收场，一并接上。回到前台时通道的关闭帧
         // 可能晚于 resume 才读到，这一步兜住那个次序。
         recovered.handler = { [weak self] key in self?.conversations[key]?.transcript.resume() }
+        // 接上后机器报的生命周期交给那条会话的输入区：看不到的时候（后台、断线）收场的那一轮，
+        // 收场帧不会补拉回来，只有它说得出来。轮末接续是几次往返，不压住跟随落库。
+        recovered.lifecycleHandler = { [weak self] key, lifecycle in
+            guard let composer = self?.conversations[key]?.composer else { return }
+            Task { await composer.reconcile(lifecycle: lifecycle) }
+        }
     }
 
     func start() {
@@ -230,7 +243,7 @@ final class SignedInServices {
         let projects = newConversation.projects
         let model = DraftConversationModel(
             agent: agent, project: projectID.flatMap { id in projects.first { $0.syncID == id } }, projects: projects,
-            workspace: workspace, dispatcher: dispatcher, recorder: store
+            workspace: workspace, dispatcher: dispatcher, recorder: startedRecorder
         )
         drafts[route] = model
         return model
@@ -256,9 +269,14 @@ final class SyncFailures {
 @MainActor
 private final class RecoveredFollows: Sendable {
     var handler: ((ConversationKey) -> Void)?
+    var lifecycleHandler: ((ConversationKey, String) -> Void)?
 
     func notify(_ key: ConversationKey) {
         handler?(key)
+    }
+
+    func reconcile(_ key: ConversationKey, lifecycle: String) {
+        lifecycleHandler?(key, lifecycle)
     }
 }
 

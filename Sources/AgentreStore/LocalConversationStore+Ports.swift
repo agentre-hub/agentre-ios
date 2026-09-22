@@ -37,11 +37,13 @@ extension LocalConversationStore: ConversationSaving {
     }
 }
 
-extension LocalConversationStore: StartedConversationRecording {
-    /// 手机新建、已在机器上跑起来的对话：以承载它的机器为发起端与承载机落库，处于运行中。
-    public func record(_ conversation: StartedConversation) throws -> ConversationKey {
+extension LocalConversationStore {
+    /// 手机新建、已在机器上跑起来的对话：发起端是本机（`origin`，与机器报的 peer_fingerprint 同一个），
+    /// 承载机是派到的那台，处于运行中。于是机器清单里的这一条刷新的是同一行，在机器详情页再保存也不多出一行。
+    public func record(_ conversation: StartedConversation, origin: String) throws -> ConversationKey {
         var summary = Agentre_Wire_SessionSummary()
         summary.conversationID = conversation.conversationID
+        summary.peerFingerprint = origin
         summary.title = conversation.title
         summary.agentSyncID = conversation.agentSyncID
         summary.projectSyncID = conversation.projectSyncID
@@ -53,5 +55,21 @@ extension LocalConversationStore: StartedConversationRecording {
         let key = try save(summary, via: conversation.machineFingerprint)
         try markRead(key)
         return key
+    }
+}
+
+/// 新建对话的落库端口：以本机设备指纹为发起端落进本地库。
+public struct StartedConversationRecorder: StartedConversationRecording {
+    public let store: LocalConversationStore
+    /// 本机的设备指纹。
+    public let origin: String
+
+    public init(store: LocalConversationStore, origin: String) {
+        self.store = store
+        self.origin = origin
+    }
+
+    public func record(_ conversation: StartedConversation) async throws -> ConversationKey {
+        try await store.record(conversation, origin: origin)
     }
 }

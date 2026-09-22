@@ -69,6 +69,10 @@ actor FakeComposerRelay: ComposerRelay {
     func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws {
         calls.append(.run(text, compact: compact))
         runPermissionModes.append(permissionMode)
+        if holdRun {
+            holdRun = false
+            await withCheckedContinuation { runGate = $0 }
+        }
         try check("run")
         activeTurn = true
     }
@@ -107,6 +111,15 @@ actor FakeComposerRelay: ComposerRelay {
     func releaseDrain() { drainGate?.resume(); drainGate = nil }
     nonisolated func waitForHeldDrain() async {
         for _ in 0..<1_000 where await drainGate == nil { await Task.yield() }
+    }
+
+    /// 下一次开新一轮挂起，直到 `releaseRun()`：观察开新一轮的调用在飞的那一段。
+    private var holdRun = false
+    private var runGate: CheckedContinuation<Void, Never>?
+    func holdNextRun() { holdRun = true }
+    func releaseRun() { runGate?.resume(); runGate = nil }
+    nonisolated func waitForHeldRun() async {
+        for _ in 0..<1_000 where await runGate == nil { await Task.yield() }
     }
 
     func setPermissionMode(_ key: ConversationKey, peerFingerprint: String, mode: String) async throws {

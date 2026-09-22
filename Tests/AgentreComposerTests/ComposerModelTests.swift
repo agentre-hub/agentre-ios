@@ -229,6 +229,79 @@ struct ComposerModelTests {
         #expect(model.canSend)
     }
 
+    // MARK: 收场帧没递到：按机器此刻的会话状态对齐
+
+    @Test("以为在跑、机器说已正常收场（后台期间结束的一轮）：不再运行，问一次信箱，剩下的接续一次")
+    func reconcileEndedTurn() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-local-1", text: "a")])
+        await model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        #expect(!model.isTurnRunning)
+        #expect(!model.canStop)
+        #expect(await relay.calls.suffix(2) == [.drain, .run("a", compact: false)])
+        #expect(model.queue.items.isEmpty)
+        #expect(model.queue.dropped.isEmpty)
+    }
+
+    @Test("机器说还在跑：照旧在跑、不问信箱；已经不在跑时再对齐一次（反复回前台）什么也不做")
+    func reconcileNoChange() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        await model.reconcile(lifecycle: SavedConversation.Lifecycle.running)
+        #expect(model.canStop)
+        await model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        await model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        #expect(await relay.calls == [.drain])
+    }
+
+    @Test("机器说这一轮以故障收场或被中断：不再运行，不问信箱，还排着的挪进「未发送」",
+          arguments: [SavedConversation.Lifecycle.failed, SavedConversation.Lifecycle.interrupted])
+    func reconcileFailedTurn(_ lifecycle: String) async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await model.reconcile(lifecycle: lifecycle)
+        #expect(!model.canStop)
+        #expect(await !relay.calls.contains(.drain))
+        #expect(model.queue.dropped.map(\.text) == ["a"])
+    }
+
+    @Test("对齐收掉的那一轮，它迟到的收场帧不再问一次信箱；下一轮开起来之后的收场照常接续")
+    func lateEndAfterReconcile() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        await model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        await model.turnEnded(normally: true)
+        #expect(await relay.calls == [.drain])
+        model.turnStarted()
+        await model.turnEnded(normally: true)
+        #expect(await relay.calls == [.drain, .drain])
+    }
+
+    @Test("开新一轮的调用在飞时机器的状态不作数：那一刻的快照可能早于这一轮，不据它收场、不问信箱")
+    func reconcileWhileStarting() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.text = "x"
+        await relay.holdNextRun()
+        let sending = Task { await model.send() }
+        await relay.waitForHeldRun()
+        model.turnStarted()
+        await model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        await relay.releaseRun()
+        await sending.value
+        #expect(model.canStop)
+        #expect(await relay.calls == [.run("x", compact: false)])
+    }
+
     // MARK: 斜杠命令
 
     @Test("键入 / 就地给出候选；Skill 目录按这条会话要（承载机由适配器解析），按会话工作目录解析")

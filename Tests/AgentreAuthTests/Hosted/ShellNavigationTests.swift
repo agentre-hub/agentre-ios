@@ -36,7 +36,9 @@ struct ShellNavigationTests {
         #expect(run.target == "machine:machine-a")
         #expect(run.payload.string(11) == "Tidy the README")
         let conversationID = run.payload.string(3)
-        let key = ConversationKey(machineFingerprint: "machine-a", conversationID: conversationID)
+        // 发起端是本机（机器报的 peer_fingerprint 就是它），承载机是派到的那台。
+        let phone = try harness.credentials.deviceFingerprint().value
+        let key = ConversationKey(machineFingerprint: phone, conversationID: conversationID)
         #expect(try await environment.store.conversation(key)?.title == "Tidy the README")
         #expect(try await environment.store.carrier(of: key) == "machine-a")
         _ = try await eventually("conversation opened") {

@@ -9,24 +9,30 @@ import Foundation
 /// 每一次 attach（首次，以及重连后通道自己重做的那些）的应答都排在那一轮补拉的帧之前到达：
 /// 本机游标越过机器的最高帧号就先丢掉库里旧编号的帧，否则重拉的帧都被当成重复；再按机器此刻的
 /// 清单刷新摘要——轮次边界帧不带号、补拉不回来，断线期间结束的一轮只有清单说得出来
-/// （mirror_svc.catchUp 每轮补齐都 saveSummary）。
+/// （mirror_svc.catchUp 每轮补齐都 saveSummary）。刷新到的生命周期同时交给 `onLifecycle`：开着的输入区
+/// 据它得知那一轮已经收场。
 actor ConversationSync {
     private let connection: RelayConnection
     private let store: LocalConversationStore
     private let sessions: RelayMachineSessions
     private let onFailure: @Sendable (ConversationKey, FailureFact?) async -> Void
+    private let onLifecycle: @Sendable (ConversationKey, String) async -> Void
     private var following: [ConversationKey: (token: UUID, task: Task<Void, Never>)] = [:]
     private var stopped = false
 
-    /// - Parameter onFailure: 一条会话跟随不上（机器不在线、版本不等、通道被关……）时的事实；接上后以 nil 清掉。
+    /// - Parameters:
+    ///   - onFailure: 一条会话跟随不上（机器不在线、版本不等、通道被关……）时的事实；接上后以 nil 清掉。
+    ///   - onLifecycle: 每次 attach 后按机器清单刷新到的那条会话此刻的生命周期。
     init(
         connection: RelayConnection, store: LocalConversationStore,
-        onFailure: @escaping @Sendable (ConversationKey, FailureFact?) async -> Void
+        onFailure: @escaping @Sendable (ConversationKey, FailureFact?) async -> Void,
+        onLifecycle: @escaping @Sendable (ConversationKey, String) async -> Void
     ) {
         self.connection = connection
         self.store = store
         sessions = RelayMachineSessions(connection: connection)
         self.onFailure = onFailure
+        self.onLifecycle = onLifecycle
     }
 
     /// 跟着库的变化跟随，直到所在任务被取消。
@@ -99,5 +105,6 @@ actor ConversationSync {
     private func refreshSummary(_ target: FollowTarget) async {
         guard let session = try? await sessions.session(target.key, on: target.carrier) else { return }
         try? await store.save(session, via: target.carrier)
+        await onLifecycle(target.key, session.lifecycleState)
     }
 }

@@ -89,4 +89,147 @@ struct ForegroundResumeTests {
         #expect(!pullsAfter.isEmpty)
         #expect(pullsAfter.allSatisfy { $0.payload.int(3) >= 2 })
     }
+
+    // MARK: 后台期间这一轮收场
+
+    /// 进后台的两种断法：连接断了（通道随重连自己重新 attach），或服务端判死了承载机的通道（回前台重新 attach）。
+    enum Suspension: String, CaseIterable, CustomTestStringConvertible {
+        case connectionDropped, channelClosed
+        var testDescription: String { rawValue }
+    }
+
+    private func suspend(_ suspension: Suspension, _ harness: Harness, _ services: SignedInServices, _ key: ConversationKey) async throws {
+        switch suspension {
+        case .connectionDropped:
+            harness.relay.dropConnections()
+        case .channelClosed:
+            harness.relay.closeChannels("machine:machine-a")
+            _ = try await eventually("channel closed") { services.failures.facts[key] }
+        }
+    }
+
+    private func runTexts(_ harness: Harness) -> [String] {
+        harness.relay.calls(WireMethod.runtimeRun).map { $0.payload.string(11) }
+    }
+
+    @Test("这一轮在后台期间收场（收场帧没推过来）：回前台后停止钮消失，下一句直接开新一轮", arguments: Suspension.allCases)
+    func turnEndedInBackground(_ suspension: Suspension) async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let (environment, services, screen, open) = try await openConversation(harness)
+        defer {
+            open.cancel()
+            Task { await environment.tearDown() }
+        }
+        harness.machine.setLifecycle("conv-1", "running")
+        _ = try await eventually("turn running") { screen.composer.canStop ? true : nil }
+
+        try await suspend(suspension, harness, services, screen.conversation.key)
+        harness.machine.append("conv-1", [WireNotification.textDelta("conv-1", seq: 0, "done")])
+        harness.machine.setLifecycle("conv-1", "idle")
+        harness.machine.finishTurn("conv-1")
+        await services.resume()
+
+        _ = try await eventually("stop button gone") { screen.composer.canStop ? nil : true }
+        #expect(!screen.composer.isTurnRunning)
+        screen.composer.edit(text: "next", cursor: 4)
+        // 轮末那一问（信箱里还剩什么）在路上时发送不可用；问完即可直接发。
+        _ = try await eventually("can send") { screen.composer.canSend ? true : nil }
+        await screen.composer.send()
+        #expect(runTexts(harness) == ["next"], "the next message opened a new turn instead of queueing as a steer")
+        #expect(harness.relay.calls(WireMethod.runtimeSteer).isEmpty)
+    }
+
+    @Test("后台期间收场的那一轮信箱里还剩一条插话：回前台后取回一次、接续一次；再回前台不再取、不再发", arguments: Suspension.allCases)
+    func leftoverSteerContinuesOnce(_ suspension: Suspension) async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let (environment, services, screen, open) = try await openConversation(harness)
+        defer {
+            open.cancel()
+            Task { await environment.tearDown() }
+        }
+        harness.machine.setLifecycle("conv-1", "running")
+        _ = try await eventually("turn running") { screen.composer.canStop ? true : nil }
+        screen.composer.edit(text: "also lint", cursor: 9)
+        await screen.composer.send()
+        #expect(screen.composer.queue.items.map(\.text) == ["also lint"])
+
+        try await suspend(suspension, harness, services, screen.conversation.key)
+        harness.machine.setLifecycle("conv-1", "idle")
+        harness.machine.finishTurn("conv-1")
+        await services.resume()
+
+        _ = try await eventually("leftover steer continued") { runTexts(harness) == ["also lint"] ? true : nil }
+        #expect(screen.composer.queue.items.isEmpty)
+        #expect(screen.composer.queue.dropped.isEmpty)
+        // 再进一次后台、再回前台：那一轮早就处置过了，不再问信箱、不再开一轮。
+        let drains = harness.relay.calls(WireMethod.runtimeDrainPending).count
+        #expect(drains == 1)
+        try await suspend(suspension, harness, services, screen.conversation.key)
+        await services.resume()
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(harness.relay.calls(WireMethod.runtimeDrainPending).count == drains)
+        #expect(runTexts(harness) == ["also lint"])
+    }
+
+    @Test("回前台时这一轮还在跑：停止钮仍在，不问信箱", arguments: Suspension.allCases)
+    func turnStillRunningAfterForeground(_ suspension: Suspension) async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let (environment, services, screen, open) = try await openConversation(harness)
+        defer {
+            open.cancel()
+            Task { await environment.tearDown() }
+        }
+        harness.machine.setLifecycle("conv-1", "running")
+        _ = try await eventually("turn running") { screen.composer.canStop ? true : nil }
+        let attaches = harness.relay.calls(WireMethod.sessionAttach).count
+
+        try await suspend(suspension, harness, services, screen.conversation.key)
+        harness.machine.append("conv-1", [WireNotification.textDelta("conv-1", seq: 0, "still going")])
+        await services.resume()
+
+        _ = try await eventually("re-attached") { harness.relay.calls(WireMethod.sessionAttach).count > attaches ? true : nil }
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(screen.composer.canStop)
+        #expect(harness.relay.calls(WireMethod.runtimeDrainPending).isEmpty)
+    }
+
+    @Test("手机新建的对话（发起端 = 本机）这一轮在后台期间收场：回前台后停止钮消失，本地库仍只有这一行", arguments: Suspension.allCases)
+    func phoneStartedTurnEndedInBackground(_ suspension: Suspension) async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let phone = try harness.credentials.deviceFingerprint().value
+        harness.machine.add(
+            FakeMachine.Session(conversationID: "conv-new", peerFingerprint: phone, title: "New", lifecycleState: "running"),
+            frames: [WireNotification.userMessage("conv-new", seq: 0, "hello")]
+        )
+        let environment = try harness.environment()
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let request = DispatchRequest(
+            conversationID: "conv-new", title: "New", userText: "hello", agentSyncID: "", projectSyncID: nil,
+            target: DispatchChoice(deviceFingerprint: "machine-a", deviceName: "mac-studio", backendType: "claudecode", cwd: "/work")
+        )
+        let key = try await services.startedRecorder.record(StartedConversation(request: request))
+        _ = try await eventually("synced") { try await environment.store.latestSeq(key) == 1 ? true : nil }
+        let screen = try #require(await services.conversationModel(for: key))
+        let open = Task { await screen.transcript.start() }
+        defer { open.cancel() }
+        #expect(screen.composer.canStop)
+
+        try await suspend(suspension, harness, services, key)
+        harness.machine.setLifecycle("conv-new", "idle")
+        harness.machine.finishTurn("conv-new")
+        await services.resume()
+
+        _ = try await eventually("stop button gone") { screen.composer.canStop ? nil : true }
+        #expect(try await environment.store.conversations().map(\.key) == [key])
+        #expect(try await environment.store.conversation(key)?.lifecycleState == "idle")
+    }
 }

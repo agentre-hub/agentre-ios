@@ -62,6 +62,8 @@ public final class ComposerModel {
     private var isStartingTurn = false
     /// 停止本轮的调用在飞：连点不重复发。
     private var isStopping = false
+    /// 这一轮是按机器的会话状态收掉的（收场帧没递到）；此后、下一轮开起来之前再到的收场帧就是它迟到的那一帧。
+    private var endedByReconcile = false
     private var skills: [ComposerSkillSource] = []
     private var skillsRequested = false
     private var mentionSources = ComposerMentionSources()
@@ -149,12 +151,21 @@ public final class ComposerModel {
 
     public func turnStarted() {
         isTurnRunning = true
+        endedByReconcile = false
     }
 
     /// 一轮收场。正常收场时问执行端插话信箱里还剩什么，取回的几条空一行合并成下一轮（与桌面端
     /// chat_svc 的轮末接续、控制台 useSteerAutoContinue 同一口径）；出错与中断不问也不接续。
     /// 没被取走、也取不回来的那几条挪进「未发送」，等用户处置。
     public func turnEnded(normally: Bool) async {
+        if endedByReconcile {
+            endedByReconcile = false
+            return
+        }
+        await settleTurn(normally: normally)
+    }
+
+    private func settleTurn(normally: Bool) async {
         isTurnRunning = false
         guard normally else {
             queue.endTurn()
@@ -183,6 +194,16 @@ public final class ComposerModel {
         } catch {
             restore((text: ComposerMentions.displayText(next), mentions: []))
         }
+    }
+
+    /// 重新接上承载机后，机器此刻报的会话生命周期。以为在跑、机器却说不在跑了：这一轮在看不到的时候
+    /// （后台、断线）收了场，收场帧不带号、补拉不回来，只有清单说得出来——就地按那一次收场处置，与收场帧
+    /// 同一口径（正常收场问信箱并接续，出错与中断不问）。只认「在跑 → 不在跑」这一个方向；开新一轮的
+    /// 调用在飞时的快照可能早于这一轮，不作数。
+    public func reconcile(lifecycle: String) async {
+        guard isTurnRunning, !isStartingTurn, lifecycle != SavedConversation.Lifecycle.running else { return }
+        endedByReconcile = true
+        await settleTurn(normally: lifecycle == SavedConversation.Lifecycle.idle)
     }
 
     public func steersConsumed(_ consumed: [ComposerConsumedSteer]) {

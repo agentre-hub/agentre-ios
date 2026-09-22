@@ -183,6 +183,8 @@ final class FakeMachine: @unchecked Sendable {
     private var frames: [String: [(seq: Int64, notification: Proto)]] = [:]
     /// 此刻有一轮在跑的会话（agentred 的 RuntimeHandlers.sessions）。
     private var activeTurns: Set<String> = []
+    /// 每条会话的插话信箱：runtime.steer 放进去，runtime.drainPending 整个取走（agentred 的 steer mailbox）。
+    private var mailboxes: [String: [(queuedID: String, text: String)]] = [:]
 
     init(fingerprint: String) {
         self.fingerprint = fingerprint
@@ -212,6 +214,14 @@ final class FakeMachine: @unchecked Sendable {
         _ = lock.withLock { activeTurns.remove(conversationID) }
     }
 
+    /// 会话行上的生命周期（agentred 开一轮落 running、收场落 idle / failed），会话清单照它答。
+    func setLifecycle(_ conversationID: String, _ state: String) {
+        lock.withLock {
+            guard let index = sessions.firstIndex(where: { $0.conversationID == conversationID }) else { return }
+            sessions[index].lifecycleState = state
+        }
+    }
+
     func answer(_ call: FakeRelay.Call) -> FakeRelay.Reply {
         lock.withLock {
             switch call.method {
@@ -223,7 +233,24 @@ final class FakeMachine: @unchecked Sendable {
             case WireMethod.runtimeRun:
                 let id = call.payload.string(3)
                 activeTurns.insert(id)
+                if let index = sessions.firstIndex(where: { $0.conversationID == id }) { sessions[index].lifecycleState = "running" }
                 return .result(Proto { $0.string(1, id) })
+            case WireMethod.runtimeSteer:
+                mailboxes[call.payload.string(1), default: []].append((call.payload.string(3), call.payload.string(4)))
+                return .result(Proto { r in
+                    r.string(1, call.payload.string(3))
+                    r.bool(2, true)
+                })
+            case WireMethod.runtimeDrainPending:
+                let steers = mailboxes.removeValue(forKey: call.payload.string(1)) ?? []
+                return .result(Proto { r in
+                    for steer in steers {
+                        r.message(1, Proto { c in
+                            c.string(1, steer.queuedID)
+                            c.string(2, steer.text)
+                        })
+                    }
+                })
             default:
                 return .result(sessionAnswer(call))
             }
@@ -284,11 +311,6 @@ final class FakeMachine: @unchecked Sendable {
                     m.string(1, "plan")
                     m.string(2, "default")
                 })
-            }
-        case WireMethod.runtimeSteer:
-            return Proto { r in
-                r.string(1, call.payload.string(3))
-                r.bool(2, true)
             }
         default:
             // 其余（作答、Skill 目录……）一律空应答：解成对应消息的默认值。

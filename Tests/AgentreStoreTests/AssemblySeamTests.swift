@@ -102,18 +102,20 @@ struct AssemblySeamTests {
         #expect(try await store.latestSeq(own) == 0)
     }
 
-    @Test("StartedConversationRecording：手机新建的对话以承载机为键落库，处于运行中")
+    @Test("StartedConversationRecording：手机新建的对话以本机为发起端、承载机另记落库，处于运行中")
     func startedRecording() async throws {
         let directory = try TemporaryDirectory()
         let store = try openStore(directory)
-        let recorder: any StartedConversationRecording = store
+        let recorder: any StartedConversationRecording = StartedConversationRecorder(store: store, origin: "phone-fp")
         let request = DispatchRequest(
             conversationID: "new-1", title: "Hello", userText: "Hello there", agentSyncID: "agent-1", projectSyncID: "p-1",
             target: DispatchChoice(deviceFingerprint: "m-1", deviceName: "mac", backendType: "claudecode", cwd: "/repo")
         )
         let key = try await recorder.record(StartedConversation(request: request))
-        #expect(key == ConversationKey(machineFingerprint: "m-1", conversationID: "new-1"))
+        // 与机器报的 peer_fingerprint 同一个发起端：机器清单里的那一条对得上这一行。
+        #expect(key == ConversationKey(machineFingerprint: "phone-fp", conversationID: "new-1"))
         let row = try #require(try await openStore(directory).conversation(key))
+        #expect(row.peerFingerprint == "phone-fp")
         #expect(row.title == "Hello")
         #expect(row.agentSyncID == "agent-1")
         #expect(row.projectSyncID == "p-1")
@@ -121,9 +123,29 @@ struct AssemblySeamTests {
         #expect(row.backendType == "claudecode")
         #expect(row.lifecycleState == SavedConversation.Lifecycle.running)
         #expect(try await store.carrier(of: key) == "m-1")
+        #expect(try await store.followTargets() == [FollowTarget(key: key, peerFingerprint: "phone-fp", carrier: "m-1")])
         // 刚从手机发出的一条：排在列表最前（最后活动是此刻），也不是未读——话是本机自己说的。
         #expect(row.lastMessageAt == fixedNow)
         #expect(!row.isUnread)
+    }
+
+    @Test("手机新建的对话，机器清单报回来的那一条（发起端 = 本机）刷新的是同一行：跟随刷新摘要、在机器详情页再保存都不多出第二行")
+    func startedThenSavedIsOneRow() async throws {
+        let directory = try TemporaryDirectory()
+        let store = try openStore(directory)
+        let request = DispatchRequest(
+            conversationID: "new-1", title: "Hello", userText: "Hello there", agentSyncID: "agent-1", projectSyncID: nil,
+            target: DispatchChoice(deviceFingerprint: "m-1", deviceName: "mac", backendType: "claudecode", cwd: "/repo")
+        )
+        let key = try await StartedConversationRecorder(store: store, origin: "phone-fp").record(StartedConversation(request: request))
+        let saved = try await store.save(
+            MachineSession(conversationID: "new-1", peerFingerprint: "phone-fp", title: "Hello", lifecycleState: SavedConversation.Lifecycle.idle),
+            via: "m-1"
+        )
+        #expect(saved == key)
+        #expect(try await store.conversations().count == 1)
+        #expect(try await store.conversation(key)?.lifecycleState == SavedConversation.Lifecycle.idle)
+        #expect(try await store.carrier(of: key) == "m-1")
     }
 
     @Test("回合事件：开始、正常收场与出错收场分得开，插话取走带着执行端的句柄；别的帧不算")
