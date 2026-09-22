@@ -22,6 +22,13 @@ settings:
 packages:
   AgentreKit:
     path: .
+  # 只给 UI 测试用：伪中继按 wire 生成类型说话（与 AgentreKit 依赖的是同一个本地包）。
+  AgentreWire:
+    path: Vendor/agentre/pkg/wire/swift
+  # 生成类型的运行时，与 Package.swift 钉的同一版本。
+  SwiftProtobuf:
+    url: https://github.com/apple/swift-protobuf.git
+    exactVersion: 1.38.1
 targets:
   Agentre:
     type: application
@@ -69,6 +76,30 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: $(BUILT_PRODUCTS_DIR)/Agentre.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Agentre
         BUNDLE_LOADER: $(TEST_HOST)
+  # 主线界面流程：驱动真实构建的 App，对着测试进程里起在 127.0.0.1 上的伪服务端与伪中继。
+  # 界面文案取自 App 自己的字符串目录（编进本测试包的资源），测试里不另抄一份。
+  AgentreUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+      - path: Sources/AgentreUI
+        includes:
+          - "**/*.xcstrings"
+        buildPhase: resources
+    dependencies:
+      - target: Agentre
+      - package: AgentreWire
+        product: AgentreWire
+      - package: SwiftProtobuf
+        product: SwiftProtobuf
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.agentrehub.agentre.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Agentre
+        # 这份资源只是被借来读的目录，不从本目标的源码里往里抽新键。
+        SWIFT_EMIT_LOC_STRINGS: NO
 schemes:
   Agentre:
     build:
@@ -91,5 +122,6 @@ schemes:
         - package: AgentreKit/AgentreComposerTests
         - package: AgentreKit/AgentreNewConversationTests
         - package: AgentreKit/AgentreAccountTests
+        - AgentreUITests
     archive:
       config: Release

@@ -16,7 +16,7 @@ No Apple team is configured (`DEVELOPMENT_TEAM` is left unset), so builds and te
 
 ## Full test suite
 
-This single command runs every test in the repository: all package test targets plus the app-hosted Keychain tests.
+This single command runs every test in the repository: all package test targets, the app-hosted Keychain tests, and the mainline UI flow (`AgentreUITests`, below).
 
 ```bash
 rm -rf /tmp/agentre-dd && git submodule update --init && xcodegen generate && xcodebuild test -project Agentre.xcodeproj -scheme Agentre -derivedDataPath /tmp/agentre-dd -destination 'platform=iOS Simulator,name=iPhone 17' -collect-test-diagnostics never DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR
@@ -28,6 +28,33 @@ rm -rf /tmp/agentre-dd && git submodule update --init && xcodegen generate && xc
 - `DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR` makes importing a module that `Package.swift` does not declare a build error.
   Without it, an incremental Xcode build can quietly resolve an undeclared module that happens to be built already.
 - `-collect-test-diagnostics never` matters because, on a test failure, xcodebuild otherwise runs `simctl diagnose` for up to ten minutes before exiting.
+
+## Mainline UI flow (`AgentreUITests`)
+
+An XCUITest target drives the real Debug build of the app against a fake agentre-server and a fake relay that the test process itself serves on `127.0.0.1`, on a port the system picks.
+Nothing leaves the Mac: no network, account or real machine is needed, and runs are repeatable.
+
+- The fake answers the REST endpoints the app calls (device flow, account, devices and revoke, workspace, engine catalog) and `/v1/relay/client` as a real WebSocket: envelopes, per-channel `auth.account` handshake, and a fake agentred on a `machine:` channel.
+  The fake agentred copies agentred where the app depends on it: `runtime.setPermissionMode` with no running turn answers "no active turn", and every `runtime.run` records its `permission_mode`.
+  An endpoint or wire method the fake does not know fails the test.
+- The flow, each step asserted on screen: set the server address on the login screen → sign in by device flow (the browser opening the verification page is the approval) → choose the appearance on the Me page → Machines → machine detail, save a conversation to the phone → it is in Messages → new conversation, send → the approval card's three buttons sit in one right-aligned row → Allow Once → switch the permission mode between turns and send again (the next `runtime.run` carries it) → go to the background while the machine finishes the turn and the relay drops the channels and the connection → back in the foreground the open conversation shows the reply and the just-sent message → revoke this device → login screen.
+- It runs four times: Simplified Chinese and English (launch arguments `-AppleLanguages` / `-AppleLocale`) × light and dark (the app's own appearance setting).
+- On-screen copy is read from the app's own string catalogs, which `project.yml` compiles into the test bundle.
+
+Run it alone (about two minutes per combination):
+
+```bash
+rm -rf /tmp/agentre-dd && xcodegen generate && xcodebuild test -project Agentre.xcodeproj -scheme Agentre -derivedDataPath /tmp/agentre-dd -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:AgentreUITests -resultBundlePath /tmp/agentre-ui.xcresult -collect-test-diagnostics never DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR
+```
+
+Add `-only-testing:AgentreUITests/MainlineUITests/testMainlineEnglishDark` (or another combination) to run one combination.
+Every step leaves a screenshot, named `<language>-<appearance> <step>`, as an attachment in the result bundle; a failing step also attaches the accessibility tree.
+Without `-resultBundlePath` (as in the full-suite command) the result bundle lands in `<derivedDataPath>/Logs/Test/`.
+Export them with:
+
+```bash
+xcrun xcresulttool export attachments --path /tmp/agentre-ui.xcresult --output-path /tmp/agentre-ui-shots
+```
 
 ## Layout
 

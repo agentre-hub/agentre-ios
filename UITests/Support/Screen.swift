@@ -1,0 +1,193 @@
+import XCTest
+
+/// 驱动真实构建的 Agentre：按屏上可见的标签找元素、等它出现、点它、在它里面打字，每一步留截图。
+/// 找不到就当场失败并附上当时的截图与无障碍树——失败时要看得出屏上到底是什么。
+@MainActor
+struct Screen {
+    let app: XCUIApplication
+    let test: XCTestCase
+    /// 截图附件名的前缀（语言 × 外观）。
+    let prefix: String
+    static let timeout: TimeInterval = 20
+
+    // MARK: 找元素
+
+    func button(_ label: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    /// 标签以 `label` 开头的按钮（选项行的标签后面可能跟着别的朗读内容）。
+    func button(startingWith label: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
+    }
+
+    func text(_ label: String) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    func text(containing label: String) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", label)).firstMatch
+    }
+
+    /// 输入框只在 textField / textView 里找：同名的静态文字（占位的那行字）不算。
+    func input(_ label: String) -> XCUIElement {
+        let kinds = NSPredicate(
+            format: "elementType == %d OR elementType == %d",
+            XCUIElement.ElementType.textField.rawValue, XCUIElement.ElementType.textView.rawValue
+        )
+        return app.descendants(matching: .any).matching(kinds)
+            .matching(NSPredicate(format: "label == %@ OR placeholderValue == %@", label, label)).firstMatch
+    }
+
+    func tab(_ label: String) -> XCUIElement {
+        app.tabBars.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    // MARK: 等与断言
+
+    @discardableResult
+    func expect(_ element: XCUIElement, _ what: String, timeout: TimeInterval = Screen.timeout,
+                file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+        if !element.waitForExistence(timeout: timeout) {
+            attachState("missing \(what)")
+            XCTFail("\(prefix): \(what) never appeared", file: file, line: line)
+        }
+        return element
+    }
+
+    func expectGone(_ element: XCUIElement, _ what: String, timeout: TimeInterval = Screen.timeout,
+                    file: StaticString = #filePath, line: UInt = #line) {
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+        if XCTWaiter().wait(for: [gone], timeout: timeout) != .completed {
+            attachState("still there: \(what)")
+            XCTFail("\(prefix): \(what) did not go away", file: file, line: line)
+        }
+    }
+
+    /// 等一个测试进程里的条件成立（伪服务端记下的请求等）：转着主线程的 run loop 轮询，条件一成立即返回。
+    func expect(_ what: String, timeout: TimeInterval = Screen.timeout, file: StaticString = #filePath, line: UInt = #line,
+                _ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            guard Date() < deadline else {
+                attachState("unmet: \(what)")
+                XCTFail("\(prefix): \(what)", file: file, line: line)
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+    }
+
+    func expectSelected(_ element: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
+        expect(element, what, file: file, line: line)
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: element)
+        if XCTWaiter().wait(for: [selected], timeout: Screen.timeout) != .completed {
+            attachState("not selected: \(what)")
+            XCTFail("\(prefix): \(what) is not marked current", file: file, line: line)
+        }
+    }
+
+    /// 元素此刻在窗口可见范围里（在无障碍树里但被滚出屏外不算看得见）。
+    func expectOnScreen(_ element: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
+        expect(element, what, file: file, line: line)
+        let window = app.windows.firstMatch.frame
+        let frame = element.frame
+        if frame.isEmpty || !window.intersection(frame).equalTo(frame) {
+            attachState("off screen: \(what)")
+            XCTFail("\(prefix): \(what) is not on screen (frame \(frame), window \(window))", file: file, line: line)
+        }
+    }
+
+    // MARK: 操作
+
+    func tap(_ element: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
+        expect(element, what, file: file, line: line)
+        if element.isHittable {
+            element.tap()
+        } else {
+            // 键盘或别的浮层盖住时按坐标点（元素本身仍在那里）。
+            element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+    }
+
+    /// 列表里还没滚到的元素：先往下翻、再往上翻，直到它出现且点得到（每翻一次即重看，不固定等待）。
+    func reveal(_ element: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
+        for swipeUp in [true, true, true, true, false, false, false, false, false, false, false, false] {
+            if element.exists, element.isHittable { return }
+            if swipeUp { app.swipeUp() } else { app.swipeDown() }
+        }
+        expect(element, what, file: file, line: line)
+    }
+
+    /// 在输入框里打字；`replacing` 时先清空原有内容（光标先挪到末尾再按内容长度删）。
+    func type(_ text: String, into field: XCUIElement, _ what: String, replacing: Bool = false,
+              file: StaticString = #filePath, line: UInt = #line) {
+        tap(field, what, file: file, line: line)
+        if replacing {
+            field.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
+            let count = ((field.value as? String) ?? "").count + 8
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count))
+        }
+        field.typeText(text)
+    }
+
+    /// 收起底部面板：从面板里的一个元素往下拖。
+    func dismissSheet(grabbing element: XCUIElement) {
+        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 700)))
+    }
+
+    /// 屏幕左上角、状态栏下方那一小块底色的亮度（0 黑 … 1 白）：外观是否真的切到了深 / 浅。
+    func backgroundLuminance() -> Double {
+        let image = XCUIScreen.main.screenshot().image
+        guard let cgImage = image.cgImage else { return .nan }
+        let width = 100, height = 100
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return .nan }
+        // 位图第 0 行是画面顶上那一行；取 x 2–4%、y 6–8% 的一小块（左边距、导航栏高度，那里只有底色）。
+        var total = 0.0, count = 0.0
+        for row in 6...8 {
+            for column in 2...4 {
+                let offset = (row * width + column) * 4
+                let (r, g, b) = (Double(pixels[offset]), Double(pixels[offset + 1]), Double(pixels[offset + 2]))
+                total += (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+                count += 1
+            }
+        }
+        return total / count
+    }
+
+    func expectAppearance(dark: Bool, _ step: String, file: StaticString = #filePath, line: UInt = #line) {
+        let luminance = backgroundLuminance()
+        if dark ? !(luminance < 0.3) : !(luminance > 0.7) {
+            attachState("wrong appearance at \(step)")
+            XCTFail("\(prefix): \(step) background luminance \(luminance) is not \(dark ? "dark" : "light")", file: file, line: line)
+        }
+    }
+
+    // MARK: 证据
+
+    /// 这一步的截图，随测试结果一起留下（xcresult 附件）。
+    func shot(_ step: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "\(prefix) \(step)"
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+    }
+
+    private func attachState(_ reason: String) {
+        shot("FAILED \(reason)")
+        let tree = XCTAttachment(string: app.debugDescription)
+        tree.name = "\(prefix) FAILED \(reason) accessibility tree"
+        tree.lifetime = .keepAlways
+        test.add(tree)
+    }
+}
