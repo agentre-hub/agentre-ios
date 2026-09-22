@@ -215,12 +215,12 @@ tasks:
   - id: 19
     goal: "一轮在应用处于后台时结束，回到前台后输入区如实回到不在运行：停止钮消失、可直接发下一句；补齐拉回的历史回合不得再触发一次轮末接续（取回剩余插话只做一次、不重复发出）；先以宿主测试复现现状（停止钮仍在），再修；并把任务 18 从主线界面流程里拿掉的「回前台后停止钮消失」断言加回，四组合通过。"
     deps: [18]
-    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
+    files: [agentre-ios/Sources/AgentreStore/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: "TurnFeedingTranscript 只把不带 createtime 的实时帧递成 TurnSignal（Sources/AgentreApp/RelayGlue.swift:40-66），注释写明补齐的历史回合不能再触发轮末接续；主线界面流程 UITests/MainlineUITests.swift"
     status: doing
     commit: null
-    note: "2026-09-22 用户批准新增（任务 18 发现：回合结束只认实时帧，后台期间结束的那一轮回前台后停止钮不消失）。"
+    note: "2026-09-22 用户批准新增（任务 18 发现：回合结束只认实时帧，后台期间结束的那一轮回前台后停止钮不消失）。 首派 stuck：手机新建的对话由 LocalConversationStore.record(StartedConversation) 以承载机为发起端落库（Sources/AgentreStore/LocalConversationStore+Ports.swift:41-56），机器清单里该会话 peer_fingerprint 是手机，RelayMachineSessions.session 按 owner == key.machineFingerprint 匹配（Sources/AgentreRelay/Adapters/RelayMachineSessions.swift:37-40）永远落空，摘要不刷新、输入区收不到轮末。用户批准加宽到本地库，改为发起端 = 本机。"
 
 review:
   status: pending
