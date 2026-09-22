@@ -233,10 +233,10 @@ tasks:
     note: "2026-09-22 用户批准新增，承接任务 19 退回中查明的回归。 完成记录：两处缺陷——跟随态下可见高度变化不再滚底；在底判据未扣键盘占去的底部内距。RED 三例滚动测试失败；GREEN Transcript 125 条过，变异（去掉仅跟随时）使 3/5 滚动测试红；中文深色主线连续 12/12 过，其余三组合各 1 次过；全量 561 条 + UI 4 条过（exit 0）。"
 
 review:
-  status: pending
-  axis: none
-  head: null
-  receipt: null
+  status: running
+  axis: spec
+  head: 03a6614
+  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/spec-2.md
   fixes: []
   note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。"
 
