@@ -198,9 +198,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
     interfaces: "TranscriptModel.start/attach（Sources/AgentreUI/Conversation/TranscriptModel.swift:50-87）；SignedInServices.resume（AppRootView.swift:45-53 调用处）"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 08ae0a3
+    note: "根因比计划假设窄：普通断线 RelayChannel 自己重连补齐；只有服务端关掉承载机的通道时转录订阅收场、attach 返回后无人再接。RED：宿主 closedChannelResumes 超时、模型层 resumeReattachesAnOpenScreen 超时；GREEN：宿主整目标两次 20/20、Transcript 121 条过；全量 547 条过（首跑因模拟器 Timed out while preparing execution worker 未跑完，重置模拟器后重跑 exit 0）。未以测试复现：刚发的用户消息从屏上消失——模型层用户行仍在，推断为 SwiftUI 列表在后台增删行后布局停滞（仅据截图），交任务 18 的界面流程与运行验证在屏上确认。残留（范围外）：ConversationSync 若在 resume 之后才读到关通道帧，失败提示会留到下一次 resync 或点重试。"
 
   - id: 18
     goal: "仓库内一个 XCUITest target 驱动真实构建的 Agentre：测试进程在本机起伪 HTTP 服务端（设备流、账号、机器名册、设备、引擎目录等 REST）与伪中继（/v1/relay/client 的 WebSocket、信封、逐通道握手、machine: 通道上的 wire RPC 与实时帧，行为照搬 agentred，含任务 16 的档位语义），App 在登录屏把服务器地址改到它；走登录 → 机器 → 机器详情保存到手机 → 新建对话并发出 → 审批 Allow Once → 两轮之间切权限模式后再发一句 → 挂起回前台、打开着的对话屏续上 → 撤销本机回到登录屏；整条在 zh-Hans × en、浅色 × 深色（经 App 自己的外观设置）四种组合下各跑一遍，每步断言可见结果并留截图附件；加入 Agentre scheme 的 test，使 README 的全量命令覆盖它；scratch 里的手写驱动由它取代。"
@@ -208,7 +208,7 @@ tasks:
     files: [agentre-ios/project.yml, agentre-ios/UITests/, agentre-ios/Sources/AgentreApp/, agentre-ios/README.md, agentre-ios/.gitignore]
     model: strong
     interfaces: "wire 生成类型 Agentre_Wire_*（经 AgentreKit 包的 AgentreWire 依赖）；中继信封 = 2 字节大端通道 ID 长度 + UTF-8 id + payload（agentre/pkg/wire/relayenvelope/relayenvelope.go:21-31）；宿主闭环测试的 FakeServer / FakeRelay（Tests/AgentreAuthTests/Hosted/Support/）可作形状参照但它们是进程内端口替身、不是网络服务"
-    status: todo
+    status: doing
     commit: null
     note: "project.yml 自任务 2 冻结；用户批准驱动转正式 UI 测试 target，即批准本任务为加 target 而解冻 project.yml，只加该 target 与 scheme 条目。Package.swift 仍冻结。"
 
