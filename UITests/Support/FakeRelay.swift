@@ -28,7 +28,6 @@ final class FakeRelay: @unchecked Sendable {
     }
 
     func client(for phoneFingerprint: String) -> RelayClient {
-        upgrades += 1
         let client = RelayClient(relay: self, phoneFingerprint: phoneFingerprint)
         clients.append(client)
         return client
@@ -45,6 +44,9 @@ final class FakeRelay: @unchecked Sendable {
     func closeChannels(to machine: FakeAgentred) {
         for client in clients { client.closeChannels(to: machine) }
     }
+
+    /// 真的升级成了 WebSocket 才算一次拨号（没带升级头的请求在握手前就被 400 挡回）。
+    fileprivate func upgraded() { upgrades += 1 }
 
     fileprivate func forget(_ client: RelayClient) {
         clients.removeAll { $0 === client }
@@ -71,6 +73,7 @@ final class RelayClient: WebSocketHandler {
 
     func opened(_ socket: any WebSocketChannel) {
         self.socket = socket
+        relay.upgraded()
     }
 
     func received(_ message: Data, on socket: any WebSocketChannel) {

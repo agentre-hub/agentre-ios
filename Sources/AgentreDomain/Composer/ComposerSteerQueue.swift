@@ -70,11 +70,13 @@ public struct SteerQueue: Sendable, Equatable {
         }
     }
 
-    /// 撤回成功、或这条根本没发出去：按句柄移除。
+    /// 撤回成功、或这条根本没发出去：按句柄移除。插话在飞时这一轮已收场、它已挪进 dropped 的，也从那里移除
+    /// ——没发出去的那句由调用方放回输入框，不能同时留在「未发送」里。
     public mutating func drop(_ ids: [String]) {
         guard !ids.isEmpty else { return }
         let drop = Set(ids)
         items.removeAll { drop.contains($0.id) }
+        dropped.removeAll { drop.contains($0.id) }
     }
 
     /// 撤回被对端拒了：留在原位，转成撤不掉。

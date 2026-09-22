@@ -108,6 +108,31 @@ private func runDone(_ conversationID: String) -> Agentre_Wire_RpcNotification {
         #expect(live.items.map(\.seq) == [1, 2, 3])
     }
 
+    @Test("没人再订阅的对话（跟随停了、屏关了）：重连后不再为它 attach 与补拉")
+    func unsubscribedConversationIsNotReattached() async throws {
+        let harness = Harness()
+        let (channel, socket, id) = try await harness.readyChannel(.machine(fingerprint: "fp-1"))
+        let stream = await channel.subscribe(conversationID: "conv-1")
+        let reader = Task { for await _ in stream {} }
+        async let attached = channel.attach(conversationID: "conv-1")
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), with: attachResponse(latestSeq: 1))
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionPull), with: page("conv-1", [1]))
+        _ = try await attached
+        reader.cancel()
+        await reader.value
+        try await Task.sleep(for: .milliseconds(50))
+
+        socket.drop()
+        let delay = try await eventually("redial backoff") { harness.clock.pendingSleeps.first }
+        harness.clock.advance(by: delay)
+        let second = try await harness.dialer.socket(1)
+        let newID = try await second.channelID(for: .machine(fingerprint: "fp-1"))
+        try await second.acceptHandshake(on: newID)
+        try await waitStatus(channel, .ready)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(second.requests(on: newID, method: .sessionAttach).isEmpty)
+    }
+
     @Test("补齐期间到达的轮次边界帧排在补齐帧之后交出，不抢到它所属那一轮的帧前面")
     func boundaryDuringCatchUpWaits() async throws {
         let harness = Harness()

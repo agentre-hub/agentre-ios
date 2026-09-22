@@ -34,6 +34,24 @@ struct ComposerModelTests {
         #expect(model.canSend)
     }
 
+    @Test("插话在飞时这一轮收场、插话随后又没发出去：那句话只回到输入框一处，不同时留在「未发送」里")
+    func failedSteerAfterTurnEndIsNotDuplicated() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "顺便看下测试"
+        await relay.holdNextSteer()
+        let sending = Task { await model.send() }
+        await relay.waitForHeldSteer()
+        await model.turnEnded(normally: false)
+        await relay.fail("steer")
+        await relay.releaseSteer()
+        await sending.value
+        #expect(model.text == "顺便看下测试")
+        #expect(model.queue.dropped.isEmpty)
+        #expect(model.queue.items.isEmpty)
+    }
+
     @Test("面板三项的当前取值：模型与思考档位取自会话行，权限档位与可选范围取自执行端与引擎目录")
     func settingsForConversation() {
         var saved = conversation()

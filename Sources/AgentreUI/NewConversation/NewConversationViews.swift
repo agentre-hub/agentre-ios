@@ -9,13 +9,7 @@ struct NewConversationReasonText: View {
     let availability: TargetAvailability
 
     var body: some View {
-        switch availability {
-        case .offline: Text("newconv.offline", tableName: table, bundle: .module)
-        case .unpaired: Text("newconv.unpaired", tableName: table, bundle: .module)
-        case .noDevice: Text("newconv.noDevice", tableName: table, bundle: .module)
-        case .projectPathMissing: Text("newconv.projectPathMissing", tableName: table, bundle: .module)
-        case .available, .unrecognized: Text("newconv.noAvailableTarget", tableName: table, bundle: .module)
-        }
+        Text(reasonKey(availability), tableName: table, bundle: .module)
     }
 }
 

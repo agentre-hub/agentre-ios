@@ -38,7 +38,7 @@ extension LocalConversationStore: ConversationSaving {
     }
 
     /// 补齐拉回的一批帧：载体上带着源端时刻（0 照录），所以不是实时帧、不跟随摘要。
-    public func record(_ frames: [PulledFrame], into key: ConversationKey, via machineFingerprint: String) throws {
+    public func record(_ frames: [PulledFrame], into key: ConversationKey) throws {
         let incoming = try frames.map { frame in
             IncomingFrame(
                 conversationID: key.conversationID, seq: frame.seq, createtime: frame.createtime,

@@ -433,4 +433,82 @@ private final class SeqCollector: @unchecked Sendable {
         #expect(await iterator.next() == .closed)
         #expect(!socket.frames.contains { $0.channelID == RelayProtocol.signalChannelID })
     }
+
+    @Test("拨号在途时登出（stop）：拨回来的连接当场关掉，不以已登出账号的令牌挂在那里")
+    func stopDuringDialClosesTheLateSocket() async throws {
+        let gate = TokenGate()
+        let dialer = StubbornDialer()
+        let connection = RelayConnection(
+            url: testURL, dialer: dialer, accessToken: { await gate.token() }, sleeper: ManualClock()
+        )
+        await connection.start()
+        _ = try await eventually("token requested") { gate.requested ? true : nil }
+        await connection.stop()
+        gate.open("token-1")
+        let socket = try await eventually("late dial") { dialer.made }
+        _ = try await eventually("late socket closed") { socket.closed ? true : nil }
+    }
+}
+
+/// 令牌在测试放行之前不交出（拨号在途的那一段）。
+private final class TokenGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiter: CheckedContinuation<String, Never>?
+    private var asked = false
+    var requested: Bool { lock.withLock { asked } }
+
+    func token() async -> String {
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                asked = true
+                waiter = continuation
+            }
+        }
+    }
+
+    func open(_ token: String) {
+        lock.withLock { waiter }?.resume(returning: token)
+    }
+}
+
+/// 与 URLSessionWebSocketTask 同样不理会任务取消的连接：receive 只在 close 之后才返回。
+private final class StubbornSocket: RelaySocket, @unchecked Sendable {
+    private let lock = NSLock()
+    private var waiter: CheckedContinuation<Data, any Error>?
+    private var isClosed = false
+    var closed: Bool { lock.withLock { isClosed } }
+
+    func send(_ frame: Data) async throws {}
+
+    func receive() async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            let closedAlready = lock.withLock {
+                if isClosed { return true }
+                waiter = continuation
+                return false
+            }
+            if closedAlready { continuation.resume(throwing: URLError(.networkConnectionLost)) }
+        }
+    }
+
+    func close() {
+        let pending = lock.withLock {
+            isClosed = true
+            defer { waiter = nil }
+            return waiter
+        }
+        pending?.resume(throwing: URLError(.networkConnectionLost))
+    }
+}
+
+private final class StubbornDialer: RelaySocketDialing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var socket: StubbornSocket?
+    var made: StubbornSocket? { lock.withLock { socket } }
+
+    func dial(url: URL, accessToken: String) async throws -> any RelaySocket {
+        let made = StubbornSocket()
+        lock.withLock { socket = made }
+        return made
+    }
 }

@@ -133,6 +133,11 @@ public actor RelayConnection {
     private func run() async {
         while !Task.isCancelled {
             if let socket = await dialOnce() {
+                // 拨号在途时登出了：拨回来的连接带着已登出账号的令牌，当场关掉，不接管。
+                guard !Task.isCancelled, !stopped else {
+                    socket.close()
+                    return
+                }
                 await adopt(socket)
                 await read(socket)
                 await lose(socket)

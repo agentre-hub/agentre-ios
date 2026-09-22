@@ -74,6 +74,8 @@ struct AgentTargetTests {
     @Test("标题取第一句话的首行，过长截断")
     func titleFromFirstMessage() {
         #expect(conversationTitle(from: "  修一下构建\n细节在日志里 ") == "修一下构建")
+        // 从 Windows / 网页粘进来的 CRLF 换行同样是换行。
+        #expect(conversationTitle(from: "修一下构建\r\n细节在日志里") == "修一下构建")
         let long = String(repeating: "长", count: 70)
         #expect(conversationTitle(from: long) == String(repeating: "长", count: 60) + "…")
     }

@@ -99,7 +99,7 @@ struct ComposerSettingsAdapter: ComposerSettingsSource {
         async let modes = try? connection.permissionModes(backendType: conversation.backendType, on: machine)
         async let frames = try? store.transcript(conversation.key)
         let (choices, permission, transcript) = await (models, modes, frames)
-        let reported = RelayComposer.reportedPermissionMode(in: transcript ?? [])
+        let reported = TurnSignal.lastReportedPermissionMode(in: transcript ?? [])
         // 机器没答上来时范围无从校验：照用报过的那一档（控制台同此）。
         let starting = permission.map {
             ComposerSettings.startingPermissionMode(reported: reported, allowed: $0.allowed, defaultMode: $0.defaultMode)

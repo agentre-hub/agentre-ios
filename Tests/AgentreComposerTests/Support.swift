@@ -84,6 +84,10 @@ actor FakeComposerRelay: ComposerRelay {
 
     func steer(_ key: ConversationKey, peerFingerprint: String, queuedID: String, text: String) async throws -> ComposerSteerHandle {
         calls.append(.steer(queuedID: queuedID, text: text))
+        if holdSteer {
+            holdSteer = false
+            await withCheckedContinuation { steerGate = $0 }
+        }
         try check("steer")
         return steerHandle?(queuedID) ?? ComposerSteerHandle(queuedID: "", cancellable: false)
     }
@@ -111,6 +115,15 @@ actor FakeComposerRelay: ComposerRelay {
     func releaseDrain() { drainGate?.resume(); drainGate = nil }
     nonisolated func waitForHeldDrain() async {
         for _ in 0..<1_000 where await drainGate == nil { await Task.yield() }
+    }
+
+    /// 下一次插话挂起，直到 `releaseSteer()`：观察插话在飞时这一轮收场的那一段。
+    private var holdSteer = false
+    private var steerGate: CheckedContinuation<Void, Never>?
+    func holdNextSteer() { holdSteer = true }
+    func releaseSteer() { steerGate?.resume(); steerGate = nil }
+    nonisolated func waitForHeldSteer() async {
+        for _ in 0..<1_000 where await steerGate == nil { await Task.yield() }
     }
 
     /// 下一次开新一轮挂起，直到 `releaseRun()`：观察开新一轮的调用在飞的那一段。

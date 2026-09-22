@@ -74,7 +74,7 @@ struct AssemblyTests {
         let stale = try (1...5).map { seq in
             PulledFrame(seq: Int64(seq), createtime: 1, payload: try WireFrames.text("conv-1", "old \(seq)"))
         }
-        try await environment.store.record(stale, into: key, via: "machine-a")
+        try await environment.store.record(stale, into: key)
         #expect(try await environment.store.latestSeq(key) == 5)
 
         let services = environment.startServices()
@@ -100,7 +100,7 @@ struct AssemblyTests {
         let session = MachineSession(conversationID: "conv-1", title: "Reused")
         let key = try await environment.store.save(session, via: "machine-a")
         try await environment.store.record(
-            [PulledFrame(seq: 4, createtime: 1, payload: try WireFrames.text("conv-1", "old 4"))], into: key, via: "machine-a"
+            [PulledFrame(seq: 4, createtime: 1, payload: try WireFrames.text("conv-1", "old 4"))], into: key
         )
         let services = environment.startServices()
         defer { Task { await environment.tearDown() } }

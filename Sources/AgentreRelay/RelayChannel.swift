@@ -170,9 +170,13 @@ public actor RelayChannel {
         return token
     }
 
+    /// 最后一个订阅方走了（跟随停了、屏关了）：这条对话不再关注，重连时不再为它 attach 与补拉。
+    /// 游标留着；再 attach 时以调用方的游标为准。
     private func unsubscribe(_ conversationID: String, _ token: UUID) {
         subscribers[conversationID]?[token] = nil
-        if subscribers[conversationID]?.isEmpty == true { subscribers[conversationID] = nil }
+        guard subscribers[conversationID]?.isEmpty == true else { return }
+        subscribers[conversationID] = nil
+        conversations[conversationID]?.watched = false
     }
 
     /// 交出一条通知：订阅了这条对话的每一方各一份。

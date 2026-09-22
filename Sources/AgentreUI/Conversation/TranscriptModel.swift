@@ -89,7 +89,11 @@ public final class TranscriptModel {
     public func attach() async {
         guard !attached else { return }
         attached = true
-        defer { attached = false }
+        defer {
+            attached = false
+            // 接着流的这一处关掉了（同一条会话还开在另一个标签里）：把流交给还在等的那一处，不等下一次回前台。
+            if Task.isCancelled { resume() }
+        }
         guard let stream = try? await relay.attach(conversation.key, peerFingerprint: conversation.peerFingerprint, after: timeline.latestSeq ?? 0) else { return }
         for await frame in stream {
             merge(live: [frame])

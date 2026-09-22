@@ -163,20 +163,3 @@ public struct RelayComposer: ComposerRelay {
         return response.commands.map { ComposerSkillSource(name: $0.name, description: $0.description_p) }
     }
 }
-
-extension RelayComposer {
-    /// 转录里执行端最后一次报的当前权限档位（permission_mode_changed，空档不算）；没报过为 nil。
-    /// 与控制台 reduceSessionState 的 permissionMode 同一取法。
-    public static func reportedPermissionMode(in frames: [TranscriptFrame]) -> String? {
-        frames.reversed().lazy.compactMap { frame -> String? in
-            guard let notification = try? Agentre_Wire_RpcNotification(serializedBytes: frame.payload) else { return nil }
-            switch notification.payload {
-            case .runtimeEvent(let event), .autonomousTurnEvent(let event):
-                guard case .permissionModeChanged(let changed) = event.event, !changed.mode.isEmpty else { return nil }
-                return changed.mode
-            default:
-                return nil
-            }
-        }.first
-    }
-}

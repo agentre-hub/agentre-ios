@@ -69,4 +69,13 @@ public enum TurnSignal: Sendable, Equatable {
             return nil
         }
     }
+
+    /// 转录里执行端最后一次报的当前权限档位（permission_mode_changed，空档不算）；没报过为 nil。
+    /// 与控制台 reduceSessionState 的 permissionMode 同一取法；逐帧的判读就是上面这一处。
+    public static func lastReportedPermissionMode(in frames: [TranscriptFrame]) -> String? {
+        frames.reversed().lazy.compactMap { frame -> String? in
+            guard case .permissionModeReported(let mode) = TurnSignal(payload: frame.payload) else { return nil }
+            return mode
+        }.first
+    }
 }

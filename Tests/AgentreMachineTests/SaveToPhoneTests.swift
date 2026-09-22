@@ -45,7 +45,7 @@ struct SaveToPhoneTests {
     @Test("补齐从本机已有的最大帧号起，不从头重放")
     func pullStartsAfterTheLocalCursor() async throws {
         let store = FakeSavingStore(saved: [key("a")])
-        await store.record(frames(1...3), into: key("a"), via: machineFingerprint)
+        await store.record(frames(1...3), into: key("a"))
         let transfer = FakeTransfer(["a": frames(1...5)], batch: 10)
         try await ConversationSaver(store: store, transfer: transfer).save(session("a"), on: onlineMachine())
         #expect(await transfer.pulls == [3])
@@ -75,7 +75,7 @@ struct SaveToPhoneTests {
     @Test("本来就在库里的会话再存一次时失败：不撤掉已有的摘要与帧")
     func failureKeepsAnAlreadySavedConversation() async throws {
         let store = FakeSavingStore(saved: [key("a")])
-        await store.record(frames(1...2), into: key("a"), via: machineFingerprint)
+        await store.record(frames(1...2), into: key("a"))
         let transfer = FakeTransfer(["a": frames(1...5)])
         await transfer.configure(failAttach: true)
         await #expect(throws: (any Error).self) {
@@ -130,7 +130,7 @@ struct SaveToPhoneTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let local = try LocalConversationStore(directory: directory)
-        let store = LocalStoreWriter(local)
+        let store = local
         let payloads = try (1...3).map { seq in
             PulledFrame(seq: Int64(seq), createtime: 500, payload: try textNotification("conv-1", "line \(seq)").serializedData())
         }
@@ -167,41 +167,4 @@ func textNotification(_ conversationID: String, _ value: String) -> Agentre_Wire
     var notification = Agentre_Wire_RpcNotification()
     notification.runtimeEvent = event
     return notification
-}
-
-/// 把领域的写入端口接到真实本地库上（装配层的那一份在任务 12；这里只为验证落库的形状）。
-struct LocalStoreWriter: ConversationSaving {
-    let store: LocalConversationStore
-
-    init(_ store: LocalConversationStore) { self.store = store }
-
-    func save(_ session: MachineSession, via machine: String) async throws -> ConversationKey {
-        var summary = Agentre_Wire_SessionSummary()
-        summary.conversationID = session.conversationID
-        summary.peerFingerprint = session.peerFingerprint
-        summary.title = session.title
-        summary.lifecycleState = session.lifecycleState
-        summary.waitingForInput = session.waitingForInput
-        summary.lastMessageAt = session.lastMessageAt
-        return try await store.save(summary, via: machine)
-    }
-
-    func record(_ frames: [PulledFrame], into key: ConversationKey, via machine: String) async throws {
-        let incoming = try frames.map {
-            IncomingFrame(
-                conversationID: key.conversationID, seq: $0.seq, createtime: $0.createtime,
-                payload: try Agentre_Wire_RpcNotification(serializedBytes: $0.payload)
-            )
-        }
-        try await store.record(incoming, via: machine)
-    }
-
-    func conversations() async throws -> [SavedConversation] { try await store.conversations() }
-    func conversation(_ key: ConversationKey) async throws -> SavedConversation? { try await store.conversation(key) }
-    func transcript(_ key: ConversationKey) async throws -> [TranscriptFrame] { try await store.transcript(key) }
-    func latestSeq(_ key: ConversationKey) async throws -> Int64 { try await store.latestSeq(key) }
-    func markRead(_ key: ConversationKey) async throws { try await store.markRead(key) }
-    func delete(_ key: ConversationKey) async throws { try await store.delete(key) }
-    func removeAll() async throws { try await store.removeAll() }
-    func changes() async -> AsyncStream<Void> { await store.changes() }
 }

@@ -110,13 +110,12 @@ struct ApprovalCardsModelTests {
     func answerQuestion() async {
         let cards = model
         let request = question("q1", ["用哪个分支？", "要不要跑 e2e？"])
-        #expect(!cards.canSubmit(request))
         cards.setAnswer("main", at: 0, of: request)
-        #expect(!cards.canSubmit(request))
         cards.setAnswer("   ", at: 1, of: request)
-        #expect(!cards.canSubmit(request))
+        await cards.submitAnswers(for: request)
+        #expect(await port.answers.isEmpty)
+        #expect(cards.inputError(of: request) != nil)
         cards.setAnswer("要", at: 1, of: request)
-        #expect(cards.canSubmit(request))
         #expect(cards.answer(0, of: request) == "main")
         await cards.submitAnswers(for: request)
         #expect(await port.answers == [QuestionReply(

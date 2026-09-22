@@ -67,9 +67,10 @@ public final class LoginFlow {
         outcome = await runDeviceFlow()
     }
 
-    /// 改服务器地址。只接受合法的 http / https 地址；不合法时原地址不变。
+    /// 改服务器地址。只接受合法的 http / https 地址；不合法时原地址不变。等待授权期间也不变：
+    /// 设备流在发起时的那台服务器上换令牌，换来的令牌不能落到另一台的名下。
     public func setServerAddress(_ text: String) -> Bool {
-        guard let address = ServerAddress(string: text) else { return false }
+        guard state != .awaitingApproval, let address = ServerAddress(string: text) else { return false }
         servers.save(address)
         addressRevision += 1
         return true

@@ -140,7 +140,10 @@ final class MainlineUITests: XCTestCase {
         screen.expectSelected(screen.button(startingWith: "default"), "default mode (the executor's default)")
         screen.tap(plan, "plan mode")
         screen.expectSelected(plan, "plan mode")
-        XCTAssertFalse(screen.text(copy("Composer", "composer.changeFailed")).exists, "switching between turns reported a failure")
+        // 失败是改档调用应答之后才出现的：等一会儿再断言它没出现，而不是点完当场看。
+        XCTAssertFalse(
+            screen.text(copy("Composer", "composer.changeFailed")).waitForExistence(timeout: 2), "switching between turns reported a failure"
+        )
         screen.shot("14 permission mode")
         screen.dismissSheet(grabbing: plan)
         screen.expectGone(plan, "permission panel")

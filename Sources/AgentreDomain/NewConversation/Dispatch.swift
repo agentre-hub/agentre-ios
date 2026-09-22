@@ -87,7 +87,7 @@ public enum ConversationIDs {
 /// 对话标题：第一句话的首行，超过 60 个字符截断加省略号（与控制台、桌面端同一条规矩）。
 public func conversationTitle(from text: String) -> String {
     let firstLine = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        .split(separator: "\n", omittingEmptySubsequences: false).first
+        .split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).first
         .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
     return firstLine.count > 60 ? "\(firstLine.prefix(60))…" : firstLine
 }

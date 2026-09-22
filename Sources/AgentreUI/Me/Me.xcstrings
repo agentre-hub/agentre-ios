@@ -579,23 +579,6 @@
         }
       }
     },
-    "failure.noMachine.projectPathMissing": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No machine available: the project has no path on any of them"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有可用的机器：这个项目在它们上面都没有路径"
-          }
-        }
-      }
-    },
     "failure.noMachine.offline": {
       "extractionState": "manual",
       "localizations": {
@@ -626,40 +609,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有可用的机器：都还没有配对"
-          }
-        }
-      }
-    },
-    "failure.noMachine.noDevice": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No machine available: none is assigned"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有可用的机器：没有指定任何机器"
-          }
-        }
-      }
-    },
-    "failure.noMachine.unspecified": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No machine available"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有可用的机器"
           }
         }
       }

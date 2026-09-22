@@ -175,6 +175,25 @@ struct TranscriptModelTests {
         #expect(await relay.attaches.count == 1)
     }
 
+    @Test("同一条会话开在两处：接着实时流的那一处关掉（任务取消），还开着的那一处当场接上，不等下一次回前台")
+    func closingTheAttachedScreenHandsOverTheLiveStream() async throws {
+        let (model, _, relay) = model(local: frames(1...3), machine: frames(1...3))
+        let first = Task { await model.start() }
+        try await eventually("first attached") { await relay.attaches.count == 1 }
+        let second = Task { await model.start() }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await relay.attaches.count == 1)
+
+        first.cancel()
+        await first.value
+        try await eventually("still-open screen took over the live stream") { await relay.attaches.count == 2 }
+        await relay.push(liveFrame(decoder, 4, .userMessage("m4")))
+        try await eventually("live frame reaches the still-open screen") { userTexts(model).last == "m4" }
+
+        second.cancel()
+        await second.value
+    }
+
     @Test("本地为空、历史已整段补拉回来：接上实时帧时从补拉到的最新帧号接着补，不再从头下载一遍")
     func attachAfterBackfillDoesNotRedownload() async throws {
         let (model, _, relay) = model(local: [], machine: frames(1...7), pageSize: 3)

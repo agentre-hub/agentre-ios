@@ -77,7 +77,7 @@ struct AssemblySeamTests {
         let frames = try (1...2).map { seq in
             PulledFrame(seq: Int64(seq), createtime: 0, payload: try event("conv-1", seq: 0, text: "t\(seq)").serializedData())
         }
-        try await saving.record(frames, into: key, via: "carrier")
+        try await saving.record(frames, into: key)
         let stored = try await store.transcript(key)
         #expect(stored.map(\.seq) == [1, 2])
         // 拉回的帧不是实时帧：0 照录为 0，不盖本机钟。
@@ -96,7 +96,7 @@ struct AssemblySeamTests {
         let frames = try (1...2).map { seq in
             PulledFrame(seq: Int64(seq), createtime: 5, payload: try event("sess-1", seq: 0, text: "origin \(seq)").serializedData())
         }
-        try await store.record(frames, into: relayed, via: "carrier")
+        try await store.record(frames, into: relayed)
         #expect(try await store.transcript(relayed).map(\.seq) == [1, 2])
         #expect(try await store.transcript(own).isEmpty)
         #expect(try await store.latestSeq(own) == 0)
@@ -173,5 +173,27 @@ struct AssemblySeamTests {
 
         #expect(TurnSignal(payload: try event("c", seq: 1).serializedData()) == nil)
         #expect(TurnSignal(payload: Data([0xFF])) == nil)
+    }
+
+    @Test("转录里执行端最后报过的权限档位：取最后一次非空的 permission_mode_changed（自主轮的也算），没报过为 nil")
+    func reportedPermissionMode() throws {
+        func frame(_ seq: Int64, autonomous: Bool = false, _ build: (inout Agentre_Wire_RuntimeEventNotification) -> Void) throws -> TranscriptFrame {
+            var event = Agentre_Wire_RuntimeEventNotification()
+            event.conversationID = "conv-1"
+            build(&event)
+            var notification = Agentre_Wire_RpcNotification()
+            if autonomous { notification.autonomousTurnEvent = event } else { notification.runtimeEvent = event }
+            return TranscriptFrame(seq: seq, createtime: 0, payload: try notification.serializedData())
+        }
+        func mode(_ value: String) -> (inout Agentre_Wire_RuntimeEventNotification) -> Void {
+            { $0.permissionModeChanged.mode = value }
+        }
+        let text = try frame(9) { $0.textDelta.text = "ok" }
+        #expect(TurnSignal.lastReportedPermissionMode(in: []) == nil)
+        #expect(TurnSignal.lastReportedPermissionMode(in: [text]) == nil)
+        #expect(TurnSignal.lastReportedPermissionMode(in: [try frame(1, mode("default")), try frame(2, mode("plan")), text]) == "plan")
+        #expect(TurnSignal.lastReportedPermissionMode(in: [try frame(1, mode("plan")), try frame(2, mode(""))]) == "plan")
+        #expect(TurnSignal.lastReportedPermissionMode(in: [try frame(1, mode("plan")), try frame(2, autonomous: true, mode("acceptEdits"))]) == "acceptEdits")
+        #expect(TurnSignal.lastReportedPermissionMode(in: [TranscriptFrame(seq: 1, createtime: 0, payload: Data([0xFF]))]) == nil)
     }
 }

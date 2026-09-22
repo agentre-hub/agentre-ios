@@ -104,6 +104,8 @@ public struct LoginView: View {
                     .padding(.horizontal, 8)
             }
             .hitTarget()
+            // 等待授权期间地址不可改（设备流在发起时的服务器上换令牌）。
+            .disabled(isAwaiting)
         }
     }
 
@@ -158,6 +160,7 @@ public struct LoginView: View {
     }
 
     private func save() {
+        guard !isAwaiting else { return }
         guard flow.setServerAddress(draftAddress) else {
             draftIsInvalid = true
             return

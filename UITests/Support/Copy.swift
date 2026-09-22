@@ -15,12 +15,12 @@ struct Copy {
         self.bundle = bundle
     }
 
-    /// `table` 是功能目录名（Login、Machines……），`key` 是目录里的键；带格式的键按参数填上。
-    func callAsFunction(_ table: String, _ key: String, _ arguments: CVarArg...) -> String {
+    /// `table` 是功能目录名（Login、Machines……），`key` 是目录里的键。
+    func callAsFunction(_ table: String, _ key: String) -> String {
         let missing = "\u{0}missing"
-        let format = bundle.localizedString(forKey: key, value: missing, table: table)
-        precondition(format != missing, "no \(language) copy for \(table)/\(key)")
-        return arguments.isEmpty ? format : String(format: format, arguments: arguments)
+        let text = bundle.localizedString(forKey: key, value: missing, table: table)
+        precondition(text != missing, "no \(language) copy for \(table)/\(key)")
+        return text
     }
 }
 

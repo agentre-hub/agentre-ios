@@ -113,16 +113,9 @@ public enum FailureExit: Sendable, Equatable {
     case none
 }
 
-/// 「没有可用的机器」的原因，取自服务端派发计划里逐档的 availability
-/// （agentre-server/internal/api/workspace/workspace.go 的 DispatchTierItem：
-/// available | offline | unpaired | no_device | project_path_missing）。
-///
-/// 成员按「用户最能就此行动」排序：有机器在线只是缺项目路径 > 机器不在线 > 没配对 > 没指定机器。
+/// 「没有可用的机器」的原因：名册里没有一台在线（机器标签），或承载会话的那台连不上（中继）。
+/// 新建对话时派发计划里逐档的 availability 另由 `TargetAvailability` 表达，不经这里。
 public enum MachineUnavailableReason: Sendable, Equatable, Hashable, CaseIterable {
-    case projectPathMissing
     case offline
     case unpaired
-    case noDevice
-    /// 服务端给了本客户端认不出的取值：只说没有可用的机器，不复述那个取值。
-    case unspecified
 }

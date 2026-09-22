@@ -62,11 +62,8 @@ func failureKey(_ fact: FailureFact) -> String {
     case .unknown: "failure.unknown"
     case .noMachineAvailable(let reason):
         switch reason {
-        case .projectPathMissing: "failure.noMachine.projectPathMissing"
         case .offline: "failure.noMachine.offline"
         case .unpaired: "failure.noMachine.unpaired"
-        case .noDevice: "failure.noMachine.noDevice"
-        case .unspecified: "failure.noMachine.unspecified"
         }
     }
 }

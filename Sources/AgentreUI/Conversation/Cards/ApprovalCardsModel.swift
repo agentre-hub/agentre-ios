@@ -132,11 +132,6 @@ public final class ApprovalCardsModel {
         inputErrors[request.requestID]
     }
 
-    /// 可以提交：待作答，且每一问都选了，选了自定义答案的填了字。
-    public func canSubmit(_ request: QuestionRequest) -> Bool {
-        state(of: request) == .open(submitting: false) && validate(request) == nil
-    }
-
     /// 以每问选中的 label 作答；核对没过则不发出，只记下原因（宿主的两句报错）。
     public func submitAnswers(for request: QuestionRequest) async {
         guard !request.requestID.isEmpty, state(of: request) == .open(submitting: false) else { return }

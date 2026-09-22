@@ -129,7 +129,7 @@ actor FakeSavingStore: ConversationSaving {
         return key
     }
 
-    func record(_ incoming: [PulledFrame], into key: ConversationKey, via machine: String) {
+    func record(_ incoming: [PulledFrame], into key: ConversationKey) {
         guard rows.contains(where: { $0.key == key }) else { return }
         var existing = frames[key] ?? []
         for frame in incoming where !existing.contains(where: { $0.seq == frame.seq }) { existing.append(frame) }

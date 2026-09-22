@@ -25,7 +25,7 @@ public struct AccountClient: AccountService {
     public func devices(server: ServerAddress) async throws -> [AuthorizedDevice] {
         let response = try await transport.send(HTTPRequest(method: "GET", url: server.endpoint("/v1/devices")))
         guard response.isSuccess else { throw AuthError.unexpectedResponse(status: response.status) }
-        return try CagoEnvelope.decodeData(DevicesResponse.self, from: response).devices.map(\.device)
+        return try CagoEnvelope.decodeData(ListedDevices.self, from: response).devices.map(\.device)
     }
 
     public func revoke(deviceID: Int64, server: ServerAddress) async throws {
@@ -48,21 +48,7 @@ private struct MeResponse: Decodable {
     let githubLogin: String?
 }
 
-private struct DevicesResponse: Decodable {
-    let devices: [DeviceItem]
-}
-
-private struct DeviceItem: Decodable {
-    let id: Int64
-    let name: String?
-    let displayName: String?
-    let kind: String?
-    let platform: String?
-    let fingerprint: String?
-    let lastSeenAt: Int64?
-    let online: Bool?
-    let isThisDevice: Bool?
-
+private extension ListedDevice {
     var device: AuthorizedDevice {
         AuthorizedDevice(
             id: id, name: name ?? "", displayName: displayName ?? "", kind: kind ?? "", platform: platform ?? "",

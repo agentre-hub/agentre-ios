@@ -18,32 +18,19 @@ public struct MachineRosterClient: MachineRoster {
     public func machines() async throws -> [Machine] {
         let response = try await transport.send(HTTPRequest(method: "GET", url: server.endpoint("/v1/devices")))
         guard response.isSuccess else { throw AuthError.unexpectedResponse(status: response.status) }
-        return try CagoEnvelope.decodeData(DevicesResponse.self, from: response).devices
-            .filter { Self.machineKinds.contains($0.kind) }
+        return try CagoEnvelope.decodeData(ListedDevices.self, from: response).devices
+            .filter { Self.machineKinds.contains($0.kind ?? "") }
             .map(\.machine)
     }
 }
 
-// 与服务端 ListDevicesItem 的字段一一对应；蛇形命名由 CagoEnvelope 的解码器统一转换。
-private struct DevicesResponse: Decodable {
-    let devices: [Device]
-
-    struct Device: Decodable {
-        let id: Int64
-        let name: String
-        let displayName: String
-        let kind: String
-        let platform: String
-        let version: String
-        let fingerprint: String
-        let lastSeenAt: Int64
-        let online: Bool
-
-        var machine: Machine {
-            Machine(
-                id: id, fingerprint: fingerprint, name: displayName.isEmpty ? name : displayName, kind: kind,
-                platform: platform, version: version, online: online, lastSeenAt: lastSeenAt
-            )
-        }
+private extension ListedDevice {
+    var machine: Machine {
+        let name = name ?? ""
+        let displayName = displayName ?? ""
+        return Machine(
+            id: id, fingerprint: fingerprint ?? "", name: displayName.isEmpty ? name : displayName, kind: kind ?? "",
+            platform: platform ?? "", version: version ?? "", online: online ?? false, lastSeenAt: lastSeenAt ?? 0
+        )
     }
 }

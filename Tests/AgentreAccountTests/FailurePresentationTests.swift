@@ -143,8 +143,7 @@ struct FailurePresentationTests {
     }
 }
 
-/// 「没有可用的机器」是带原因的事实，不是无限等待。原因取自服务端派发计划里逐档的
-/// availability（agentre-server/internal/api/workspace/workspace.go 的 DispatchTierItem）。
+/// 「没有可用的机器」是带原因的事实，不是无限等待。
 @MainActor
 @Suite("没有可用的机器")
 struct NoMachineTests {

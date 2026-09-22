@@ -67,28 +67,6 @@ private func answer<Request: SwiftProtobuf.Message>(
         #expect(body.permissionMode.isEmpty)
     }
 
-    @Test("转录里执行端最后报过的权限档位：取最后一次非空的 permission_mode_changed（自主轮的也算），没报过为 nil")
-    func reportedPermissionMode() throws {
-        func frame(_ seq: Int64, autonomous: Bool = false, _ build: (inout Agentre_Wire_RuntimeEventNotification) -> Void) throws -> TranscriptFrame {
-            var event = Agentre_Wire_RuntimeEventNotification()
-            event.conversationID = "conv-1"
-            build(&event)
-            var notification = Agentre_Wire_RpcNotification()
-            if autonomous { notification.autonomousTurnEvent = event } else { notification.runtimeEvent = event }
-            return TranscriptFrame(seq: seq, createtime: 0, payload: try notification.serializedData())
-        }
-        func mode(_ value: String) -> (inout Agentre_Wire_RuntimeEventNotification) -> Void {
-            { $0.permissionModeChanged.mode = value }
-        }
-        let text = try frame(9) { $0.textDelta.text = "ok" }
-        #expect(RelayComposer.reportedPermissionMode(in: []) == nil)
-        #expect(RelayComposer.reportedPermissionMode(in: [text]) == nil)
-        #expect(RelayComposer.reportedPermissionMode(in: [try frame(1, mode("default")), try frame(2, mode("plan")), text]) == "plan")
-        #expect(RelayComposer.reportedPermissionMode(in: [try frame(1, mode("plan")), try frame(2, mode(""))]) == "plan")
-        #expect(RelayComposer.reportedPermissionMode(in: [try frame(1, mode("plan")), try frame(2, autonomous: true, mode("acceptEdits"))]) == "acceptEdits")
-        #expect(RelayComposer.reportedPermissionMode(in: [TranscriptFrame(seq: 1, createtime: 0, payload: Data([0xFF]))]) == nil)
-    }
-
     @Test("插话：runtimeSteer 带本端句柄与正文，交回执行端的句柄")
     func steers() async throws {
         let harness = await Harness.started()

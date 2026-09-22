@@ -44,7 +44,7 @@ public protocol ConversationSaving: ConversationStore {
     @discardableResult
     func save(_ session: MachineSession, via machineFingerprint: String) async throws -> ConversationKey
     /// 让一批拉回的帧落进 `key` 那条会话。
-    func record(_ frames: [PulledFrame], into key: ConversationKey, via machineFingerprint: String) async throws
+    func record(_ frames: [PulledFrame], into key: ConversationKey) async throws
 }
 
 /// 保存到手机（规格决策 15 / 16）：收进本地库，attach，再从本机已有的最大帧号起按游标 pull 到底。
@@ -80,7 +80,7 @@ public struct ConversationSaver: Sendable {
                     conversationID: session.conversationID, peerFingerprint: session.peerFingerprint,
                     after: cursor, on: machine.fingerprint
                 )
-                try await store.record(batch.frames, into: key, via: machine.fingerprint)
+                try await store.record(batch.frames, into: key)
                 guard batch.hasMore else { break }
                 guard batch.cursor > cursor else { throw Failure.stalledPull }
                 cursor = batch.cursor

@@ -182,6 +182,22 @@ struct LoginFlowTests {
         #expect(flow.state == .denied)
     }
 
+    @Test("等待授权期间改不了服务器地址：设备流在旧服务器上换来的令牌不能落到新地址名下")
+    func serverAddressIsFrozenWhileAwaiting() async {
+        let auth = ScriptedDeviceAuth(polls: [.success(.pending), .success(.denied)])
+        let (flow, _) = makeFlow(auth)
+        let accepted = AcceptLog()
+        auth.onPoll = { @MainActor in accepted.append(flow.setServerAddress("http://docker.local:8443")) }
+
+        await flow.signIn()
+
+        #expect(accepted.values == [false, false])
+        #expect(flow.serverAddress == .production)
+        #expect(servers.load() == .production)
+        // 收场之后照常可改。
+        #expect(flow.setServerAddress("http://docker.local:8443"))
+    }
+
     @Test("服务器地址默认生产；非法地址被拒，合法地址被保存并用于发起")
     func serverAddress() async {
         let auth = ScriptedDeviceAuth(polls: [.success(.denied)])
@@ -201,6 +217,12 @@ struct LoginFlowTests {
         await flow.signIn()
         #expect(auth.authorizedWith.map(\.1) == [dev])
     }
+}
+
+@MainActor
+final class AcceptLog {
+    private(set) var values: [Bool] = []
+    func append(_ value: Bool) { values.append(value) }
 }
 
 @MainActor

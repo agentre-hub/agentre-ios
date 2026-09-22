@@ -119,15 +119,9 @@ struct Screen {
         expect(element, what, file: file, line: line)
     }
 
-    /// 在输入框里打字；`replacing` 时先清空原有内容（光标先挪到末尾再按内容长度删）。
-    func type(_ text: String, into field: XCUIElement, _ what: String, replacing: Bool = false,
-              file: StaticString = #filePath, line: UInt = #line) {
+    /// 在输入框里打字。
+    func type(_ text: String, into field: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
         tap(field, what, file: file, line: line)
-        if replacing {
-            field.coordinate(withNormalizedOffset: CGVector(dx: 0.97, dy: 0.5)).tap()
-            let count = ((field.value as? String) ?? "").count + 8
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count))
-        }
         field.typeText(text)
     }
 

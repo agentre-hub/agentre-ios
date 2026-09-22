@@ -58,6 +58,7 @@ final class LoopbackServer: @unchecked Sendable {
         }
         listener.start(queue: queue)
         guard ready.wait(timeout: .now() + 10) == .success, listener.port != nil else {
+            listener.cancel()
             throw URLError(.cannotConnectToHost)
         }
     }
@@ -67,11 +68,12 @@ final class LoopbackServer: @unchecked Sendable {
     var baseURL: String { "http://127.0.0.1:\(port)" }
 
     func stop() {
+        // 先停止接收新连接，再关已有的：两步之间接进来的连接否则没人关。
         queue.sync {
+            listener.cancel()
             for connection in connections.values { connection.close() }
             connections = [:]
         }
-        listener.cancel()
     }
 
     private func accept(_ connection: NWConnection) {
@@ -187,7 +189,10 @@ private final class HTTPConnection: WebSocketChannel, @unchecked Sendable {
             guard let colon = line.firstIndex(of: ":") else { continue }
             headers[line[..<colon].lowercased()] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
-        let length = Int(headers["content-length"] ?? "0") ?? 0
+        guard let length = Int(headers["content-length"] ?? "0"), length >= 0 else {
+            close()
+            return nil
+        }
         let bodyStart = end.upperBound
         guard buffer.distance(from: bodyStart, to: buffer.endIndex) >= length else { return nil }
         let bodyEnd = buffer.index(bodyStart, offsetBy: length)
@@ -264,7 +269,10 @@ private final class HTTPConnection: WebSocketChannel, @unchecked Sendable {
             index = 4
         } else if length == 127 {
             guard bytes.count >= 10 else { return nil }
-            length = bytes[2..<10].reduce(0) { $0 << 8 | Int($1) }
+            // 最高位置位的 64 位长度转成 Int 是负数：按坏帧处理，不去切一个倒置的区间。
+            let wide = bytes[2..<10].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+            guard wide <= UInt64(Int32.max) else { return nil }
+            length = Int(wide)
             index = 10
         }
         var mask: [UInt8] = []
