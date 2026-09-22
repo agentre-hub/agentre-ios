@@ -1,6 +1,7 @@
 import XCTest
 
-/// 主线界面流程：真实构建的 Agentre 对着本测试进程里的伪服务端与伪中继（127.0.0.1、端口由系统分配）。
+/// 主线界面流程：真实构建的 Agentre 对着本测试进程里的伪服务端与伪中继（127.0.0.1、端口由系统分配），
+/// App 经启动参数指向它。
 ///
 /// 登录（设备流）→ 「我」里切外观 → 机器 → 机器详情保存到手机 → 消息列表 → 新建对话并发出 → 审批 Allow Once
 /// → 两轮之间切权限模式后再发一句 → 挂起回前台、打开着的对话屏续上 → 撤销本机回到登录屏。
@@ -43,21 +44,17 @@ final class MainlineUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(language))", "-AppleLocale", locale]
+        // 经启动参数指向伪服务端：`-serverAddress` 落进 UserDefaults 的参数域，App 读服务器地址就读到它。
+        app.launchArguments = ["-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-serverAddress", server.baseURL]
         app.launch()
         let screen = Screen(app: app, test: self, prefix: "\(language)-\(appearance.rawValue)")
         let dark = appearance == .dark
         signOutLeftover(screen, copy)
 
-        // 登录屏：默认或上次的地址，改成伪服务端。
+        // 登录屏：当前服务器地址（启动参数给的伪服务端）与一个主操作。
         screen.expect(screen.button(copy("Login", "login.signIn")), "sign-in button")
+        screen.expect(screen.text(server.baseURL), "server address from the launch argument")
         screen.shot("01 login")
-        screen.tap(screen.button(copy("Login", "login.server.edit")), "change server")
-        let field = screen.input(copy("Login", "login.server"))
-        screen.type(server.baseURL, into: field, "server address field", replacing: true)
-        screen.tap(screen.button(copy("Login", "login.server.save")), "save server")
-        screen.expect(screen.text(server.baseURL), "server address shown after saving")
-        screen.shot("02 server changed")
 
         // 设备流：App 直接打开带确认码的验证地址；浏览器取到那一页即批准，轮询换得令牌落到三标签。
         screen.tap(screen.button(copy("Login", "login.signIn")), "sign in")

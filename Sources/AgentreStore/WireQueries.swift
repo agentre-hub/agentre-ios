@@ -39,12 +39,14 @@ public enum WireQueryError: Error, Equatable {
     case notAnswered
 }
 
-/// 一帧对输入区的回合说了什么（宿主从转录事件里递给输入区的三件事）。
+/// 一帧对输入区说了什么（宿主从转录事件里递给输入区的几件事：回合起止、插话被取走、执行端报的档位）。
 public enum TurnSignal: Sendable, Equatable {
     case started
     /// 正常收场 = 没有停止文案；出错与用户中断都不是正常收场。
     case ended(normally: Bool)
     case steersConsumed([ComposerConsumedSteer])
+    /// 执行端报了它此刻的权限档位（permission_mode_changed，例如退出计划模式后）。
+    case permissionModeReported(String)
 
     /// `payload` 是一帧 `RpcNotification` 的字节；与回合无关的帧为 nil。
     public init?(payload: Data) {
@@ -55,8 +57,14 @@ public enum TurnSignal: Sendable, Equatable {
         case .runResultDone(let done), .autonomousTurnDone(let done):
             self = .ended(normally: done.stopErrorMessage.isEmpty)
         case .runtimeEvent(let event), .autonomousTurnEvent(let event):
-            guard case .steerConsumed(let consumed) = event.event else { return nil }
-            self = .steersConsumed(consumed.steers.map { ComposerConsumedSteer(queuedID: $0.queuedID, text: $0.text) })
+            switch event.event {
+            case .steerConsumed(let consumed):
+                self = .steersConsumed(consumed.steers.map { ComposerConsumedSteer(queuedID: $0.queuedID, text: $0.text) })
+            case .permissionModeChanged(let changed) where !changed.mode.isEmpty:
+                self = .permissionModeReported(changed.mode)
+            default:
+                return nil
+            }
         default:
             return nil
         }

@@ -35,6 +35,23 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     override func stopLoading() {}
 }
 
+/// 只接 cache-probe.invalid 的桩：以允许缓存的方式答一份带密钥的应答。
+final class CachingStubURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "cache-probe.invalid" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .allowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"data":{"providers":[{"api_key":"sk-secret"}]}}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 @Suite(.serialized)
 struct AdapterTests {
     @Test("URLSession 传输：方法、头、正文原样发出，状态码与正文原样交回")
@@ -53,6 +70,17 @@ struct AdapterTests {
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
         #expect(StubURLProtocol.capturedBody == Data("{}".utf8))
+    }
+
+    @Test("默认的 URLSession 传输不把应答留进应用的 URL 缓存（引擎目录的应答里带着供应商的 API key）")
+    func defaultTransportKeepsNoResponses() async throws {
+        let url = URL(string: "https://cache-probe.invalid/v1/engine/snapshot")!
+        URLProtocol.registerClass(CachingStubURLProtocol.self)
+        defer { URLProtocol.unregisterClass(CachingStubURLProtocol.self) }
+        URLCache.shared.removeCachedResponse(for: URLRequest(url: url))
+        _ = try? await URLSessionTransport().send(HTTPRequest(method: "GET", url: url))
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(URLCache.shared.cachedResponse(for: URLRequest(url: url)) == nil)
     }
 
     @Test("服务器地址：默认生产；保存后新实例读回；存了坏值读回生产地址")

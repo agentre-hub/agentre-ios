@@ -25,6 +25,18 @@ extension LocalConversationStore: ConversationSaving {
         return try save(summary, via: machineFingerprint)
     }
 
+    /// 以机器此刻的清单刷新一条**已在库里**的会话。它已不在库里（跟随在途时被删掉、登出清空了）就什么都不做：
+    /// 库里只收手机新建的与用户主动保存的（规格决策 16），跟随不往库里收东西。交回是否刷新了。
+    @discardableResult
+    public func refresh(_ session: MachineSession, via machineFingerprint: String) throws -> Bool {
+        let owner = session.peerFingerprint.isEmpty ? machineFingerprint : session.peerFingerprint
+        guard try conversation(ConversationKey(machineFingerprint: owner, conversationID: session.conversationID)) != nil else {
+            return false
+        }
+        try save(session, via: machineFingerprint)
+        return true
+    }
+
     /// 补齐拉回的一批帧：载体上带着源端时刻（0 照录），所以不是实时帧、不跟随摘要。
     public func record(_ frames: [PulledFrame], into key: ConversationKey, via machineFingerprint: String) throws {
         let incoming = try frames.map { frame in

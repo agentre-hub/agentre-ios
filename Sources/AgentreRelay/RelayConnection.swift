@@ -26,6 +26,9 @@ public actor RelayConnection {
     private var byTarget: [RelayTarget: String] = [:]
     /// 在当前这条物理连接上已经声明过目标的通道。
     private var declared: Set<String> = []
+    /// 因协议版本不等而停下的通道，按目标记着：同一个对端不会自己变新，再要这个目标拿到的
+    /// 仍是这一条（状态 `.updateRequired`、调用即抛），不开新通道、不再握手。登出时随连接清掉。
+    private var halted: [RelayTarget: RelayChannel] = [:]
     private var nextChannelNumber = 1
     private var runner: Task<Void, Never>?
     private var stopped = false
@@ -70,12 +73,14 @@ public actor RelayConnection {
         channels = [:]
         order = []
         byTarget = [:]
+        halted = [:]
         for channel in all { await channel.shutdown() }
         signalSink.yield(.closed)
     }
 
     /// 取某个目标的通道；同一目标只有一条。连接已就绪时当场声明目标并开始握手。
     public func channel(for target: RelayTarget) async -> RelayChannel {
+        if let stopped = halted[target] { return stopped }
         if let id = byTarget[target], let existing = channels[id] { return existing }
         let id = "c\(nextChannelNumber)"
         nextChannelNumber += 1
@@ -105,6 +110,13 @@ public actor RelayConnection {
         } catch {
             throw RelayCallError.disconnected
         }
+    }
+
+    /// 通道因协议版本不等停下：像关闭一样摘掉并告诉对端，但记住它的目标，此后不再为它开新通道。
+    func halt(_ channelID: String) async {
+        guard let channel = channels[channelID] else { return }
+        halted[channel.target] = channel
+        await close(channelID)
     }
 
     /// 通道自己不再使用：从注册表摘掉，并以空载荷告诉对端这条通道关了。

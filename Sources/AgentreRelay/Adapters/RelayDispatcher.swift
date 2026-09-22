@@ -82,10 +82,12 @@ public struct RelayDispatcher: NewConversationDispatching {
         guard ack.conversationID == run.conversationID else { throw DispatchFailure.rejected }
     }
 
-    /// 没得到应答的（连不上、到期、通道被关、版本不等）都是「连不上那台机器」；对端明确拒绝或答非所问是「没开起来」。
+    /// 没得到应答的（连不上、到期、通道被关）都是「连不上那台机器」；对端明确拒绝或答非所问是「没开起来」；
+    /// 版本不等是要更新 App（规格「连接与协议」）。
     static func dispatchFailure(_ failure: RelayFailure) -> DispatchFailure {
         switch failure {
-        case .timedOut, .connectionLost, .machineUnreachable, .updateRequired: .unreachable
+        case .updateRequired: .updateRequired
+        case .timedOut, .connectionLost, .machineUnreachable: .unreachable
         case .refused, .unrecognisedResponse: .rejected
         }
     }

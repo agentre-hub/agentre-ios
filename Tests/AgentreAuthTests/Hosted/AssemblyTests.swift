@@ -318,6 +318,99 @@ struct AssemblyTests {
         #expect(await services.conversationModel(for: key) === screen)
     }
 
+    @Test("执行端在一轮里报了新的档位（比如退出了计划模式）：用户这次没选过时，下一轮带的是它；用户选过的档不被报来的档顶掉")
+    func reportedPermissionModeFollowsTheTranscript() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", peerFingerprint: "origin-desktop"), frames: [])
+        let environment = try harness.environment()
+        let key = try await savedElsewhere(harness, environment)
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let screen = try #require(await services.conversationModel(for: key))
+        let attached = Task { await screen.transcript.start() }
+        defer { attached.cancel() }
+        _ = try await eventually("transcript attached") {
+            harness.relay.calls(WireMethod.sessionAttach).count >= 1 ? true : nil
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        let composer = screen.composer
+        await composer.load()
+        #expect(composer.settings?.permissionMode == "default")
+
+        let reported = harness.machine.append("conv-1", [WireNotification.permissionModeChanged("conv-1", seq: 0, "plan")])
+        harness.relay.notify("machine:machine-a", WireNotification.permissionModeChanged("conv-1", seq: reported[0], "plan"))
+        _ = try await eventually("reported mode adopted") { composer.settings?.permissionMode == "plan" ? true : nil }
+        composer.edit(text: "go on", cursor: 5)
+        await composer.send()
+        let run = try #require(harness.relay.calls(WireMethod.runtimeRun).first)
+        #expect(run.payload.string(16) == "plan")
+
+        harness.machine.finishTurn("conv-1")
+        await composer.setPermissionMode("default")
+        let again = harness.machine.append("conv-1", [WireNotification.permissionModeChanged("conv-1", seq: 0, "plan")])
+        harness.relay.notify("machine:machine-a", WireNotification.permissionModeChanged("conv-1", seq: again[0], "plan"))
+        _ = try await eventually("frame stored") { try await environment.store.latestSeq(key) >= again[0] ? true : nil }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(composer.settings?.permissionMode == "default")
+    }
+
+    @Test("会话信息里的「机器」是承载它的那台，不是会话键上的发起端")
+    func sessionInfoShowsTheCarrier() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let environment = try harness.environment()
+        let key = try await savedElsewhere(harness, environment)
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let screen = try #require(await services.conversationModel(for: key))
+        let panel = Screen(ComposerPanel(model: screen.composer, contextUsage: nil, initialPage: .sessionInfo, onDeleted: {}))
+        defer { panel.close() }
+        let labels = try await panel.waitFor("conv-1")
+        #expect(labels.contains("machine-a"), "\(labels)")
+        #expect(!labels.contains("origin-desktop"), "\(labels)")
+    }
+
+    @Test("开着的对话屏上这条会话已不在本地库（承载机无从查起）：不拿会话键上的发起端去顶承载机")
+    func missingCarrierIsNotTheOrigin() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let environment = try harness.environment()
+        let key = try await savedElsewhere(harness, environment)
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let screen = try #require(await services.conversationModel(for: key))
+        try await environment.store.delete(key)
+
+        screen.composer.edit(text: "hi", cursor: 2)
+        await screen.composer.send()
+        await screen.cards.submit(.allowOnce, for: PermissionRequest(requestID: "perm-1", toolCallID: "", toolName: "Bash", input: nil))
+        #expect(!harness.relay.calls.contains { $0.target == "machine:origin-desktop" })
+    }
+
+    @Test("跟随刷新摘要的应答在删掉这条会话之后才到：不把它收回本地库")
+    func refreshAfterDeleteDoesNotResurrect() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", title: "Gone"), frames: [])
+        let environment = try harness.environment()
+        let store = environment.store
+        let key = try await store.save(MachineSession(conversationID: "conv-1", title: "Gone"), via: "machine-a")
+        harness.relay.beforeAnswering { method in
+            if method == WireMethod.sessionList { try? await store.delete(key) }
+        }
+        _ = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        _ = try await eventually("summary asked") { harness.relay.calls(WireMethod.sessionList).isEmpty ? nil : true }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(try await store.conversation(key) == nil)
+        #expect(try await store.conversations().isEmpty)
+    }
+
     @Test("刷新被拒即登出：钥匙串与本地库一并清空，回到登录屏")
     func rejectedRefreshSignsOut() async throws {
         let harness = try Harness()

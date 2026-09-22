@@ -18,6 +18,8 @@ public struct ConversationKey: Sendable, Hashable {
 /// `latestSeq` 与 `readMarker` 是本机自己的两格。
 public struct SavedConversation: Sendable, Equatable, Identifiable {
     public let key: ConversationKey
+    /// 承载它的机器（保存、跟随、打开都经这台的 `machine:` 通道）。会话键上的是发起端，二者不可互相代替。
+    public var carrierFingerprint: String
     /// 清单里原样回显的发起端指纹；空表示「就是承载它的那台机器」。attach / pull 时原样带上。
     public var peerFingerprint: String
     public var title: String
@@ -48,6 +50,7 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
 
     public init(
         key: ConversationKey,
+        carrierFingerprint: String = "",
         peerFingerprint: String = "",
         title: String = "",
         agentSyncID: String = "",
@@ -66,6 +69,7 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         reasoningEffort: String = ""
     ) {
         self.key = key
+        self.carrierFingerprint = carrierFingerprint
         self.peerFingerprint = peerFingerprint
         self.title = title
         self.agentSyncID = agentSyncID

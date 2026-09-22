@@ -270,6 +270,13 @@ struct SubagentLineView: View {
         Button(action: toggle) {
             HStack(spacing: 6) {
                 Chevron(expanded: subagent.expanded)
+                if subagent.failed {
+                    // 失败不只靠红色（规格「状态不得仅以颜色区分」）：与失败步同一枚图标、同一句「失败」。
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.token(.failure))
+                        .accessibilityLabel(Text("activity.row.failed", tableName: "Conversation", bundle: .module))
+                }
                 Text("subagent.title \(subagent.name)", tableName: "Conversation", bundle: .module)
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.token(subagent.failed ? .failure : .textPrimary))

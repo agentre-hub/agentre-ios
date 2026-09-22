@@ -15,8 +15,9 @@ public struct RelaySourceDevice: Sendable, Equatable {
     }
 }
 
-/// 一条会话经哪台机器的通道走：默认就是会话键上的那台。装配层可以换成本地库记下的承载机。
-public typealias RelayCarrier = @Sendable (ConversationKey) async -> String
+/// 一条会话经哪台机器的通道走：默认就是会话键上的那台。装配层换成本地库记下的承载机；
+/// 查不到承载机时抛出，而不是拿会话键上的发起端去顶（二者不可互相代替）。
+public typealias RelayCarrier = @Sendable (ConversationKey) async throws -> String
 
 extension RelayConnection {
     /// 在 `machine:<fingerprint>` 上发一次 RPC；中继的收场一律转成 `RelayFailure`。

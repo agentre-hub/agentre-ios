@@ -101,6 +101,12 @@ extension FailureFact: CaseIterable {
     }
 }
 
+/// 端口的实现（中继、REST 适配器）已经把自己的失败解析成了事实：领域层不认识它的具体类型，
+/// 经这一层照用那个事实（例如机器详情据它说出「要更新 App」而不是「没连上」）。
+public protocol FactualFailure: Error {
+    var fact: FailureFact { get }
+}
+
 /// 失败之后给用户的出口。登录已失效时根视图自己回到登录屏，不需要这里给。
 public enum FailureExit: Sendable, Equatable {
     case retry

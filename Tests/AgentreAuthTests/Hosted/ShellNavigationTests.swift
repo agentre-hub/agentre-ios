@@ -45,6 +45,69 @@ struct ShellNavigationTests {
             services.router.messages == [.conversation(key)] ? true : nil
         }
         try await screen.waitFor("Tidy the README")
+
+        // 回到新建对话、再选同一个 Agent：进的是一张新草稿，而不是刚才那条已经开起来的对话。
+        services.router.messages = [.newConversation, .draft(agent: "agent-1", project: nil)]
+        let again = try #require(services.draftModel(for: .draft(agent: "agent-1", project: nil)))
+        #expect(again !== draft)
+        #expect(again.phase == .draft)
+        #expect(again.sentText == nil)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(services.router.messages.last == .draft(agent: "agent-1", project: nil))
+        await environment.tearDown()
+    }
+
+    @Test("从机器标签进入一条已保存的对话也算读过；离开时把其间的新活动一并记成已读")
+    func openingFromMachinesMarksRead() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let environment = try harness.environment()
+        let key = try await environment.store.save(
+            MachineSession(conversationID: "conv-1", title: "Seen", lastMessageAt: 5_000), via: "machine-a"
+        )
+        let screen = Screen(AppRootView(environment: environment))
+        defer { screen.close() }
+        try await screen.waitFor("Seen")
+        let services = try #require(environment.services)
+
+        try await screen.selectTab(1)
+        services.router.machines = [.conversation(key)]
+        _ = try await eventually("read on open") {
+            try await environment.store.conversation(key)?.readMarker == 5_000 ? true : nil
+        }
+        _ = try await environment.store.save(
+            MachineSession(conversationID: "conv-1", title: "Seen", lastMessageAt: 9_000), via: "machine-a"
+        )
+        services.router.machines = []
+        _ = try await eventually("read on leave") {
+            try await environment.store.conversation(key)?.readMarker == 9_000 ? true : nil
+        }
+        await environment.tearDown()
+    }
+
+    @Test("那台机器的协议版本与本 App 不等：机器详情说要更新 App，不说没连上；再刷新也不再对它握手")
+    func machineDetailSaysUpdateRequired() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.relay.answerHandshakes(withVersion: "9.9.9")
+        let environment = try harness.environment()
+        let screen = Screen(AppRootView(environment: environment))
+        defer { screen.close() }
+        let services = try await eventually("signed in") { environment.services }
+        try await screen.selectTab(1)
+        try await screen.waitFor("mac-studio")
+        let machine = try #require(services.machine("machine-a"))
+
+        services.router.machines = [.machine("machine-a")]
+        try await screen.waitFor(copy("failure.updateRequired", table: "Me"))
+        let labels = await screen.labels()
+        #expect(!labels.contains(copy("machines.detail.unreachable", table: "Machines")))
+
+        await services.detailModel(for: machine).load()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(harness.relay.calls(WireMethod.authAccount).filter { $0.target == "machine:machine-a" }.count == 1)
         await environment.tearDown()
     }
 

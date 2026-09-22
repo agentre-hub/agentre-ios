@@ -149,6 +149,20 @@ struct NewConversationScreenTests {
         #expect(labels.contains(text("newconv.noProject")))
     }
 
+    @Test("那台机器的协议版本与本 App 不等：草稿里说要更新 App，而不是让人重试连接")
+    func draftUpdateRequired() async throws {
+        let dispatcher = FakeDispatcher()
+        await dispatcher.fail(with: .updateRequired)
+        let model = draft(dispatcher: dispatcher)
+        await model.loadPlan()
+        model.text = "hi"
+        await model.send()
+        let labels = await HostedScreen(DraftConversationView(model: model, onStarted: { _ in })).labels().joined(separator: "\n")
+        let update = AgentreUIResources.bundle.localizedString(forKey: "failure.updateRequired", value: "⟨missing⟩", table: "Me")
+        #expect(labels.contains(update), "\(labels)")
+        #expect(!labels.contains(text("newconv.connectFailed %@", "mini")))
+    }
+
     // MARK: 机器面板
 
     @Test("机器面板：逐档次序号、机器名、后端种类；不可用档写明宿主的三种原因；自动挑时没有交回入口")

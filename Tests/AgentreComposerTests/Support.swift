@@ -8,7 +8,7 @@ import Testing
 let key = ConversationKey(machineFingerprint: "fp-mini", conversationID: "conv-1")
 
 func conversation(backend: String = "claudecode", cwd: String = "/srv/app") -> SavedConversation {
-    SavedConversation(key: key, peerFingerprint: "fp-desk", title: "修构建", agentSyncID: "coder", cwd: cwd, backendType: backend)
+    SavedConversation(key: key, carrierFingerprint: "fp-mini", peerFingerprint: "fp-desk", title: "修构建", agentSyncID: "coder", cwd: cwd, backendType: backend)
 }
 
 let sampleSettings = ComposerSettings(

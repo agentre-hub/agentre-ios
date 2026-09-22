@@ -134,7 +134,7 @@ public struct ComposerPanel: View {
         back("composer.sessionInfo")
         let conversation = model.conversation
         ComposerFactRow("composer.info.title", Text(verbatim: conversation.title))
-        ComposerFactRow("composer.info.machine", Text(verbatim: conversation.key.machineFingerprint).monospaced())
+        ComposerFactRow("composer.info.machine", Text(verbatim: conversation.carrierFingerprint).monospaced())
         ComposerFactRow("composer.info.cwd", Text(verbatim: conversation.cwd).monospaced())
         ComposerFactRow("composer.info.backend", Text(verbatim: conversation.backendType).monospaced())
         ComposerFactRow("composer.info.id", Text(verbatim: conversation.key.conversationID).monospaced())

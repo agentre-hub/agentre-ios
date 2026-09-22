@@ -102,6 +102,7 @@ public struct DraftConversationView: View {
         switch failure {
         case .unreachable: return Text("newconv.connectFailed \(name)", tableName: table, bundle: .module)
         case .rejected: return Text("newconv.startFailed \(name)", tableName: table, bundle: .module)
+        case .updateRequired: return Text(LocalizedStringKey(failureKey(.updateRequired)), tableName: "Me", bundle: .module)
         }
     }
 

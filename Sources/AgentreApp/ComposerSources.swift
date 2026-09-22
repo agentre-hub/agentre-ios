@@ -94,7 +94,7 @@ struct ComposerSettingsAdapter: ComposerSettingsSource {
     let store: any ConversationStore
 
     func settings(for conversation: SavedConversation) async throws -> ComposerSettings {
-        let machine = await carrier(conversation.key)
+        let machine = try await carrier(conversation.key)
         async let models = try? catalog.models()
         async let modes = try? connection.permissionModes(backendType: conversation.backendType, on: machine)
         async let frames = try? store.transcript(conversation.key)

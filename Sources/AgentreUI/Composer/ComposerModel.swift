@@ -62,6 +62,8 @@ public final class ComposerModel {
     private var isStartingTurn = false
     /// 停止本轮的调用在飞：连点不重复发。
     private var isStopping = false
+    /// 用户这次亲手选过权限档位：此后执行端报来的档不再顶掉它（控制台 `permissionMode || sessionRuntime.permissionMode`）。
+    private var permissionModeChosen = false
     /// 这一轮是按机器的会话状态收掉的（收场帧没递到）；此后、下一轮开起来之前再到的收场帧就是它迟到的那一帧。
     private var endedByReconcile = false
     private var skills: [ComposerSkillSource] = []
@@ -345,11 +347,23 @@ public final class ComposerModel {
         guard var settings, settings.permissionMode != mode else { return }
         guard isTurnRunning else {
             failure = nil
+            permissionModeChosen = true
             settings.permissionMode = mode
             self.settings = settings
             return
         }
         await change({ try await self.relay.setPermissionMode(self.key, peerFingerprint: self.peer, mode: mode) }) { $0.permissionMode = mode }
+        if failure == nil { permissionModeChosen = true }
+    }
+
+    /// 执行端在转录里报了它此刻的档位（例如退出计划模式后）。起手档位的取法与控制台同：用户这次选的 →
+    /// 执行端报过的当前档——所以用户这次没选过时，面板与下一轮 runtime.run 跟着它走，不把执行端顶回旧档；
+    /// 报来的档不在这台机器的可选范围里时不认（与起手档同一口径）。
+    public func permissionModeReported(_ mode: String) {
+        guard !permissionModeChosen, var settings, !mode.isEmpty, settings.permissionMode != mode else { return }
+        guard settings.permissionModes.isEmpty || settings.permissionModes.contains(mode) else { return }
+        settings.permissionMode = mode
+        self.settings = settings
     }
 
     public func setModel(_ choice: ComposerModelChoice) async {

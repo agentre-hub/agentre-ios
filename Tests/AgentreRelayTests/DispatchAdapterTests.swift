@@ -130,6 +130,23 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         await #expect(throws: DispatchFailure.rejected) { try await task.value }
     }
 
+    @Test("那台机器的协议版本与本 App 不等：派发失败读作要更新 App，而不是连不上那台机器")
+    func versionMismatchNeedsAnUpdate() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayDispatcher(connection: harness.connection, source: phone)
+        let task = Task { try await adapter.dispatch(request()) }
+        let socket = try await harness.dialer.socket(0)
+        let id = try await socket.channelID(for: .machine(fingerprint: "fp-9"))
+        let auth = try await socket.nextRequest(on: id, method: .authAccount)
+        socket.fail(id, to: auth, code: RelayProtocol.errorCodeProtocolVersion, message: "protocol version 0.3.0 not supported")
+        guard case .failure(let error) = await task.result else {
+            Issue.record("dispatch succeeded")
+            return
+        }
+        #expect(error is DispatchFailure)
+        #expect(String(describing: error) == "updateRequired")
+    }
+
     @Test("对端拒绝 → rejected；到期无应答 → unreachable（连不上那台机器），都不带码与原串", arguments: FailureScenario.allCases)
     func failuresAreDispatchFailures(_ scenario: FailureScenario) async throws {
         let error = try await failure(scenario, method: .runtimeRun, on: "fp-9") { harness in

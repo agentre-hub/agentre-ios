@@ -45,8 +45,9 @@ private struct ApprovalPermissionCard: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.token(state.tone))
                     .accessibilityHidden(true)
+                // 工具名是机器产出的：等宽（规格「设计语言」），与提问卡的标题同一呈现。
                 Text(verbatim: request.toolName)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.monospaced().weight(.semibold))
                     .foregroundStyle(.token(.textPrimary))
                 Spacer(minLength: 8)
                 if let settled = state.settledKey {

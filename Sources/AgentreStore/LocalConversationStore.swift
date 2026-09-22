@@ -440,6 +440,7 @@ private extension ConversationRecord {
     var snapshot: SavedConversation {
         SavedConversation(
             key: key,
+            carrierFingerprint: viaFingerprint,
             peerFingerprint: peerFingerprint,
             title: title,
             agentSyncID: agentSyncID,

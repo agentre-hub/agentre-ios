@@ -25,8 +25,12 @@ enum MachinesRoute: Hashable {
 @MainActor
 @Observable
 final class Router {
-    var messages: [MessagesRoute] = []
+    var messages: [MessagesRoute] = [] {
+        didSet { onMessagesChange?(messages) }
+    }
     var machines: [MachinesRoute] = []
+    /// 消息栈变了：离开栈的草稿随之作废。
+    @ObservationIgnored var onMessagesChange: (([MessagesRoute]) -> Void)?
 }
 
 /// 一条会话打开后的全部状态：转录、这条会话唯一的一份卡片状态、输入区。
@@ -46,12 +50,13 @@ final class ConversationScreenModel {
         self.agentName = agentName
     }
 
-    /// 转录实时帧里的回合事件递给输入区。
+    /// 转录实时帧里的回合事件与执行端报的档位递给输入区。
     func apply(_ signal: TurnSignal) async {
         switch signal {
         case .started: composer.turnStarted()
         case .ended(let normally): await composer.turnEnded(normally: normally)
         case .steersConsumed(let consumed): composer.steersConsumed(consumed)
+        case .permissionModeReported(let mode): composer.permissionModeReported(mode)
         }
     }
 }
@@ -102,7 +107,11 @@ final class SignedInServices {
             // 中继没有 401 可等：令牌过期就先刷新再拨号、再握手（规格「登录」：过期以刷新令牌换新）。
             accessToken: { try await tokens.unexpiredAccessToken() }, sleeper: dependencies.relaySleeper
         )
-        let carrier: RelayCarrier = { key in (try? await store.carrier(of: key)) ?? key.machineFingerprint }
+        // 承载机只认本地库那一行：行已不在（开着的屏上删掉了）就没有通道可走，不拿发起端去顶。
+        let carrier: RelayCarrier = { key in
+            guard let carrier = try await store.carrier(of: key) else { throw RelayFailure.machineUnreachable }
+            return carrier
+        }
         self.carrier = carrier
         let source = RelaySourceDevice(
             fingerprint: (try? dependencies.credentials.deviceFingerprint().value) ?? "", name: dependencies.deviceName
@@ -150,6 +159,11 @@ final class SignedInServices {
         recovered.lifecycleHandler = { [weak self] key, lifecycle in
             guard let composer = self?.conversations[key]?.composer else { return }
             Task { await composer.reconcile(lifecycle: lifecycle) }
+        }
+        // 草稿只活在它那一次新建里：发出去换成了对话、或者退出了新建那几屏，再选同一个 Agent 是一张新草稿，
+        // 机器覆盖也随之作废（规格「覆盖只对这一次生效」）。
+        router.onMessagesChange = { [weak self] path in
+            self?.drafts = self?.drafts.filter { path.contains($0.key) } ?? [:]
         }
     }
 
@@ -245,7 +259,8 @@ final class SignedInServices {
             agent: agent, project: projectID.flatMap { id in projects.first { $0.syncID == id } }, projects: projects,
             workspace: workspace, dispatcher: dispatcher, recorder: startedRecorder
         )
-        drafts[route] = model
+        // 已经退出栈的去处（退场动画里再求一次值）不留：否则下一次进来拿到的是它。
+        if router.messages.contains(route) { drafts[route] = model }
         return model
     }
 

@@ -96,15 +96,18 @@ actor ConversationSync {
             }
         }
         guard !Task.isCancelled else { return }
-        // 通道被关掉（服务端判死、版本不等）：如实说出来；下一次 resync（回前台、点重试、库变）再接。
+        // 通道被关掉（服务端判死、版本不等）：如实说出来；下一次 resync（回前台、点重试、库变）再接——
+        // 版本不等的那台机器不再握手，再接只会再说一遍要更新 App。
         let closed: RelayCallError = await channel.status == .updateRequired ? .updateRequired : .channelClosed
         await onFailure(key, AppFailure.fact(for: closed))
     }
 
-    /// 按机器此刻的清单刷新这一条的摘要（生命周期、等你处理、标题……）。问不到就留着旧的。
+    /// 按机器此刻的清单刷新这一条的摘要（生命周期、等你处理、标题……）。问不到就留着旧的；
+    /// 应答到时这一条已不在库里（删掉了）就不再把它收回来。
     private func refreshSummary(_ target: FollowTarget) async {
-        guard let session = try? await sessions.session(target.key, on: target.carrier) else { return }
-        try? await store.save(session, via: target.carrier)
+        guard let session = try? await sessions.session(target.key, on: target.carrier),
+              (try? await store.refresh(session, via: target.carrier)) == true
+        else { return }
         await onLifecycle(target.key, session.lifecycleState)
     }
 }

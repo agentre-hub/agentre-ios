@@ -28,6 +28,8 @@ public enum DispatchFailure: Error, Sendable, Equatable {
     case unreachable
     /// 连上了，但那台机器没能开起这条会话。
     case rejected
+    /// 那台机器的协议版本与本 App 不等：要更新 App，重试换不来别的答案。
+    case updateRequired
 }
 
 /// 中继上的派发（适配器在装配层）。失败以 `DispatchFailure` 抛出；别的错误按 `rejected` 对待。

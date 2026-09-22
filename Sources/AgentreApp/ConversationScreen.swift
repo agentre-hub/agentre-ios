@@ -37,6 +37,13 @@ struct ConversationScreen: View {
         .background(.token(.bg))
         .task {
             if model == nil { model = await services.conversationModel(for: key) }
+            // 进来就是读过了（不论从消息列表还是机器详情进来）；离开时把开着期间到的活动一并记成已读。
+            try? await services.store.markRead(key)
+        }
+        .onDisappear {
+            let store = services.store
+            let key = key
+            Task { try? await store.markRead(key) }
         }
     }
 }

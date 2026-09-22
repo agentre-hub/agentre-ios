@@ -16,6 +16,8 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
     private var recorded: [Call] = []
     private var sockets: [FakeRelaySocket] = []
     private var reachable = true
+    private var answeredVersion = RelayProtocol.version
+    private var beforeAnswer: (@Sendable (UInt32) async -> Void)?
 
     init(_ machines: [FakeMachine] = []) {
         for machine in machines { machinesByTarget["machine:\(machine.fingerprint)"] = machine }
@@ -40,6 +42,21 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
     }
 
     var calls: [Call] { lock.withLock { recorded } }
+
+    /// 握手应答里报的协议版本（默认与本 App 相等）。
+    func answerHandshakes(withVersion version: String) {
+        lock.withLock { answeredVersion = version }
+    }
+
+    /// 每个请求作答之前先跑一下（按方法号），模拟应答在途时本机发生的事。
+    func beforeAnswering(_ hook: @escaping @Sendable (UInt32) async -> Void) {
+        lock.withLock { beforeAnswer = hook }
+    }
+
+    fileprivate func runBeforeAnswer(_ method: UInt32) async {
+        let hook = lock.withLock { beforeAnswer }
+        await hook?(method)
+    }
 
     func calls(_ method: UInt32) -> [Call] { calls.filter { $0.method == method } }
 
@@ -78,9 +95,10 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
             return machinesByTarget[target]
         }
         if method == WireMethod.authAccount {
+            let version = lock.withLock { answeredVersion }
             return .result(Proto { r in
                 r.bool(1, true)
-                r.string(3, RelayProtocol.version)
+                r.string(3, version)
             })
         }
         return machine?.answer(call) ?? .error(code: -32601, message: "not implemented")
@@ -114,6 +132,7 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
         let rpc = ProtoFields(payload)
         guard let request = rpc.message(2) else { return }
         let method = UInt32(request.varint(1))
+        await relay.runBeforeAnswer(method)
         let answer = relay.respond(target: target, method: method, payload: request.bytes(2) ?? Data())
         let response: Proto
         switch answer {

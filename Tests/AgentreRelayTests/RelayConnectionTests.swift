@@ -278,6 +278,24 @@ private final class SeqCollector: @unchecked Sendable {
         #expect(await conversation.status == .updateRequired)
     }
 
+    @Test("版本不等的那台机器：再要它的通道拿到的仍是停着的那一条，不开新通道、不再握手")
+    func haltedTargetStaysHalted() async throws {
+        let harness = Harness()
+        await harness.connection.start()
+        let channel = await harness.connection.channel(for: .machine(fingerprint: "fp-1"))
+        let socket = try await harness.dialer.socket(0)
+        let id = try await socket.channelID(for: .machine(fingerprint: "fp-1"))
+        let auth = try await socket.nextRequest(on: id, method: .authAccount)
+        socket.fail(id, to: auth, code: RelayProtocol.errorCodeProtocolVersion, message: "protocol version 0.3.0 not supported")
+        try await waitStatus(channel, .updateRequired)
+
+        let again = await harness.connection.channel(for: .machine(fingerprint: "fp-1"))
+        try #require(await again.status == .updateRequired)
+        await #expect(throws: RelayCallError.updateRequired) {
+            let _: Agentre_Wire_HealthPingResponse = try await again.call(.healthPing, Agentre_Wire_HealthPingRequest())
+        }
+    }
+
     @Test("对端握手应答里报的协议版本不等，同样判为需要更新 App")
     func versionMismatchInResponse() async throws {
         let harness = Harness()

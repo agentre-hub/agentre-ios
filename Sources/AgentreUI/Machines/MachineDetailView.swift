@@ -50,6 +50,12 @@ public struct MachineDetailView: View {
                     .foregroundStyle(.token(.textSecondary))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
+                } else if model.updateRequired {
+                    Text(LocalizedStringKey(failureKey(.updateRequired)), tableName: "Me", bundle: .module)
+                        .font(.subheadline)
+                        .foregroundStyle(.token(.textSecondary))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 } else if model.unreachable {
                     Text("machines.detail.unreachable", tableName: "Machines", bundle: .module)
                         .font(.subheadline)

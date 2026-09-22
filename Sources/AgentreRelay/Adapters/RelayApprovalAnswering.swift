@@ -22,7 +22,7 @@ public struct RelayApprovalAnswering: ApprovalAnswering {
         request.allow = reply.disposition.allow
         request.alwaysAllowSession = reply.disposition.alwaysAllowSession
         let response: Agentre_Wire_PeerSessionControlResponse = try await connection.call(
-            machine: await carrier(reply.conversation), .runtimeSubmitToolPermission, request
+            machine: try await carrier(reply.conversation), .runtimeSubmitToolPermission, request
         )
         return response.alreadyHandled ? .alreadyHandled : .accepted
     }
@@ -47,7 +47,7 @@ public struct RelayApprovalAnswering: ApprovalAnswering {
         }
         request.skipped = reply.skipped
         let response: Agentre_Wire_PeerSessionControlResponse = try await connection.call(
-            machine: await carrier(reply.conversation), .runtimeSubmitAnswer, request
+            machine: try await carrier(reply.conversation), .runtimeSubmitAnswer, request
         )
         return response.alreadyHandled ? .alreadyHandled : .accepted
     }

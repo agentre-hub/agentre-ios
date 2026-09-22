@@ -65,7 +65,7 @@ public struct RelayComposer: ComposerRelay {
         request.permissionMode = permissionMode
         request.sourceDevice = source.fingerprint
         request.sourceDeviceName = source.name
-        let _: Agentre_Wire_RuntimeRunResponse = try await connection.call(machine: await carrier(key), .runtimeRun, request)
+        let _: Agentre_Wire_RuntimeRunResponse = try await connection.call(machine: try await carrier(key), .runtimeRun, request)
     }
 
     /// 停下运行中的这一轮（对照控制台 SessionDetailHeader 的 abortTurn：带回发起端）。
@@ -73,7 +73,7 @@ public struct RelayComposer: ComposerRelay {
         var request = Agentre_Wire_RuntimeAbortRequest()
         request.conversationID = key.conversationID
         request.peerFingerprint = peerFingerprint
-        let _: Agentre_Wire_RuntimeAbortResponse = try await connection.call(machine: await carrier(key), .runtimeAbort, request)
+        let _: Agentre_Wire_RuntimeAbortResponse = try await connection.call(machine: try await carrier(key), .runtimeAbort, request)
     }
 
     public func steer(_ key: ConversationKey, peerFingerprint: String, queuedID: String, text: String) async throws -> ComposerSteerHandle {
@@ -82,7 +82,7 @@ public struct RelayComposer: ComposerRelay {
         request.peerFingerprint = peerFingerprint
         request.queuedID = queuedID
         request.text = text
-        let response: Agentre_Wire_RuntimeSteerResponse = try await connection.call(machine: await carrier(key), .runtimeSteer, request)
+        let response: Agentre_Wire_RuntimeSteerResponse = try await connection.call(machine: try await carrier(key), .runtimeSteer, request)
         return ComposerSteerHandle(queuedID: response.queuedID, cancellable: response.cancellable)
     }
 
@@ -92,7 +92,7 @@ public struct RelayComposer: ComposerRelay {
         request.peerFingerprint = peerFingerprint
         request.queuedID = queuedID
         let response: Agentre_Wire_RuntimeCancelSteerResponse = try await connection.call(
-            machine: await carrier(key), .runtimeCancelSteer, request
+            machine: try await carrier(key), .runtimeCancelSteer, request
         )
         return response.removed
     }
@@ -100,7 +100,7 @@ public struct RelayComposer: ComposerRelay {
     /// 只问 agentred：桌面端不注册这个方法，且它托管的会话由它自己在轮末取走并接续，去问就是抢。
     /// 种类还不知道时同样不问。
     public func drainPending(_ key: ConversationKey, peerFingerprint: String) async throws -> [ComposerConsumedSteer]? {
-        let machine = await carrier(key)
+        let machine = try await carrier(key)
         guard await machineKind(machine) == "agentred" else { return nil }
         var request = Agentre_Wire_RuntimeDrainPendingRequest()
         request.conversationID = key.conversationID
@@ -114,7 +114,7 @@ public struct RelayComposer: ComposerRelay {
         request.conversationID = key.conversationID
         request.peerFingerprint = peerFingerprint
         request.mode = mode
-        let _: Agentre_Wire_Empty = try await connection.call(machine: await carrier(key), .runtimeSetPermissionMode, request)
+        let _: Agentre_Wire_Empty = try await connection.call(machine: try await carrier(key), .runtimeSetPermissionMode, request)
     }
 
     public func setModelTarget(_ key: ConversationKey, peerFingerprint: String, providerKey: String, modelKey: String) async throws {
@@ -123,7 +123,7 @@ public struct RelayComposer: ComposerRelay {
         request.peerFingerprint = peerFingerprint
         request.providerKey = providerKey
         request.modelKey = modelKey
-        let _: Agentre_Wire_SetModelTargetResponse = try await connection.call(machine: await carrier(key), .setModelTarget, request)
+        let _: Agentre_Wire_SetModelTargetResponse = try await connection.call(machine: try await carrier(key), .setModelTarget, request)
     }
 
     public func setReasoningEffort(_ key: ConversationKey, peerFingerprint: String, effort: String) async throws {
@@ -132,7 +132,7 @@ public struct RelayComposer: ComposerRelay {
         request.peerFingerprint = peerFingerprint
         request.reasoningEffort = effort
         let _: Agentre_Wire_SetSessionReasoningEffortResponse = try await connection.call(
-            machine: await carrier(key), .setSessionReasoningEffort, request
+            machine: try await carrier(key), .setSessionReasoningEffort, request
         )
     }
 
@@ -140,14 +140,14 @@ public struct RelayComposer: ComposerRelay {
         var request = Agentre_Wire_SessionDeleteRequest()
         request.conversationID = key.conversationID
         request.peerFingerprint = peerFingerprint
-        let response: Agentre_Wire_SessionDeleteResponse = try await connection.call(machine: await carrier(key), .sessionDelete, request)
+        let response: Agentre_Wire_SessionDeleteResponse = try await connection.call(machine: try await carrier(key), .sessionDelete, request)
         return response.deleted
     }
 
     /// 问承载这条会话的机器。后端还不知道时不问：发一次注定答错的调用，代价是菜单里出现一批叫不动的名字。
     public func skillCommands(_ key: ConversationKey, agentSyncID: String, backendType: String, cwd: String) async throws -> [ComposerSkillSource] {
         guard !backendType.isEmpty else { return [] }
-        let machineFingerprint = await carrier(key)
+        let machineFingerprint = try await carrier(key)
         // 授权拿不到不是不问的理由：机器仍答得出它自己解析的那一半。
         let grants = agentSyncID.isEmpty ? [] : ((try? await skillGrants(agentSyncID, backendType, machineFingerprint)) ?? [])
         var request = Agentre_Wire_SkillCommandsRequest()

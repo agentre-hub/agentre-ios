@@ -25,6 +25,8 @@ public final class MachineDetailModel {
     public private(set) var keyword = ""
     /// 名册说它在线，中继上却没问到。
     public private(set) var unreachable = false
+    /// 没问到的原因是那台机器的协议版本与本 App 不等：要更新 App（此时 `unreachable` 也为真）。
+    public private(set) var updateRequired = false
 
     private let source: any MachineSessionSource
     private let store: any ConversationSaving
@@ -119,6 +121,7 @@ public final class MachineDetailModel {
             guard current == generation else { return }
             rows = []
             unreachable = false
+            updateRequired = false
             append(page)
         } catch {
             guard current == generation else { return }
@@ -126,6 +129,7 @@ public final class MachineDetailModel {
             hasMore = false
             counts = nil
             unreachable = true
+            updateRequired = (error as? any FactualFailure)?.fact == .updateRequired
         }
     }
 

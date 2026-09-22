@@ -53,6 +53,17 @@ struct TranscriptScreenTests {
         return model
     }
 
+    @Test("失败的 Subagent 不只靠红色：折叠行上同时有「失败」；成功的没有")
+    func failedSubagentIsNotColourOnly() async {
+        let failed = SubagentRow(key: "s", name: "explorer", stepCount: 3, durationMs: 1_200, running: false, failed: true, expanded: false)
+        let labels = await HostedScreen(SubagentLineView(subagent: failed, toggle: {})).labels().joined(separator: "\n")
+        #expect(labels.contains(Self.format("activity.row.failed")), "\(labels)")
+        var succeeded = failed
+        succeeded.failed = false
+        let fine = await HostedScreen(SubagentLineView(subagent: succeeded, toggle: {})).labels().joined(separator: "\n")
+        #expect(!fine.contains(Self.format("activity.row.failed")), "\(fine)")
+    }
+
     @Test("每个可点元素都是补满 44×44 且互不重叠的按钮；检查器发现的数目等于放置的数目")
     func hitTargets() async throws {
         let model = await settledModel(tall: true)

@@ -311,7 +311,7 @@ public actor RelayChannel {
         }
     }
 
-    /// 协议版本不等：这一条停止重试，并从连接上摘掉（重连时不再为它声明、握手）。
+    /// 协议版本不等：这一条停止重试，并从连接上摘掉（重连时不再为它声明、握手；再要这个目标拿到的仍是它）。
     private func halt() async {
         guard !halted else { return }
         halted = true
@@ -319,7 +319,7 @@ public actor RelayChannel {
         failAll(.updateRequired)
         finishSubscribers()
         setStatus(.updateRequired)
-        await connection?.close(id)
+        await connection?.halt(id)
     }
 
     // MARK: 补齐
