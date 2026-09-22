@@ -228,9 +228,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
     model: strong
     interfaces: "TranscriptView 仅在行变化时滚到底（Sources/AgentreUI/Conversation/TranscriptView.swift）；复现入口 UITests/MainlineUITests.swift:175（中文深色，492f58f 上 4/22 次失败）"
-    status: doing
-    commit: null
-    note: "2026-09-22 用户批准新增，承接任务 19 退回中查明的回归。"
+    status: done
+    commit: 5d1b339
+    note: "2026-09-22 用户批准新增，承接任务 19 退回中查明的回归。 完成记录：两处缺陷——跟随态下可见高度变化不再滚底；在底判据未扣键盘占去的底部内距。RED 三例滚动测试失败；GREEN Transcript 125 条过，变异（去掉仅跟随时）使 3/5 滚动测试红；中文深色主线连续 12/12 过，其余三组合各 1 次过；全量 561 条 + UI 4 条过（exit 0）。"
 
 review:
   status: pending
