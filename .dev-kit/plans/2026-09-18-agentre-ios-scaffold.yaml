@@ -212,6 +212,16 @@ tasks:
     commit: 16b4ae8
     note: "project.yml 自任务 2 冻结；用户批准驱动转正式 UI 测试 target，即批准本任务为加 target 而解冻 project.yml，只加该 target 与 scheme 条目。Package.swift 仍冻结。 完成记录：RED 两处（去掉 transcript.resume → 回前台后回复不出现；英文中间档改回原文 → 三钮不在一行），均 exit 65 后还原；GREEN：四组合两轮全过，每组合 19 张截图；全量 547 条 + UI 4 条过（exit 0）。附带产品修复：主包未声明本地化，系统中文下 App 仍跑英文，新增 Sources/AgentreApp/InfoPlist.xcstrings（en + zh-Hans）。未修缺陷：一轮在后台结束、回前台后停止钮不消失——回合结束只认实时帧，补拉回来的 done 帧被忽略（Sources/AgentreApp/RelayGlue.swift:52 TurnFeedingTranscript），该断言已从流程中拿掉。与规格措辞不一：规格写经启动参数指向伪服务端，实为登录屏改地址；project.yml 另加 SwiftProtobuf 包条目。模拟器回主屏不可靠挂起，伪服务端在 App 离开前台时主动关通道断连。"
 
+  - id: 19
+    goal: "一轮在应用处于后台时结束，回到前台后输入区如实回到不在运行：停止钮消失、可直接发下一句；补齐拉回的历史回合不得再触发一次轮末接续（取回剩余插话只做一次、不重复发出）；先以宿主测试复现现状（停止钮仍在），再修；并把任务 18 从主线界面流程里拿掉的「回前台后停止钮消失」断言加回，四组合通过。"
+    deps: [18]
+    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
+    model: strong
+    interfaces: "TurnFeedingTranscript 只把不带 createtime 的实时帧递成 TurnSignal（Sources/AgentreApp/RelayGlue.swift:40-66），注释写明补齐的历史回合不能再触发轮末接续；主线界面流程 UITests/MainlineUITests.swift"
+    status: doing
+    commit: null
+    note: "2026-09-22 用户批准新增（任务 18 发现：回合结束只认实时帧，后台期间结束的那一轮回前台后停止钮不消失）。"
+
 review:
   status: pending
   axis: none
