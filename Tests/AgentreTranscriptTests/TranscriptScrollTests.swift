@@ -54,6 +54,98 @@ struct TranscriptScrollTests {
         try await host.settle { await host.element(labelled: jumpLabel) == nil }
     }
 
+    @Test("跟随中可见高度缩小（键盘弹回、回前台）后仍贴在最新一行")
+    func followingSurvivesShrinkingViewport() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40)
+
+        host.shrinkViewport(by: 336)
+        try await host.settle("缩小后没有贴底：\(host.describe(scrollView))") { host.isAtBottom(scrollView) }
+        #expect(model.follow.isFollowing)
+        #expect(host.isShowingLastRow(scrollView, model: model))
+    }
+
+    @Test("跟随中行变化与可见高度缩小同时到来，最新一行仍可见")
+    func followingSurvivesRowsAndShrinkTogether() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40)
+
+        // 回前台：补回的行、摘要刷新与弹回的键盘在同一轮里到来。
+        model.merge(live: [liveFrame(decoder, 41, .userMessage("第 41 句")), liveFrame(decoder, 42, .textDelta("后台里跑完的回复"))])
+        host.shrinkViewport(by: 336)
+        try await host.settle("同时到来后没有贴底：\(host.describe(scrollView))") { host.isAtBottom(scrollView) && model.rows.count >= 42 }
+        #expect(model.follow.isFollowing)
+        #expect(model.follow.unseen == 0)
+        #expect(host.isShowingLastRow(scrollView, model: model))
+
+        // 键盘收起再弹出：仍在底部。
+        host.shrinkViewport(by: 0)
+        try await host.settle { host.isAtBottom(scrollView) }
+        host.shrinkViewport(by: 336)
+        try await host.settle("再次缩小后没有贴底：\(host.describe(scrollView))") { host.isAtBottom(scrollView) }
+        #expect(model.follow.isFollowing)
+    }
+
+    @Test("已上滚时可见高度变化与新行都不把视口拉回；「回到最新」记数照旧")
+    func scrolledAwayIsNotYankedBackByLayout() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40)
+
+        scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: false)
+        try await host.settle { !model.follow.isFollowing }
+        let away = scrollView.contentOffset.y
+
+        model.merge(live: [liveFrame(decoder, 41, .userMessage("第 41 句")), liveFrame(decoder, 42, .userMessage("第 42 句"))])
+        host.shrinkViewport(by: 336)
+        try await host.settle { model.follow.unseen == 2 }
+        try await host.frames(15)
+        #expect(!model.follow.isFollowing)
+        #expect(model.follow.unseen == 2)
+        #expect(!host.isAtBottom(scrollView))
+        #expect(abs(scrollView.contentOffset.y - away) < 2, "视口被挪动了：\(host.describe(scrollView))")
+
+        host.shrinkViewport(by: 0)
+        try await host.frames(15)
+        #expect(!model.follow.isFollowing)
+        #expect(!host.isAtBottom(scrollView))
+    }
+
+    @Test("键盘弹着时稍稍上滚也停止跟随，其后的新行不把视口拉回")
+    func scrollingUpWithKeyboardStopsFollowing() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40)
+        // 从一开始就让出底部（键盘弹着打开对话）：打开时贴底不依赖本任务的改动。
+        host.shrinkViewport(by: 336)
+        try await host.settle { scrollView.adjustedContentInset.bottom > 300 }
+        scrollView.setContentOffset(CGPoint(x: 0, y: scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom), animated: false)
+        try await host.settle("没有贴底：\(host.describe(scrollView))") { host.isAtBottom(scrollView) }
+        try await host.frames(5)
+        #expect(model.follow.isFollowing)
+
+        // 上滚 200pt：比键盘矮，但确实离开了最新一行。
+        scrollView.setContentOffset(CGPoint(x: 0, y: scrollView.contentOffset.y - 200), animated: false)
+        try await host.settle("上滚 200pt 仍在跟随：\(host.describe(scrollView))") { !model.follow.isFollowing }
+        let away = scrollView.contentOffset.y
+
+        model.merge(live: [liveFrame(decoder, 41, .userMessage("第 41 句"))])
+        try await host.settle { model.follow.unseen == 1 }
+        try await host.frames(15)
+        #expect(!model.follow.isFollowing)
+        #expect(abs(scrollView.contentOffset.y - away) < 2, "视口被拉回：\(host.describe(scrollView))")
+    }
+
+    /// 打开 `rows` 句的转录，等它在底部、在跟随。
+    private func openAtBottom(rows count: Int) async throws -> (TranscriptModel, ScrollHost, UIScrollView) {
+        let frames = (1...count).map { stored(decoder, Int64($0), .userMessage("第 \($0) 句")) }
+        let model = TranscriptModel(
+            conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"),
+            store: FakeStore(frames), relay: FakeRelay(), decoder: decoder
+        )
+        let host = ScrollHost(TranscriptView(model: model, agentName: "Claude Code"))
+        try await host.settle { model.rows.count == count }
+        try await host.settle { host.scrollView() != nil }
+        let scrollView = try #require(host.scrollView(), "转录底下没有 UIScrollView：\(host.describeScrollViews())")
+        try await host.settle { host.isAtBottom(scrollView) }
+        #expect(model.follow.isFollowing)
+        return (model, host, scrollView)
+    }
+
     func text(_ key: String) -> String {
         AgentreUIResources.bundle.localizedString(forKey: key, value: "⟨missing⟩", table: "Conversation")
     }
@@ -83,6 +175,36 @@ fileprivate final class ScrollHost {
         }
         Issue.record("条件在 5 秒内没有成立：\(what())", sourceLocation: sourceLocation)
         throw CancellationError()
+    }
+
+    /// 底部让出一段（与键盘同形：安全区收窄，列表可见高度随之变小）；0 即收起。
+    func shrinkViewport(by height: CGFloat) {
+        controller.additionalSafeAreaInsets.bottom = height
+    }
+
+    /// 让出若干帧，不带条件。
+    func frames(_ count: Int) async throws {
+        for _ in 0..<count {
+            controller.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    /// 最新一行的格子整个落在可见区内。
+    func isShowingLastRow(_ scrollView: UIScrollView, model: TranscriptModel) -> Bool {
+        guard let collection = scrollView as? UICollectionView else { return isAtBottom(scrollView) }
+        let sections = collection.numberOfSections
+        guard sections > 0 else { return false }
+        let items = collection.numberOfItems(inSection: sections - 1)
+        guard items == model.rows.count, items > 0,
+              let cell = collection.cellForItem(at: IndexPath(item: items - 1, section: sections - 1)) else { return false }
+        let visibleTop = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+        let visibleBottom = scrollView.contentOffset.y + scrollView.bounds.height - scrollView.adjustedContentInset.bottom
+        return cell.frame.minY >= visibleTop - 1 && cell.frame.maxY <= visibleBottom + 1
+    }
+
+    func describe(_ scrollView: UIScrollView) -> String {
+        "offset=\(scrollView.contentOffset.y) bounds=\(scrollView.bounds.height) content=\(scrollView.contentSize.height) insets=\(scrollView.adjustedContentInset)"
     }
 
     func scrollView() -> UIScrollView? {

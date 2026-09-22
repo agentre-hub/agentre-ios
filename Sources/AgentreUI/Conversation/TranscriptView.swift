@@ -39,12 +39,21 @@ public struct TranscriptView<Card: View>: View {
             .scrollContentBackground(.hidden)
             .background(.token(.bg))
             .onScrollGeometryChange(for: ScrollPosition.self) { geometry in
-                ScrollPosition(
+                // 可见区要扣掉底部内边距：键盘、安全区与「回到最新」都落在这里，容器高度本身不随它们变。
+                let visibleHeight = geometry.containerSize.height - geometry.contentInsets.top - geometry.contentInsets.bottom
+                return ScrollPosition(
                     offset: geometry.contentOffset.y,
                     contentHeight: geometry.contentSize.height,
-                    atBottom: geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height - 32
+                    visibleHeight: visibleHeight,
+                    atBottom: geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom >= geometry.contentSize.height - 32
                 )
             } action: { old, new in
+                // 跟随中布局变了（键盘弹回、回前台、行高落定）：重新贴到最新一行。行变化另由下面的 onChange 贴。
+                if model.follow.isFollowing, new.contentHeight > 0,
+                   abs(new.visibleHeight - old.visibleHeight) >= 1 || abs(new.contentHeight - old.contentHeight) >= 1,
+                   let last = model.rows.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
                 // 只认内容不变时视口自己的移动：内容增减（含首次布局、补进历史）带动的偏移不算滚动。
                 // 移到底部即恢复跟随；离开底部只认往上走——跟随的滚动只往下走。
                 // 首次布局时内容还是空的，安全区内边距会把偏移挪一下，那不是滚动。
@@ -84,6 +93,8 @@ extension TranscriptView where Card == EmptyView {
 fileprivate struct ScrollPosition: Equatable {
     var offset: CGFloat
     var contentHeight: CGFloat
+    /// 扣掉上下内边距后的可见高度。
+    var visibleHeight: CGFloat
     var atBottom: Bool
 }
 
