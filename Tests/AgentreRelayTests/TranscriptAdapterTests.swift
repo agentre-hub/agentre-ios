@@ -135,6 +135,30 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         #expect(fresh.createtime == nil)
     }
 
+    @Test("机器上这条会话的帧号重新起算了（最高帧号低于调用方手里的）：流先交出回退标记，再交出从头重拉的帧")
+    func renumberedConversationRewinds() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayTranscript(connection: harness.connection)
+        let attaching = Task { try await adapter.attach(key, peerFingerprint: "", after: 12) }
+        let (socket, id) = try await harness.machineChannel("origin-fp")
+        var attached = Agentre_Wire_SessionAttachResponse()
+        attached.latestSeq = 1
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), with: attached)
+        let pull = try await socket.nextRequest(on: id, method: .sessionPull)
+        #expect(try pull.body(Agentre_Wire_SessionPullRequest.self).cursor == 0)
+        var page = Agentre_Wire_SessionPullResponse()
+        var frame = Agentre_Wire_DurableNotification()
+        frame.seq = 1
+        frame.payload = text(1, "new 1")
+        page.notifications = [frame]
+        page.cursor = 1
+        socket.respond(id, to: pull, with: page)
+        let live = Collected(try await attaching.value)
+        _ = try await eventually("seq 1") { live.items.contains { $0.seq == 1 } ? true : nil }
+        #expect(live.items.map(\.rewoundTo) == [1, nil])
+        #expect(live.items.map(\.seq) == [nil, 1])
+    }
+
     @Test("服务端关掉这条机器通道：实时流随之结束，不留一个永远等不到帧的界面")
     func streamEndsWhenChannelCloses() async throws {
         let harness = await Harness.started()

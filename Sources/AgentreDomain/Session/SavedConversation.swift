@@ -12,6 +12,11 @@ public struct ConversationKey: Sendable, Hashable {
         self.machineFingerprint = machineFingerprint
         self.conversationID = conversationID
     }
+
+    /// 机器清单里的一条会话的键：键上记发起端；发起端为空时是承载它的这台机器自己发起的。
+    public init(conversationID: String, peerFingerprint: String, via carrier: String) {
+        self.init(machineFingerprint: peerFingerprint.isEmpty ? carrier : peerFingerprint, conversationID: conversationID)
+    }
 }
 
 /// 手机上保存的一条会话的摘要。元数据取自机器的会话清单（机器是权威），

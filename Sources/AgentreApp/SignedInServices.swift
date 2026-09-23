@@ -77,7 +77,6 @@ final class SignedInServices {
     /// 新建的对话落库：发起端是本机（与机器报的 peer_fingerprint 同一个指纹，也是派单时的来源设备）。
     @ObservationIgnored let startedRecorder: StartedConversationRecorder
     @ObservationIgnored let workspace: WorkspaceClient
-    @ObservationIgnored let machineDirectory: MachineDirectory
     @ObservationIgnored let mentions: RESTMentionSource
     @ObservationIgnored let settings: ComposerSettingsAdapter
     @ObservationIgnored let sync: ConversationSync
@@ -121,7 +120,6 @@ final class SignedInServices {
         approvals = RelayApprovalAnswering(connection: connection, carrier: carrier)
         let roster = MachineRosterClient(transport: environment.transport, server: server)
         let directory = MachineDirectory(roster: roster)
-        machineDirectory = directory
         composerRelay = RelayComposer(
             connection: connection, source: source, carrier: carrier,
             conversation: { key in try? await store.conversation(key) },
@@ -154,10 +152,12 @@ final class SignedInServices {
         // 跟随重新接上了承载机：那条会话若正开着、实时流已收场，一并接上。回到前台时通道的关闭帧
         // 可能晚于 resume 才读到，这一步兜住那个次序。
         recovered.handler = { [weak self] key in self?.conversations[key]?.transcript.resume() }
-        // 接上后机器报的生命周期交给那条会话的输入区：看不到的时候（后台、断线）收场的那一轮，
+        // 接上后机器报的生命周期交给那条会话的转录与输入区：看不到的时候（后台、断线）收场的那一轮，
         // 收场帧不会补拉回来，只有它说得出来。轮末接续是几次往返，不压住跟随落库。
         recovered.lifecycleHandler = { [weak self] key, lifecycle in
-            guard let composer = self?.conversations[key]?.composer else { return }
+            guard let screen = self?.conversations[key] else { return }
+            screen.transcript.reconcile(lifecycle: lifecycle)
+            let composer = screen.composer
             Task { await composer.reconcile(lifecycle: lifecycle) }
         }
         // 草稿只活在它那一次新建里：发出去换成了对话、或者退出了新建那几屏，再选同一个 Agent 是一张新草稿，
@@ -198,11 +198,6 @@ final class SignedInServices {
     }
 
     // MARK: 各屏的模型（同一去处只建一次）
-
-    /// 已经打开过的那一份（不去库里读）。
-    func openConversation(_ key: ConversationKey) -> ConversationScreenModel? {
-        conversations[key]
-    }
 
     /// 一条会话的对话屏。每条会话只有一份卡片状态与输入区，重复进入拿到的是同一份。
     func conversationModel(for key: ConversationKey) async -> ConversationScreenModel? {

@@ -36,6 +36,8 @@ actor FakeSessionSource: MachineSessionSource {
     var all: [MachineSession]
     var counts = MachineSessionCounts(total: 0, running: 0, waiting: 0)
     var failing = false
+    /// 请求随所在任务被取消而收场（中继调用对取消的应答）。
+    var cancelling = false
     private(set) var requests: [Request] = []
     private(set) var countRequests = 0
     /// 挂住某个关键词的请求，直到 `release` 为止。
@@ -46,6 +48,7 @@ actor FakeSessionSource: MachineSessionSource {
 
     func setCounts(_ counts: MachineSessionCounts) { self.counts = counts }
     func setFailing(_ failing: Bool) { self.failing = failing }
+    func setCancelling(_ cancelling: Bool) { self.cancelling = cancelling }
     func setSessions(_ all: [MachineSession]) { self.all = all }
     func hold(_ keyword: String) { holdKeywords.insert(keyword) }
     func isHolding(_ keyword: String) -> Bool { held[keyword] != nil }
@@ -57,7 +60,8 @@ actor FakeSessionSource: MachineSessionSource {
     func sessions(on machine: String, keyword: String, cursor: String, limit: Int) async throws -> MachineSessionPage {
         requests.append(Request(machine: machine, keyword: keyword, cursor: cursor, limit: limit))
         if holdKeywords.contains(keyword) { await withCheckedContinuation { held[keyword] = $0 } }
-        if failing { throw CancellationError() }
+        if cancelling { throw CancellationError() }
+        if failing { throw URLError(.timedOut) }
         let matching = keyword.isEmpty ? all : all.filter { $0.title.localizedCaseInsensitiveContains(keyword) }
         let start = Int(cursor) ?? 0
         let end = min(start + limit, matching.count)
@@ -68,7 +72,8 @@ actor FakeSessionSource: MachineSessionSource {
 
     func counts(on machine: String) async throws -> MachineSessionCounts {
         countRequests += 1
-        if failing { throw CancellationError() }
+        if cancelling { throw CancellationError() }
+        if failing { throw URLError(.timedOut) }
         return counts
     }
 }

@@ -1,4 +1,5 @@
 import AgentreDomain
+import Foundation
 @testable import AgentreUI
 import Testing
 
@@ -107,6 +108,40 @@ struct TranscriptModelTests {
         let blocks = model.document.messages.last?.blocks ?? []
         #expect(blocks == [.toolUse(readUse("a")), .toolUse(readUse("b"))])
         #expect(await relay.attaches.first?.peer == "peer-1")
+        await relay.finish()
+        await attach.value
+    }
+
+    @Test("看不到的时候（后台、断线）收场的一轮：收场帧补拉不回来，机器报的会话已不在运行即让转录落定；报在运行不动")
+    func reconcileEndsTheUnseenTurn() async throws {
+        let spawn = use("sp", "Task", input: ["prompt": "go", "run_in_background": .bool(false)], canonical: Canonical(kind: "agent.spawn"))
+        let local = [stored(decoder, 1, .userMessage("修构建")), stored(decoder, 2, .toolCall(spawn))]
+        let (model, _, relay) = model(local: local)
+        await model.load()
+        let attach = Task { await model.attach() }
+        await relay.push(liveFrame(decoder, nil, .turnStarted))
+        await relay.push(liveFrame(decoder, 3, .subagent(SubagentUpdate(toolCallID: "sp", phase: .started, info: SubagentState(taskID: "t", status: "running", kind: "local_agent")))))
+        try await eventually("turn running") { model.document.running }
+
+        model.reconcile(lifecycle: SavedConversation.Lifecycle.running)
+        #expect(model.document.running)
+        model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        #expect(!model.document.running)
+        guard case .toolUse(let tool)? = model.document.messages.last?.blocks.first else { Issue.record("no spawn"); return }
+        #expect(tool.subagent?.status == "canceled")
+        await relay.finish()
+        await attach.value
+    }
+
+    @Test("机器上这条会话的帧号重新起算了（会话删了、会话号被复用）：转录丢掉旧编号下的内容，重拉回来的同号帧不被当成重复")
+    func rewindReplacesTheTranscript() async throws {
+        let (model, _, relay) = model(local: frames(1...3))
+        await model.load()
+        let attach = Task { await model.attach() }
+        await relay.push(LiveTranscriptFrame(seq: nil, createtime: nil, payload: Data(), rewoundTo: 2))
+        await relay.push(liveFrame(decoder, 1, .userMessage("new 1")))
+        await relay.push(liveFrame(decoder, 2, .userMessage("new 2")))
+        try await eventually("renumbered frames shown") { userTexts(model) == ["new 1", "new 2"] }
         await relay.finish()
         await attach.value
     }

@@ -30,10 +30,7 @@ public struct Machine: Sendable, Equatable, Identifiable {
 
     /// 机器上的一条会话在本地库里的身份：清单回显了发起端就以它为主，否则就是这台机器。
     public func key(of session: MachineSession) -> ConversationKey {
-        ConversationKey(
-            machineFingerprint: session.peerFingerprint.isEmpty ? fingerprint : session.peerFingerprint,
-            conversationID: session.conversationID
-        )
+        ConversationKey(conversationID: session.conversationID, peerFingerprint: session.peerFingerprint, via: fingerprint)
     }
 }
 

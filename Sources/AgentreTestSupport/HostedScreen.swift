@@ -36,6 +36,15 @@ public final class HostedScreen {
             .compactMap(\.accessibilityLabel)
     }
 
+    /// 标签恰为 `label` 的元素实际排出来的框（窗口坐标）：SwiftUI 截断的文字，无障碍标签仍是全文，框是截断后的宽度。
+    public func frame(of label: String) async -> CGRect? {
+        guard AccessibilityTree.enable() else { return nil }
+        await AccessibilityTree.settle(controller.view)
+        return AccessibilityTree.elements(in: controller.view)
+            .first { $0.accessibilityLabel == label }
+            .map { window.convert($0.accessibilityFrame, from: nil) }
+    }
+
     /// 屏上此刻点不动的元素（无障碍树里带 notEnabled 的）的标签：断言「这个动作此刻不可用」。
     public func disabledLabels() async -> [String] {
         guard AccessibilityTree.enable() else { return [] }

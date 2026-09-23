@@ -83,6 +83,15 @@ struct AdapterTests {
         #expect(URLCache.shared.cachedResponse(for: URLRequest(url: url)) == nil)
     }
 
+    @Test("服务器地址：大小写不同、写明默认端口的同一地址认作同一台服务器", arguments: [
+        "HTTPS://App.AgentreHub.com", "https://app.agentrehub.com:443", "https://APP.agentrehub.com/",
+    ])
+    func serverAddressNormalises(text: String) {
+        #expect(ServerAddress(string: text) == .production)
+        #expect(ServerAddress(string: "http://Docker.local:80") == ServerAddress(string: "http://docker.local"))
+        #expect(ServerAddress(string: "http://docker.local:8443") != ServerAddress(string: "http://docker.local"))
+    }
+
     @Test("服务器地址：默认生产；保存后新实例读回；存了坏值读回生产地址")
     func serverAddressStore() throws {
         let suite = "agentre.tests.\(UUID().uuidString)"

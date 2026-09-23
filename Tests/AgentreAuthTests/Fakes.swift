@@ -16,7 +16,17 @@ final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable {
 
     func loadCredentials() throws -> Credentials? { lock.withLock { credentials } }
     func saveCredentials(_ credentials: Credentials) throws { lock.withLock { self.credentials = credentials } }
-    func clearCredentials() throws { lock.withLock { credentials = nil } }
+    /// 接下来这么多次清除抛错（钥匙串一时出错）。
+    var failingClears = 0
+    func clearCredentials() throws {
+        try lock.withLock {
+            if failingClears > 0 {
+                failingClears -= 1
+                throw CocoaError(.fileWriteUnknown)
+            }
+            credentials = nil
+        }
+    }
     func deviceFingerprint() throws -> DeviceFingerprint {
         lock.withLock {
             if let fingerprint { return fingerprint }

@@ -68,7 +68,7 @@ public struct ComposerPanel: View {
             if let current = settings?.model { Text(verbatim: current.modelKey).monospaced() }
         }
         ComposerPanelRow("composer.effort") { page = .effort } value: {
-            if let settings { ComposerEffortLabel(effort: settings.effectiveReasoningEffort) }
+            if let settings { ComposerEffortLabel(effort: settings.reasoningEffort) }
         }
         ComposerPanelRow("composer.sessionInfo") { page = .sessionInfo } value: { EmptyView() }
         ComposerPanelRow("composer.context") { page = .context } value: {

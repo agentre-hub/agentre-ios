@@ -25,9 +25,7 @@ struct RewindingTransfer: MachineSessionTransfer {
     func attach(conversationID: String, peerFingerprint: String, on machineFingerprint: String) async throws -> Int64? {
         let highWater = try await inner.attach(conversationID: conversationID, peerFingerprint: peerFingerprint, on: machineFingerprint)
         guard let highWater else { return nil }
-        let key = ConversationKey(
-            machineFingerprint: peerFingerprint.isEmpty ? machineFingerprint : peerFingerprint, conversationID: conversationID
-        )
+        let key = ConversationKey(conversationID: conversationID, peerFingerprint: peerFingerprint, via: machineFingerprint)
         try await store.rewind(key, highWater: highWater)
         return highWater
     }
@@ -39,6 +37,9 @@ struct RewindingTransfer: MachineSessionTransfer {
 
 /// 转录的中继端口，外加把实时帧里的回合事件递给输入区。只看实时帧（不带源端时刻）：
 /// 补齐拉回的历史里那些早已结束的回合不能再触发一次轮末接续。
+///
+/// 回合事件按到达次序逐个递，但递的那一步（轮末接续是问信箱、再开一轮的几次往返）不压住帧：
+/// 帧照常往转录流，回合事件排在自己的队里。
 struct TurnFeedingTranscript: TranscriptRelay {
     let inner: any TranscriptRelay
     let feed: @Sendable (TurnSignal) async -> Void
@@ -51,16 +52,24 @@ struct TurnFeedingTranscript: TranscriptRelay {
         let frames = try await inner.attach(key, peerFingerprint: peerFingerprint, after: cursor)
         let feed = feed
         let (stream, continuation) = AsyncStream<LiveTranscriptFrame>.makeStream()
+        let (signals, signalSink) = AsyncStream<TurnSignal>.makeStream()
+        let feeding = Task {
+            for await signal in signals { await feed(signal) }
+        }
         let forward = Task {
             for await frame in frames {
                 continuation.yield(frame)
                 if frame.createtime == nil, let signal = TurnSignal(payload: frame.payload) {
-                    await feed(signal)
+                    signalSink.yield(signal)
                 }
             }
+            signalSink.finish()
             continuation.finish()
         }
-        continuation.onTermination = { _ in forward.cancel() }
+        continuation.onTermination = { _ in
+            forward.cancel()
+            feeding.cancel()
+        }
         return stream
     }
 }

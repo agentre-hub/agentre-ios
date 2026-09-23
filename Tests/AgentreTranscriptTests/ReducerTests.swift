@@ -101,7 +101,6 @@ struct ReducerTests {
         ("local_agent", nil, "running"),
         ("local_agent", false, "canceled"),
         ("local_bash", true, "running"),
-        ("local_bash", nil, "canceled"),
     ] as [(String, Bool?, String)])
     func backgroundSubagentsOutliveTheTurn(kind: String, background: Bool?, settled: String) {
         var input: [String: JSONValue] = ["prompt": "go"]
@@ -113,6 +112,23 @@ struct ReducerTests {
         ]))
         guard case .toolUse(let tool) = doc.messages.single?.blocks.first else { Issue.record("no tool"); return }
         #expect(tool.subagent?.status == settled)
+    }
+
+    @Test("前台 Bash 的 local_bash 帧不挂 Subagent 状态；没挂过的调用，进度与结束也不补挂（宿主 frames.ts 同一规矩）")
+    func foregroundBashGetsNoSubagent() {
+        let doc = TranscriptReducer.reduce(entries([
+            .toolCall(use("b", "Bash", input: ["command": "ls"])),
+            .subagent(SubagentUpdate(toolCallID: "b", phase: .started, info: SubagentState(taskID: "task-b", status: "running", kind: "local_bash"))),
+            .toolCall(use("r", "Read", input: ["path": "a"])),
+            .subagent(SubagentUpdate(toolCallID: "r", phase: .progress, info: SubagentState(status: "running"))),
+            .subagent(SubagentUpdate(toolCallID: "r", phase: .done, info: SubagentState(status: "completed"))),
+            .turnDone(TurnDone()),
+        ]))
+        let tools = doc.messages.single?.blocks.compactMap { block -> ToolUse? in
+            if case .toolUse(let use) = block { use } else { nil }
+        } ?? []
+        #expect(tools.map(\.id) == ["b", "r"])
+        #expect(tools.allSatisfy { $0.subagent == nil }, "\(tools.map(\.subagent))")
     }
 
     @Test("用量：助手消息记下总输入、窗口记到转录上，二者得出上下文用量；错误落到这一轮")

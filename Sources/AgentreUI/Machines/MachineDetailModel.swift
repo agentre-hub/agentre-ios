@@ -123,13 +123,16 @@ public final class MachineDetailModel {
             unreachable = false
             updateRequired = false
             append(page)
+        } catch is CancellationError {
+            // 屏上的任务被取消（点进了一行）：不是没连上，已列出的照旧。
+            return
         } catch {
             guard current == generation else { return }
             rows = []
             hasMore = false
             counts = nil
             unreachable = true
-            updateRequired = (error as? any FactualFailure)?.fact == .updateRequired
+            updateRequired = FailureFact(presenting: error) == .updateRequired
         }
     }
 

@@ -311,7 +311,7 @@ public actor RelayChannel {
         // 断线前那一轮的请求已随断线收场，新的一轮接在它后面。
         for (conversationID, conversation) in conversations where conversation.watched {
             if conversation.lastCatchUp != nil, conversation.catchUpSinceLoss { continue }
-            scheduleCatchUp(conversationID, from: nil)
+            scheduleCatchUp(conversationID, from: nil, retryOnFailure: true)
         }
     }
 
@@ -330,9 +330,12 @@ public actor RelayChannel {
 
     /// 排一轮补齐，接在这条对话上一轮的后面（一轮接一轮，缓冲与游标不会被两轮交错着改）。
     /// `cursor` 为 nil 时从通道自己的游标接着拉。
+    ///
+    /// `retryOnFailure`：通道自己发起的补齐（重连就绪、实时帧跳号）没有调用方等着它的结果，失败了没人知道；
+    /// 这一轮失败就退避后再排一轮，直到补上、断线（重连会再补）或这条对话不再被关注。
     @discardableResult
     private func scheduleCatchUp(
-        _ conversationID: String, from cursor: Int64?
+        _ conversationID: String, from cursor: Int64?, retryOnFailure: Bool = false, failures: Int = 0
     ) -> Task<Agentre_Wire_SessionAttachResponse, any Error> {
         let previous = conversations[conversationID]?.lastCatchUp?.task
         let token = UUID()
@@ -345,11 +348,26 @@ public actor RelayChannel {
                 outcome = .failure(error)
             }
             await self.catchUpEnded(conversationID, token)
+            if retryOnFailure, case .failure(let error) = outcome {
+                Task { await self.retryCatchUp(conversationID, after: error, failures: failures) }
+            }
             return try outcome.get()
         }
         conversations[conversationID]?.lastCatchUp = (token, task)
         conversations[conversationID]?.catchUpSinceLoss = true
         return task
+    }
+
+    private func retryCatchUp(_ conversationID: String, after error: any Error, failures: Int) async {
+        if error is CancellationError { return }
+        if let error = error as? RelayCallError, [.disconnected, .channelClosed, .updateRequired].contains(error) { return }
+        func stillWanted() -> Bool { ready && !halted && !closed && conversations[conversationID]?.watched == true }
+        guard stillWanted() else { return }
+        let generation = generation
+        do { try await sleeper.sleep(for: backoff.delay(afterFailures: failures, random: random())) } catch { return }
+        // 其间已经排上了别的一轮（调用方又 attach 了、又跳了号）就由它补。
+        guard generation == self.generation, stillWanted(), conversations[conversationID]?.lastCatchUp == nil else { return }
+        scheduleCatchUp(conversationID, from: nil, retryOnFailure: true, failures: failures + 1)
     }
 
     private func catchUpEnded(_ conversationID: String, _ token: UUID) {
@@ -404,13 +422,28 @@ public actor RelayChannel {
             let buffered = conversations[conversationID]?.buffered ?? []
             conversations[conversationID]?.buffered = []
             conversations[conversationID]?.catchingUp = false
-            for notification in buffered { deliver(notification, createtime: nil, live: false) }
+            replay(buffered, conversationID: conversationID)
             return attached
         } catch {
             // 缓冲的实时帧丢掉：游标没有前进，下一次补齐会把它们一并拉回。
             conversations[conversationID]?.buffered = []
             conversations[conversationID]?.catchingUp = false
             throw error
+        }
+    }
+
+    /// 交出补齐期间缓冲的实时帧。补完的游标与其中一帧之间仍有缺口（缺的那一帧在中继上丢了、补拉时对端
+    /// 还没落下它）：这一帧与其后的留在缓冲里，再按游标补一轮，与实时帧跳号同一条路。
+    private func replay(_ buffered: [Agentre_Wire_RpcNotification], conversationID: String) {
+        for (index, notification) in buffered.enumerated() {
+            if let key = notification.durableKey, key.seq > 0, !notification.isPreviewFrame,
+               conversations[conversationID]?.watched == true, key.seq > cursor(conversationID: conversationID) + 1 {
+                let arrivedSince = conversations[conversationID]?.buffered ?? []
+                conversations[conversationID]?.buffered = Array(buffered[index...]) + arrivedSince
+                scheduleCatchUp(conversationID, from: nil, retryOnFailure: true)
+                return
+            }
+            deliver(notification, createtime: nil, live: false)
         }
     }
 
@@ -428,7 +461,7 @@ public actor RelayChannel {
             }
             if conversation.watched, key.seq > conversation.cursor + 1 {
                 conversations[key.conversationID]?.buffered.append(notification)
-                scheduleCatchUp(key.conversationID, from: nil)
+                scheduleCatchUp(key.conversationID, from: nil, retryOnFailure: true)
                 return
             }
         }

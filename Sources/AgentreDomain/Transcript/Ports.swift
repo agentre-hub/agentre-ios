@@ -12,11 +12,15 @@ public struct LiveTranscriptFrame: Sendable, Equatable {
     /// 补齐拉回的帧在源端时钟上的发生时刻（Unix 毫秒，源端没记时可以是 0）；nil = 实时帧（含预览帧）。
     public var createtime: Int64?
     public var payload: Data
+    /// 回退标记（不是帧）：机器上这条会话的帧号重新起算了，此刻的最高帧号是它。持有者手里的帧属于旧编号，
+    /// 整段作废；此后流里是从头重拉的帧。
+    public var rewoundTo: Int64?
 
-    public init(seq: Int64?, createtime: Int64?, payload: Data) {
+    public init(seq: Int64?, createtime: Int64?, payload: Data, rewoundTo: Int64? = nil) {
         self.seq = seq
         self.createtime = createtime
         self.payload = payload
+        self.rewoundTo = rewoundTo
     }
 }
 

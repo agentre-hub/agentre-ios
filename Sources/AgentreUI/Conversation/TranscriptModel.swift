@@ -33,6 +33,8 @@ public final class TranscriptModel {
     /// 回到前台的次数。每一轮实时流开始前记下它，收场时再比一次：这一轮期间到过的信号照样算数，
     /// 不会因为流的收场还没被唤醒处理就丢掉。
     @ObservationIgnored private var resumeCount = 0
+    /// 机器说那一轮已在看不到的时候收了场（`reconcile`）；下一轮开始之前一直算数。
+    @ObservationIgnored private var endedUnseen = false
 
     /// - Parameters:
     ///   - conversation: 本地库里的会话；它的键给出承载机器，`peerFingerprint` 原样带给 pull / attach。
@@ -69,6 +71,16 @@ public final class TranscriptModel {
     public func resume() {
         resumeCount += 1
         for signal in waiting.values { signal.yield() }
+    }
+
+    /// 重新接上承载机后，机器此刻报的会话生命周期。转录还以为一轮在跑、机器却说不在跑了：这一轮在看不到的
+    /// 时候（后台、断线）收了场，收场帧不带号、补拉不回来——按一次收场落定（运行态与还挂着的前台
+    /// Subagent 一并收掉），与输入区的 `reconcile` 同一口径。这一次收场总排在转录最末（随后补拉回来的
+    /// 那一轮的帧仍归那一轮），下一轮开始即作废。
+    public func reconcile(lifecycle: String) {
+        guard document.running, lifecycle != SavedConversation.Lifecycle.running else { return }
+        endedUnseen = true
+        rebuild(countingNewRows: false)
     }
 
     /// 读本地库；不足一页时向机器补一页。只读一次。
@@ -108,10 +120,17 @@ public final class TranscriptModel {
         }
     }
 
-    /// 合入实时帧。
+    /// 合入实时帧。回退标记：机器上的帧号重新起算了，手里的全是旧编号下的内容，整段丢掉，此后的帧从头来。
     func merge(live frames: [LiveTranscriptFrame]) {
         var changed = false
         for frame in frames {
+            if frame.rewoundTo != nil {
+                timeline = TranscriptTimeline()
+                machineOldestSeq = nil
+                hasOlder = false
+                changed = true
+                continue
+            }
             changed = insert(seq: frame.seq, payload: frame.payload) || changed
         }
         if changed { rebuild(countingNewRows: true) }
@@ -193,6 +212,8 @@ public final class TranscriptModel {
     @discardableResult
     private func insert(seq: Int64?, payload: Data) -> Bool {
         guard let decoded = decoder.decode(payload) else { return false }
+        // 新的一轮开始（不是向前补回来的旧帧）：那一次按清单的收场作废。
+        if case .turnStarted = decoded.event, !decoded.preview, seq.map({ $0 > (timeline.latestSeq ?? 0) }) ?? true { endedUnseen = false }
         if decoded.preview {
             return timeline.insert(seq: nil, event: decoded.event, preview: true)
         }
@@ -200,7 +221,9 @@ public final class TranscriptModel {
     }
 
     private func rebuild(countingNewRows: Bool) {
-        document = TranscriptReducer.reduce(timeline.entries, initiallyRunning: conversation.lifecycleState == SavedConversation.Lifecycle.running)
+        var entries = timeline.entries
+        if endedUnseen { entries.append(TimelineEntry(anchor: "reconciled", event: .turnDone(TurnDone()))) }
+        document = TranscriptReducer.reduce(entries, initiallyRunning: conversation.lifecycleState == SavedConversation.Lifecycle.running)
         let previous = countingNewRows ? Set(rows.map(\.id)) : []
         rows = TranscriptRows.build(document, disclosure: disclosure, cwd: conversation.cwd)
         if countingNewRows {

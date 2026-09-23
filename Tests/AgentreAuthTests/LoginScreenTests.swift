@@ -1,5 +1,4 @@
 import AgentreDomain
-import Darwin
 import AgentreTestSupport
 @testable import AgentreUI
 import SwiftUI
@@ -57,34 +56,11 @@ struct LoginScreenTests {
         let address = flow.serverAddress.url.absoluteString
         #expect(address == "https://app.agentrehub.com")
 
-        let frame = try #require(await renderedFrame(of: address, in: LoginView(flow: flow), size: size), "屏上找不到地址")
+        let frame = try #require(await HostedScreen(LoginView(flow: flow), size: size).frame(of: address), "屏上找不到地址")
         let font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
         let whole = (address as NSString).size(withAttributes: [.font: font])
         #expect(frame.width >= whole.width.rounded(.down), "地址排出来 \(frame.width)pt 宽，完整需要 \(whole.width)pt")
         #expect(frame.height < whole.height * 2, "默认字号下一行排下：\(frame)")
-    }
-
-    /// 屏上某段文字实际排出来的框（窗口坐标）：SwiftUI 截断的文字，无障碍标签仍是全文，框是截断后的宽度。
-    func renderedFrame(of text: String, in view: some View, size: CGSize) async -> CGRect? {
-        guard let handle = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW),
-              let symbol = dlsym(handle, "_AXSSetAutomationEnabled")
-        else { return nil }
-        unsafeBitCast(symbol, to: (@convention(c) (Int32) -> Void).self)(1)
-        let controller = UIHostingController(rootView: view)
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
-        window.rootViewController = controller
-        window.makeKeyAndVisible()
-        defer { window.isHidden = true }
-        for _ in 0..<5 {
-            controller.view.layoutIfNeeded()
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        func find(_ node: NSObject) -> NSObject? {
-            if node.isAccessibilityElement { return node.accessibilityLabel == text ? node : nil }
-            let children = node.accessibilityElements?.compactMap { $0 as? NSObject } ?? (node as? UIView)?.subviews ?? []
-            return children.lazy.compactMap(find).first
-        }
-        return find(controller.view).map { window.convert($0.accessibilityFrame, from: nil) }
     }
 
     @Test("三标签骨架：标签栏三个目的地的命中区补满且互不重叠")

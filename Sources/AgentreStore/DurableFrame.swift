@@ -10,6 +10,14 @@ extension Agentre_Wire_RpcNotification {
         }
     }
 
+    /// 一轮里的事件，用户发起的一轮与自主轮一样认（列表预览与转录同一口径）。
+    var runtimeEventOfAnyTurn: Agentre_Wire_RuntimeEventNotification? {
+        switch payload {
+        case .runtimeEvent(let v), .autonomousTurnEvent(let v): v
+        default: nil
+        }
+    }
+
     /// 这条通知所属的对话；不属于对话的（终端、端口转发）为 nil。
     var durableConversationID: String? {
         switch payload {

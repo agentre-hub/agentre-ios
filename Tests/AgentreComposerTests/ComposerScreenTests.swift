@@ -165,10 +165,10 @@ struct ComposerScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
-    @Test("面板里的思考档位：会话与后端都没设定时标注默认")
+    @Test("面板里的思考档位：会话行没设定时标注默认")
     func panelDefaultEffort() async throws {
         var settings = FakeSettingsSource()
-        settings.settings.backendReasoningEffort = ""
+        settings.settings.reasoningEffort = ""
         let model = composer(settings: settings)
         await model.load()
         let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, onDeleted: {})).labels()

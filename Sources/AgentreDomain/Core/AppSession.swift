@@ -24,9 +24,12 @@ public final class AppSession {
         phase = .signedIn
     }
 
-    /// 登出（含刷新被拒）：清掉令牌、回到登录屏。设备指纹不动。
+    /// 登出（含刷新被拒）：清掉令牌、回到登录屏。设备指纹不动。钥匙串一时清不掉再试一次：
+    /// 留下的令牌会让下一次冷启动又登录回去（而库已清空）。
     public func signOut() {
-        try? credentials.clearCredentials()
+        if (try? credentials.clearCredentials()) == nil {
+            try? credentials.clearCredentials()
+        }
         phase = .signedOut
     }
 }

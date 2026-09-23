@@ -65,13 +65,21 @@ final class FakeAgentreServer: @unchecked Sendable {
             verificationVisits.append(request.query["user_code"] ?? "")
             if request.query["user_code"] == Self.userCode { approved = true }
             return .respond(.init(status: 200, body: Data("<html><body><h1>Approved</h1></body></html>".utf8), contentType: "text/html"))
+        case ("GET", "/favicon.ico"):
+            // 浏览器打开验证页时顺手要的站点图标：浏览器那一半，不是 App 调的端点。
+            return .respond(Self.failure(404, code: 404))
         case ("GET", "/v1/relay/client"):
             guard let token = request.bearer, liveTokens.contains(token) else { return .respond(Self.failure(401, code: 401)) }
             return .upgrade(relay.client(for: phoneFingerprint))
         default:
             break
         }
-        // 其余都在设备令牌那一组：令牌不认得（没发过、已撤销）一律 401。
+        // 其余都在设备令牌那一组。先认端点：不认得的端点记下（不管带没带令牌——App 调了伪服务端不认得的
+        // 东西就是伪对端与真实对端不同形了），再认令牌：不认得（没发过、已撤销）一律 401。
+        guard Self.deviceTokenRoutes.contains("\(request.method) \(request.path)") else {
+            unhandled.append("\(request.method) \(request.path)")
+            return .respond(Self.failure(404, code: 404))
+        }
         guard let token = request.bearer, liveTokens.contains(token) else { return .respond(Self.failure(401, code: 401)) }
         switch (request.method, request.path) {
         case ("GET", "/v1/auth/me"):
@@ -94,6 +102,12 @@ final class FakeAgentreServer: @unchecked Sendable {
             return .respond(Self.failure(404, code: 404))
         }
     }
+
+    /// 带设备令牌的那一组端点（与上面的分派同一张表）。
+    private static let deviceTokenRoutes: Set<String> = [
+        "GET /v1/auth/me", "GET /v1/devices", "POST /v1/oauth/token/revoke", "GET /v1/workspace/agents",
+        "GET /v1/workspace/projects", "GET /v1/workspace/dispatch-target", "GET /v1/engine/snapshot",
+    ]
 
     private func authorize(_ request: LoopbackServer.Request) -> LoopbackServer.Response {
         let body = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any] ?? [:]

@@ -92,8 +92,8 @@ public actor LocalConversationStore: ConversationStore {
     /// 保存一条会话（或以机器最新的清单刷新它）。本机的游标与已读位不受清单影响。
     @discardableResult
     public func save(_ summary: Agentre_Wire_SessionSummary, via machineFingerprint: String) throws -> ConversationKey {
-        let owner = summary.peerFingerprint.isEmpty ? machineFingerprint : summary.peerFingerprint
-        let key = ConversationKey(machineFingerprint: owner, conversationID: summary.conversationID)
+        let key = ConversationKey(conversationID: summary.conversationID, peerFingerprint: summary.peerFingerprint, via: machineFingerprint)
+        let owner = key.machineFingerprint
         let row: ConversationRecord
         if let existing = try fetchConversation(key) {
             row = existing
@@ -112,7 +112,8 @@ public actor LocalConversationStore: ConversationStore {
         row.backendType = summary.backendType
         row.lifecycleState = summary.lifecycleState
         row.waitingForInput = summary.waitingForInput
-        row.lastMessageAt = summary.lastMessageAt
+        // 与跟随帧同一条规矩：只前移不倒退。边界帧取的是本机钟，钟慢的机器报来的较早时刻不能把它拉回去。
+        row.lastMessageAt = max(row.lastMessageAt, summary.lastMessageAt)
         row.providerKey = summary.providerKey
         row.modelKey = summary.modelKey
         row.reasoningEffort = summary.reasoningEffort
@@ -317,7 +318,7 @@ public actor LocalConversationStore: ConversationStore {
         for frame in try modelContext.fetch(descriptor) {
             if lastText != nil, !wantsPending || pending != nil { break }
             guard let notification = try? Agentre_Wire_RpcNotification(serializedBytes: frame.payload),
-                  case .runtimeEvent(let event) = notification.payload
+                  let event = notification.runtimeEventOfAnyTurn
             else { continue }
             switch event.event {
             case .textDelta(let delta) where lastText == nil && !delta.text.isEmpty:

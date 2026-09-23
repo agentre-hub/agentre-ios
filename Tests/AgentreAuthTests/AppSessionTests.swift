@@ -30,4 +30,16 @@ struct AppSessionTests {
         #expect(store.stored == nil)
         #expect(try store.deviceFingerprint() == fingerprint)
     }
+
+    @Test("清令牌一时出错：再清一次，不留一个下次冷启动又登录回去的令牌")
+    func signOutRetriesClearing() {
+        let store = InMemoryCredentialStore(credentials: Self.credentials)
+        store.failingClears = 1
+        let session = AppSession(credentials: store)
+
+        session.signOut()
+
+        #expect(store.stored == nil)
+        #expect(AppSession(credentials: store).phase == .signedOut)
+    }
 }

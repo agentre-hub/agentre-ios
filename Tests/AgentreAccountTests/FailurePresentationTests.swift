@@ -53,6 +53,16 @@ struct FailurePresentationTests {
         (DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Unexpected character 'x' at 12")), .unknown),
     ]
 
+    /// 端口实现自己已解析成事实的失败（例如中继报的要更新 App）。
+    struct AlreadyFactual: FactualFailure {
+        var fact: FailureFact { .updateRequired }
+    }
+
+    @Test("端口实现已解析成事实的失败照用那个事实，不说成认不出")
+    func factualFailureKeepsItsFact() {
+        #expect(FailureFact(presenting: AlreadyFactual()) == .updateRequired)
+    }
+
     @Test("每一种错误都被解析成一个事实；取消不是失败，不呈现")
     func errorsParseIntoFacts() {
         for (error, expected) in Self.battery {

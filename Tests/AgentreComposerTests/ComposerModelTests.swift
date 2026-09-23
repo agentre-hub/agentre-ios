@@ -352,6 +352,37 @@ struct ComposerModelTests {
         #expect(model.candidates.map(\.title) == ["/compact"])
     }
 
+    @Test("Skill 目录一时要不到：下一次键入触发再问，要到了就列出来")
+    func slashSkillsRetry() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("skills")
+        await relay.set(skills: [ComposerSkillSource(name: "deploy", description: "上线")])
+        let model = composer(relay: relay)
+        model.edit(text: "看 /", cursor: 3)
+        try await eventually("asked") { await relay.calls.count == 1 }
+        await relay.succeed("skills")
+        model.edit(text: "看 /d", cursor: 4)
+        try await eventually("asked again") { model.candidates.map(\.title).contains("/deploy") }
+    }
+
+    @Test("没发出去的草稿还回输入框时，就地候选按还回后的正文重算：选中不会把还回的那段吞掉")
+    func restoreRecomputesTrigger() async throws {
+        let relay = FakeComposerRelay()
+        await relay.holdNextRun()
+        await relay.fail("run")
+        let model = composer(relay: relay)
+        model.text = "hello"
+        let sending = Task { await model.send() }
+        await relay.waitForHeldRun()
+        model.edit(text: "/co", cursor: 3)
+        await relay.releaseRun()
+        await sending.value
+        #expect(model.text == "hello\n\n/co")
+        let candidate = try #require(model.candidates.first { $0.title == "/compact" })
+        model.select(candidate)
+        #expect(model.text == "hello\n\n/compact ")
+    }
+
     @Test("光标离开触发位：候选收起")
     func slashDismiss() async throws {
         let model = composer()
@@ -377,6 +408,24 @@ struct ComposerModelTests {
         #expect(await relay.calls == [.run(#"请 <agent id="7">reviewer</agent> 看下"#, compact: false)])
     }
 
+    @Test("插话里的提及：这一轮中断、挪进「未发送」后恢复再发，正文仍以提及 XML 发出")
+    func restoredDropKeepsMentions() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.edit(text: "请 @re", cursor: 5)
+        try await eventually("mentions") { !model.candidates.isEmpty }
+        model.select(model.candidates[0])
+        model.text += "看下"
+        await model.send()
+        await model.turnEnded(normally: false)
+        #expect(model.queue.dropped.count == 1)
+        model.restoreDropped()
+        #expect(model.text == "请 @reviewer 看下")
+        await model.send()
+        #expect(await relay.calls.last == .run(#"请 <agent id="7">reviewer</agent> 看下"#, compact: false))
+    }
+
     // MARK: 面板三项
 
     @Test("载入这条会话的三项当前取值；切换经中继写入，成功后面板标注新值")
@@ -393,7 +442,7 @@ struct ComposerModelTests {
         #expect(await relay.calls == [.permission("plan"), .model("anthropic", "claude-opus"), .effort("max")])
         #expect(model.settings?.permissionMode == "plan")
         #expect(model.settings?.model?.modelKey == "claude-opus")
-        #expect(model.settings?.effectiveReasoningEffort == "max")
+        #expect(model.settings?.reasoningEffort == "max")
     }
 
     @Test("两轮之间切档：只改本机当前档、不去问执行端也不报失败；下一轮与轮末接续的那一轮都带上它")
@@ -481,17 +530,8 @@ struct ComposerModelTests {
         await model.setPermissionMode("acceptEdits")
         #expect(await relay.calls.isEmpty)
         await model.setReasoningEffort("low")
-        #expect(model.settings?.reasoningEffort == "")
-        #expect(model.settings?.effectiveReasoningEffort == "high")
+        #expect(model.settings?.reasoningEffort == "high")
         #expect(model.failure == .change)
-    }
-
-    @Test("思考档位：会话行为空时有效档位取后端配置，都空时是默认")
-    func effectiveEffort() {
-        var settings = sampleSettings
-        #expect(settings.effectiveReasoningEffort == "high")
-        settings.backendReasoningEffort = ""
-        #expect(settings.effectiveReasoningEffort == "")
     }
 
     // MARK: 删除

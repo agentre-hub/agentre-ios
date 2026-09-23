@@ -145,7 +145,7 @@ final class MainlineUITests: XCTestCase {
             screen.text(copy("Composer", "composer.changeFailed")).waitForExistence(timeout: 2), "switching between turns reported a failure"
         )
         screen.shot("14 permission mode")
-        screen.dismissSheet(grabbing: plan)
+        screen.dismissSheet()
         screen.expectGone(plan, "permission panel")
 
         screen.type(Self.secondMessage, into: screen.input(copy("Composer", "composer.message")), "composer field")

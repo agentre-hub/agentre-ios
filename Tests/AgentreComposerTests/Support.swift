@@ -16,8 +16,7 @@ let sampleSettings = ComposerSettings(
     permissionModes: ["default", "acceptEdits", "plan"],
     model: ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"),
     models: [ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"), ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus")],
-    reasoningEffort: "",
-    backendReasoningEffort: "high"
+    reasoningEffort: "high"
 )
 
 // MARK: 伪端口
@@ -56,6 +55,7 @@ actor FakeComposerRelay: ComposerRelay {
     func set(drained: [ComposerConsumedSteer]?) { self.drained = drained }
     func set(skills: [ComposerSkillSource]) { self.skills = skills }
     func fail(_ method: String) { failing.insert(method) }
+    func succeed(_ method: String) { failing.remove(method) }
     func set(steerHandle: (@Sendable (String) -> ComposerSteerHandle)?) { self.steerHandle = steerHandle }
     /// 执行端登记一轮（别的端开的也算）。
     func startTurn() { activeTurn = true }

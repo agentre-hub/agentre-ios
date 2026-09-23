@@ -34,9 +34,17 @@ enum AccessibilityTree {
                 found.append(node)
                 return
             }
-            let children = node.accessibilityElements?.compactMap { $0 as? NSObject }
+            // 容器可以只以 accessibilityElementCount / accessibilityElement(at:) 交出子元素（accessibilityElements
+            // 为 nil 或空）；两样都没有才往视图层级里找。
+            var children = node.accessibilityElements?.compactMap { $0 as? NSObject }
+            if children?.isEmpty ?? true {
+                let count = node.accessibilityElementCount()
+                if count > 0, count != NSNotFound {
+                    children = (0..<count).compactMap { node.accessibilityElement(at: $0) as? NSObject }
+                }
+            }
             for child in children ?? [] { visit(child) }
-            if children == nil, let view = node as? UIView {
+            if children?.isEmpty ?? true, let view = node as? UIView {
                 for subview in view.subviews { visit(subview) }
             }
         }

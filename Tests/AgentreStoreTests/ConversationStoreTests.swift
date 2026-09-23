@@ -214,6 +214,34 @@ struct ConversationStoreTests {
         #expect(refreshed.isUnread)
     }
 
+    @Test("最后活动只前移不倒退：本机钟记下的收场之后，钟慢的机器报来的较早时刻不把它拉回去，读过的不会看成没读、行不往下掉")
+    func lastMessageAtNeverRewinds() async throws {
+        let directory = try TemporaryDirectory()
+        let store = try openStore(directory)
+        try await store.save(summary("conv-1", lastMessageAt: 1_000), via: machine)
+        var done = Agentre_Wire_RpcNotification()
+        done.runResultDone.conversationID = "conv-1"
+        try await store.record([IncomingFrame(conversationID: "conv-1", seq: nil, createtime: nil, payload: done)], via: machine)
+        #expect(try await store.conversation(key("conv-1"))?.lastMessageAt == fixedNow)
+        try await store.markRead(key("conv-1"))
+
+        try await store.save(summary("conv-1", lastMessageAt: fixedNow - 60_000), via: machine)
+        let refreshed = try #require(try await store.conversation(key("conv-1")))
+        #expect(refreshed.lastMessageAt == fixedNow)
+        #expect(!refreshed.isUnread)
+    }
+
+    @Test("列表预览认自主轮的帧：最后一轮是自主轮时，预览是它的正文")
+    func autonomousTurnPreview() async throws {
+        let directory = try TemporaryDirectory()
+        let store = try openStore(directory)
+        try await store.save(summary("conv-1"), via: machine)
+        var autonomous = Agentre_Wire_RpcNotification()
+        autonomous.autonomousTurnEvent = event("conv-1", seq: 2, text: "autonomous reply").runtimeEvent
+        try await store.record([live("conv-1", seq: 1, text: "earlier"), IncomingFrame(conversationID: "conv-1", seq: 2, createtime: nil, payload: autonomous)], via: machine)
+        #expect(try await store.conversations().first?.lastText == "autonomous reply")
+    }
+
     @Test("删除一条会话当场没了，此后到达的帧也不再写回；其余会话不受影响")
     func deleteLeavesNoRows() async throws {
         let directory = try TemporaryDirectory()

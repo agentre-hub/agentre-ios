@@ -33,13 +33,13 @@ public struct ApprovalInput: Sendable, Equatable {
         self.command = command
         text = command ?? Self.indented(.object(input), depth: 0)
         let line = (command ?? JSONValue.object(input).compactText)
-            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+            .split(maxSplits: 1, omittingEmptySubsequences: false, whereSeparator: \.isNewline).first.map(String.init) ?? ""
         summary = line.count > Self.summaryLimit ? String(line.prefix(Self.summaryLimit - 3)) + "..." : line
     }
 
     /// 过长：卡片先给摘要，展开才见全文。
     public var isLong: Bool {
-        text.count > Self.maximumCharacters || text.split(separator: "\n", omittingEmptySubsequences: false).count > Self.maximumLines
+        text.count > Self.maximumCharacters || text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).count > Self.maximumLines
     }
 
     /// 键按字典序、两格缩进的 JSON（与 JSON.stringify(value, null, 2) 同形）。

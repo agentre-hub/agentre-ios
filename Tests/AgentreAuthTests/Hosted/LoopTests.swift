@@ -76,7 +76,8 @@ struct LoopTests {
 
         // 6. 发一句话：一轮在跑，走插话；机器把它作为用户消息回显进转录。
         let key = ConversationKey(machineFingerprint: "origin-desktop", conversationID: "conv-42")
-        let conversation = try await eventually("conversation screen") { environment!.services?.openConversation(key) }
+        // 对话屏已经建好的那一份（同一条会话只有一份，这里拿到的就是屏上那一份）。
+        let conversation = try await eventually("conversation screen") { await environment!.services?.conversationModel(for: key) }
         conversation.composer.edit(text: "ship it", cursor: 7)
         try await screen!.tap(copy("composer.send", table: "Composer"))
         let sent = try await eventually("message sent") {

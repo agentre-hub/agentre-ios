@@ -36,6 +36,8 @@ struct ApprovalInputTests {
         let long = String(repeating: "x", count: 150)
         let multiLine = ApprovalInput(toolName: "Bash", input: ["command": .string("cat <<EOF\nline\nEOF")], cwd: "")
         #expect(multiLine.summary == "cat <<EOF")
+        let crlf = ApprovalInput(toolName: "Bash", input: ["command": .string("cat <<EOF\r\nline\r\nEOF")], cwd: "")
+        #expect(crlf.summary == "cat <<EOF")
         let wide = ApprovalInput(toolName: "Bash", input: ["command": .string(long)], cwd: "")
         #expect(wide.summary == String(repeating: "x", count: 97) + "...")
         #expect(wide.text == long)
@@ -53,6 +55,7 @@ struct ApprovalInputTests {
     @Test("过长的判据：超过 6 行或 320 字符", arguments: [
         (String(repeating: "a\n", count: 6) + "a", true),
         (String(repeating: "a\n", count: 5) + "a", false),
+        (String(repeating: "a\r\n", count: 6) + "a", true),
         (String(repeating: "y", count: 321), true),
         (String(repeating: "y", count: 320), false),
     ])

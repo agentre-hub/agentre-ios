@@ -45,13 +45,6 @@ final class Screen {
         }
     }
 
-    /// 等到屏上不再有某段文字。
-    func waitUntilGone(_ text: String, seconds: Double = 10) async throws {
-        _ = try await eventually("“\(text)” gone", seconds: seconds) {
-            await labels().contains { $0.contains(text) } ? nil : true
-        }
-    }
-
     /// 点标签等于 `label` 的那个元素（无障碍激活，与 VoiceOver 双击同一条路）。
     func tap(_ label: String, exact: Bool = true, seconds: Double = 10) async throws {
         let element = try await eventually("tappable “\(label)”", seconds: seconds) { () -> NSObject? in

@@ -108,6 +108,56 @@ private func runDone(_ conversationID: String) -> Agentre_Wire_RpcNotification {
         #expect(live.items.map(\.seq) == [1, 2, 3])
     }
 
+    @Test("补齐期间到达、比补完的游标跳了号的实时帧：补完不直接交出，再按游标补拉缺口")
+    func bufferedGapIsPulled() async throws {
+        let harness = Harness()
+        let (channel, socket, id) = try await harness.readyChannel(.machine(fingerprint: "fp-1"))
+        let live = Collected(await channel.subscribe(conversationID: "conv-1"))
+
+        async let attached = channel.attach(conversationID: "conv-1", after: 5)
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), with: attachResponse(latestSeq: 5))
+        let pull = try await socket.nextRequest(on: id, method: .sessionPull)
+        // 6 在中继上丢了，7 在补拉应答之前到。
+        socket.notify(id, relayTurnStarted("conv-1", seq: 7))
+        try await Task.sleep(for: .milliseconds(50))
+        socket.respond(id, to: pull, with: page("conv-1", []))
+        _ = try await attached
+
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), with: attachResponse(latestSeq: 7))
+        let repull = try await socket.nextRequest(on: id, method: .sessionPull)
+        #expect(try repull.body(Agentre_Wire_SessionPullRequest.self).cursor == 5)
+        socket.respond(id, to: repull, with: page("conv-1", [6, 7]))
+        _ = try await eventually("seq 7") { live.items.contains { $0.seq == 7 } ? true : nil }
+        #expect(live.items.map(\.seq) == [6, 7])
+    }
+
+    @Test("重连后通道自己发起的补齐失败了：退避后再补，不无声地停在缺口上")
+    func failedReconnectCatchUpIsRetried() async throws {
+        let harness = Harness()
+        let (channel, socket, id) = try await harness.readyChannel(.machine(fingerprint: "fp-1"))
+        let live = Collected(await channel.subscribe(conversationID: "conv-1"))
+        async let attached = channel.attach(conversationID: "conv-1")
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionAttach), with: attachResponse(latestSeq: 1))
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .sessionPull), with: page("conv-1", [1]))
+        _ = try await attached
+
+        socket.drop()
+        let delay = try await eventually("redial backoff") { harness.clock.pendingSleeps.first }
+        harness.clock.advance(by: delay)
+        let second = try await harness.dialer.socket(1)
+        let newID = try await second.channelID(for: .machine(fingerprint: "fp-1"))
+        try await second.acceptHandshake(on: newID)
+        second.fail(newID, to: try await second.nextRequest(on: newID, method: .sessionAttach), code: -32603, message: "busy")
+
+        let retry = try await eventually("catch-up retry backoff") { harness.clock.pendingSleeps.first { $0 != RelayChannel.defaultDeadline } }
+        harness.clock.advance(by: retry)
+        second.respond(newID, to: try await second.nextRequest(on: newID, method: .sessionAttach), with: attachResponse(latestSeq: 2))
+        let pull = try await second.nextRequest(on: newID, method: .sessionPull)
+        #expect(try pull.body(Agentre_Wire_SessionPullRequest.self).cursor == 1)
+        second.respond(newID, to: pull, with: page("conv-1", [2]))
+        _ = try await eventually("seq 2") { live.items.contains { $0.seq == 2 } ? true : nil }
+    }
+
     @Test("没人再订阅的对话（跟随停了、屏关了）：重连后不再为它 attach 与补拉")
     func unsubscribedConversationIsNotReattached() async throws {
         let harness = Harness()

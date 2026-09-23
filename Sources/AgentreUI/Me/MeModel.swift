@@ -28,13 +28,18 @@ public final class MeModel {
         self.preferences = preferences.load()
     }
 
+    /// 换账号时作废在途的读取：登出前发出的请求晚到，不把上一个账号写回来。
+    @ObservationIgnored private var accountGeneration = 0
+
     /// 读账号信息与设备列表。读不到的那一格保留已有的值，失败呈现为事实。
     public func load() async {
+        let generation = accountGeneration
         let server = servers.load()
         serverAddress = server
         async let profileResult = capture { try await self.account.profile(server: server) }
         async let devicesResult = capture { try await self.account.devices(server: server) }
         let (profileOutcome, devicesOutcome) = await (profileResult, devicesResult)
+        guard generation == accountGeneration else { return }
 
         var facts: [FailureFact] = []
         switch profileOutcome {
@@ -87,6 +92,14 @@ public final class MeModel {
 
     public func signOut() async {
         await signOutAction.run()
+    }
+
+    /// 登出了：上一个账号的资料、设备与失败都不再属于此后登录的那一个。显示偏好与服务器地址是这台设备的，留着。
+    public func forgetAccount() {
+        accountGeneration += 1
+        profile = nil
+        devices = []
+        failure = nil
     }
 }
 

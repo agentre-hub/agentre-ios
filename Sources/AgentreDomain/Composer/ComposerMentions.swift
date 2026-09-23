@@ -120,9 +120,33 @@ public enum ComposerMentions {
 }
 
 extension ComposerMentions {
-    /// 正文里的提及 XML 还原成可读的 `@名字`，给只呈现纯文本的地方（排队条、还回输入框的草稿）。
+    /// 正文里的提及 XML 还原成可读的 `@名字`，给只呈现纯文本的地方（排队条与「未发送」）。
     public static func displayText(_ text: String) -> String {
-        text.replacing(/<(agent|device)\b[^>]*>(.*?)<\/\1>/) { match in "@\(unescape(String(match.output.2)))" }
+        draft(fromBody: text).text
+    }
+
+    /// `serialize` 的逆：发出去的正文还回输入框时，提及 XML 还原成 `@名字`，并交回它们各自的提及
+    /// （再发送时照样换回 XML，而不是丢成一段纯文本）。
+    public static func draft(fromBody body: String) -> (text: String, mentions: [MentionRef]) {
+        var mentions: [MentionRef] = []
+        let text = body.replacing(/<(agent|device)\b([^>]*)>(.*?)<\/\1>/) { match in
+            let name = unescape(String(match.output.3))
+            let attributes = String(match.output.2)
+            if match.output.1 == "agent", let id = attribute("id", in: attributes).flatMap({ Int64($0) }) {
+                mentions.append(.agent(id: id, name: name))
+            } else if match.output.1 == "device", let fingerprint = attribute("fp", in: attributes) {
+                mentions.append(.device(fingerprint: unescape(fingerprint), name: name))
+            }
+            return "@\(name)"
+        }
+        return (text, mentions)
+    }
+
+    private static func attribute(_ name: String, in attributes: String) -> String? {
+        guard let range = attributes.range(of: "\(name)=\""),
+              let end = attributes[range.upperBound...].firstIndex(of: "\"")
+        else { return nil }
+        return String(attributes[range.upperBound..<end])
     }
 
     private static func unescape(_ value: String) -> String {

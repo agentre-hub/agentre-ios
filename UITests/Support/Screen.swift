@@ -125,10 +125,11 @@ struct Screen {
         field.typeText(text)
     }
 
-    /// 收起底部面板：从面板里的一个元素往下拖。
-    func dismissSheet(grabbing element: XCUIElement) {
-        let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 700)))
+    /// 收起停在半屏档的底部面板：点面板上方变暗的那片（系统的点外收起）。
+    /// 不从面板里的行往下拖：拖动起点落在可点的行上要与行的按下手势抢，拖到的终点又出了屏幕，
+    /// 收不收得起来取决于触摸事件的时序，机器一忙就会偶发收不起来。
+    func dismissSheet() {
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
     }
 
     /// 屏幕左上角、状态栏下方那一小块底色的亮度（0 黑 … 1 白）：外观是否真的切到了深 / 浅。

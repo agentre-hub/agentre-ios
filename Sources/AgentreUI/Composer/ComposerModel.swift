@@ -194,7 +194,7 @@ public final class ComposerModel {
         do {
             try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: permissionMode)
         } catch {
-            restore((text: ComposerMentions.displayText(next), mentions: []))
+            restore(ComposerMentions.draft(fromBody: next))
         }
     }
 
@@ -229,11 +229,12 @@ public final class ComposerModel {
 
     /// 轮末没发出去的那几条回到输入框（接在已有草稿之后）。
     public func restoreDropped() {
-        let restored = queue.dropped.map { ComposerMentions.displayText($0.text) }.joined(separator: "\n\n")
+        let restored = ComposerMentions.draft(fromBody: queue.dropped.map(\.text).joined(separator: "\n\n"))
         queue.clearDropped()
-        guard !restored.isEmpty else { return }
-        text = text.isEmpty ? restored : "\(text)\n\n\(restored)"
-        cursor = text.utf16.count
+        guard !restored.text.isEmpty else { return }
+        pickedMentions += restored.mentions
+        let merged = text.isEmpty ? restored.text : "\(text)\n\n\(restored.text)"
+        edit(text: merged, cursor: merged.utf16.count)
     }
 
     public func discardDropped() {
@@ -249,11 +250,12 @@ public final class ComposerModel {
     }
 
     /// 没发出去的草稿还回输入框；用户在此期间又打了字时接在它前面，不覆盖。
+    /// 正文变了，就地候选按新的正文与光标重算（选中时按它替换，不能照着改写之前的位置）。
     private func restore(_ draft: (text: String, mentions: [MentionRef])) {
         failure = .send
-        text = text.isEmpty ? draft.text : "\(draft.text)\n\n\(text)"
-        cursor = text.utf16.count
         pickedMentions = draft.mentions + pickedMentions
+        let merged = text.isEmpty ? draft.text : "\(draft.text)\n\n\(text)"
+        edit(text: merged, cursor: merged.utf16.count)
     }
 
     // MARK: 就地触发
@@ -322,7 +324,11 @@ public final class ComposerModel {
             guard let skills = try? await relay.skillCommands(
                 key, agentSyncID: conversation.agentSyncID,
                 backendType: conversation.backendType, cwd: conversation.cwd
-            ) else { return }
+            ) else {
+                // 一时要不到（离线、机器没答）：下一次键入触发再问。
+                skillsRequested = false
+                return
+            }
             self.skills = skills
             refreshCandidates()
         }
@@ -332,7 +338,10 @@ public final class ComposerModel {
         guard !mentionsRequested else { return }
         mentionsRequested = true
         Task {
-            guard let sources = try? await mentionSource.mentionSources() else { return }
+            guard let sources = try? await mentionSource.mentionSources() else {
+                mentionsRequested = false
+                return
+            }
             mentionSources = sources
             refreshCandidates()
         }

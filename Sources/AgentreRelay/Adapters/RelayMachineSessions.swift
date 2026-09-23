@@ -35,8 +35,7 @@ public actor RelayMachineSessions: MachineSessionSource, MachineSessionTransfer 
         request.conversationIds = [key.conversationID]
         let response: Agentre_Wire_SessionListResponse = try await connection.call(machine: machineFingerprint, .sessionList, request)
         return response.sessions.first { summary in
-            let owner = summary.peerFingerprint.isEmpty ? machineFingerprint : summary.peerFingerprint
-            return summary.conversationID == key.conversationID && owner == key.machineFingerprint
+            ConversationKey(conversationID: summary.conversationID, peerFingerprint: summary.peerFingerprint, via: machineFingerprint) == key
         }.map(MachineSession.init)
     }
 

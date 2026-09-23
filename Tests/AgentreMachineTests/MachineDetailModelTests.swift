@@ -131,4 +131,16 @@ struct MachineDetailModelTests {
         #expect(!detail.unreachable)
         #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1"])
     }
+
+    @Test("重新载入被取消（点进一行、屏上的任务随之取消）：不是没连上，已列出的行照旧")
+    func cancelledReloadIsNotUnreachable() async throws {
+        let source = FakeSessionSource(sessions(3))
+        let detail = model(source)
+        await detail.load()
+        #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1"])
+        await source.setCancelling(true)
+        await detail.load()
+        #expect(!detail.unreachable)
+        #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1"])
+    }
 }

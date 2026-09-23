@@ -42,6 +42,8 @@ public enum FailureFact: Sendable, Equatable, Hashable {
         case let error as URLError:
             guard let fact = Self.fact(for: error) else { return nil }
             self = fact
+        case let error as any FactualFailure:
+            self = error.fact
         default:
             self = .unknown
         }

@@ -19,24 +19,21 @@ public struct ComposerSettings: Sendable, Equatable {
     public var permissionModes: [String]
     public var model: ComposerModelChoice?
     public var models: [ComposerModelChoice]
-    /// 会话行上的思考档位；空 = 跟随后端配置。
+    /// 会话行上的思考档位；空 = 跟随后端配置（界面标注「默认」：手机拿不到后端配的是哪一档）。
     public var reasoningEffort: String
-    /// 后端配置的档位，会话行为空时由它兜底；空 = 后端也没配。
-    public var backendReasoningEffort: String
 
     /// 五个档位，从弱到强，与宿主 reasoning-effort-picker 同一张表。
     public static let reasoningEffortLevels = ["low", "medium", "high", "xhigh", "max"]
 
     public init(
         permissionMode: String = "", permissionModes: [String] = [], model: ComposerModelChoice? = nil, models: [ComposerModelChoice] = [],
-        reasoningEffort: String = "", backendReasoningEffort: String = ""
+        reasoningEffort: String = ""
     ) {
         self.permissionMode = permissionMode
         self.permissionModes = permissionModes
         self.model = model
         self.models = models
         self.reasoningEffort = reasoningEffort
-        self.backendReasoningEffort = backendReasoningEffort
     }
 
     /// 一条会话的面板取值：当前模型与思考档位取自会话行（机器的清单原样），权限档位与两份可选范围
@@ -56,7 +53,4 @@ public struct ComposerSettings: Sendable, Equatable {
         guard let reported, !reported.isEmpty, allowed.contains(reported) else { return defaultMode }
         return reported
     }
-
-    /// 有效档位：会话行上的值非空时是它，为空时是后端配置的档位；都空时是空（界面标注「默认」）。
-    public var effectiveReasoningEffort: String { reasoningEffort.isEmpty ? backendReasoningEffort : reasoningEffort }
 }

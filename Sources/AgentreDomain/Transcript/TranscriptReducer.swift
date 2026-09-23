@@ -164,13 +164,23 @@ public enum TranscriptReducer {
             }
         }
 
-        /// 先按任务 id 找（恢复重开的 Subagent 沿用同一个任务），再按派生它的调用找。
+        /// 先按任务 id 找（恢复重开的 Subagent 沿用同一个任务），再按派生它的调用找。与宿主 frames.ts 同：
+        /// 前台 Bash（local_bash 且没有 run_in_background=true）在开始时不挂状态；进度与结束只更新已经挂着
+        /// 状态的调用，不反过来给它补挂。
         mutating func applySubagent(_ update: SubagentUpdate) {
             let info = update.info
             func claim(_ block: inout TranscriptBlock, byTask: Bool) -> Bool {
                 guard case .toolUse(var use) = block else { return false }
                 let matches = byTask ? (!info.taskID.isEmpty && use.subagent?.taskID == info.taskID) : use.id == update.toolCallID
                 guard matches else { return false }
+                if !byTask {
+                    switch update.phase {
+                    case .started:
+                        if info.kind == "local_bash", use.input?["run_in_background"] != .bool(true) { return true }
+                    case .progress, .done:
+                        if use.subagent == nil { return true }
+                    }
+                }
                 var state = use.subagent ?? SubagentState()
                 if !info.taskID.isEmpty { state.taskID = info.taskID }
                 if !info.kind.isEmpty { state.kind = info.kind }

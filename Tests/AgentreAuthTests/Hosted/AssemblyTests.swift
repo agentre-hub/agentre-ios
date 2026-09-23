@@ -49,7 +49,7 @@ struct AssemblyTests {
 
     @Test("中继的失败在装配处按 RelayFailure.fact 重述，不落成「认不出」")
     func relayFailuresAreRestated() {
-        #expect(FailureFact(presenting: RelayFailure.machineUnreachable) == .unknown)
+        #expect(FailureFact(presenting: RelayFailure.machineUnreachable) == .noMachineAvailable(.offline))
         #expect(AppFailure.fact(for: RelayFailure.machineUnreachable) == .noMachineAvailable(.offline))
         #expect(AppFailure.fact(for: RelayCallError.channelClosed) == .noMachineAvailable(.offline))
         #expect(AppFailure.fact(for: RelayCallError.updateRequired) == .updateRequired)
@@ -432,4 +432,78 @@ struct AssemblyTests {
         #expect(try await environment.store.conversations().isEmpty)
         await environment.tearDown()
     }
+
+    @Test("登出（这里是刷新被拒）先拆掉登录态那一套再清库：没有视图来拆也一样；「我」页不再留着上一个账号的资料与设备")
+    func signOutStopsServicesAndForgetsTheAccount() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn(accessToken: "expired")
+        let environment = try harness.environment()
+        _ = environment.startServices()
+        await environment.me.load()
+        #expect(environment.me.profile != nil)
+
+        harness.server.rejectTokens()
+        _ = try? await environment.transport.send(HTTPRequest(method: "GET", url: URL(string: "\(Harness.serverURL)/v1/devices")!))
+
+        #expect(environment.session.phase == .signedOut)
+        #expect(environment.services == nil, "the signed-in services outlived the sign-out")
+        #expect(environment.me.profile == nil && environment.me.devices.isEmpty && environment.me.failure == nil)
+    }
+
+    @Test("作为测试宿主启动时不装配真实环境：不读真钥匙串里的令牌、不连默认的生产服务器、不开真实的本地库")
+    func testHostBuildsNoLiveEnvironment() {
+        #expect(AgentreApp.environment(for: ["XCTestConfigurationFilePath": "/tmp/run.xctestconfiguration"]) == nil)
+    }
+
+    /// 只交出预先排好的几帧的转录端口。
+    private struct ScriptedTranscript: TranscriptRelay {
+        let frames: [LiveTranscriptFrame]
+        func pull(_ key: ConversationKey, peerFingerprint: String, cursor: Int64, limit: Int) async throws -> TranscriptPage {
+            TranscriptPage(frames: [], cursor: cursor, hasMore: false, oldestSeq: 0)
+        }
+        func attach(_ key: ConversationKey, peerFingerprint: String, after: Int64) async throws -> AsyncStream<LiveTranscriptFrame> {
+            AsyncStream { continuation in
+                for frame in frames { continuation.yield(frame) }
+            }
+        }
+    }
+
+    @Test("回合事件递给输入区的那一步（轮末接续要几次往返）不压住实时帧：收场之后的帧照常到转录，回合事件仍按次序递")
+    func turnFeedDoesNotHoldBackFrames() async throws {
+        let text = LiveTranscriptFrame(seq: 7, createtime: nil, payload: try WireFrames.text("conv-1", "next turn"))
+        let inner = ScriptedTranscript(frames: [
+            LiveTranscriptFrame(seq: nil, createtime: nil, payload: WireNotification.turnDone("conv-1").data),
+            LiveTranscriptFrame(seq: nil, createtime: nil, payload: WireNotification.turnStarted("conv-1").data),
+            text,
+        ])
+        let gate = AsyncStream<Void>.makeStream()
+        let fed = Fed()
+        let relay = TurnFeedingTranscript(inner: inner) { signal in
+            await fed.append(signal)
+            if case .ended = signal { for await _ in gate.stream { break } }
+        }
+        let stream = try await relay.attach(ConversationKey(machineFingerprint: "m", conversationID: "conv-1"), peerFingerprint: "", after: 0)
+        let received = Received()
+        let reader = Task { for await frame in stream { await received.append(frame) } }
+        defer { reader.cancel() }
+        defer { gate.continuation.yield() }
+        _ = try await eventually("the frame after the turn end, while the feed is still busy", seconds: 3) {
+            await received.frames.contains(text) ? true : nil
+        }
+        #expect(await fed.signals == [.ended(normally: true)])
+        gate.continuation.yield()
+        _ = try await eventually("started fed after ended") { await fed.signals.count == 2 ? true : nil }
+        #expect(await fed.signals == [.ended(normally: true), .started])
+    }
+}
+
+private actor Received {
+    private(set) var frames: [LiveTranscriptFrame] = []
+    func append(_ frame: LiveTranscriptFrame) { frames.append(frame) }
+}
+
+private actor Fed {
+    private(set) var signals: [TurnSignal] = []
+    func append(_ signal: TurnSignal) { signals.append(signal) }
 }

@@ -29,8 +29,7 @@ extension LocalConversationStore: ConversationSaving {
     /// 库里只收手机新建的与用户主动保存的（规格决策 16），跟随不往库里收东西。交回是否刷新了。
     @discardableResult
     public func refresh(_ session: MachineSession, via machineFingerprint: String) throws -> Bool {
-        let owner = session.peerFingerprint.isEmpty ? machineFingerprint : session.peerFingerprint
-        guard try conversation(ConversationKey(machineFingerprint: owner, conversationID: session.conversationID)) != nil else {
+        guard try conversation(ConversationKey(conversationID: session.conversationID, peerFingerprint: session.peerFingerprint, via: machineFingerprint)) != nil else {
             return false
         }
         try save(session, via: machineFingerprint)
