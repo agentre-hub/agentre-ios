@@ -249,7 +249,7 @@ tasks:
     files: [agentre-ios/Vendor/agentre, agentre-ios/Package.resolved, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/Support/, agentre-ios/UITests/Support/]
     model: mid
     interfaces: "RelayProtocol.version（Sources/AgentreRelay/RelayProtocol.swift:6）；FakeAgentred.protocolVersion（UITests/Support/FakeAgentred.swift:18）"
-    status: todo
+    status: doing
     commit: null
     note: "dev agentred 日志：rejected handshake peerProtocolVersion=0.2.0 daemonProtocolVersion=0.3.0。0.2→0.3 仅端口转发（agentre a69be4de、b8ae820c）。agentre 本地 main 已有 0.4.0（ace3736a，toolApproval.answer），未上 GitHub main，不在本任务范围。 首派 stuck：f263fd1e 上没有 pkg/wire/swift（6c34e5bc 从未合进 main），钉它包解析即失败；改依赖任务 25，钉位改为任务 25 推到 GitHub 的提交。"
 
@@ -259,9 +259,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Me/MeView.swift, agentre-ios/Tests/AgentreAccountTests/]
     model: mid
     interfaces: "运行验证证据 e2e/scratch/2026-09-18-agentre-ios-scaffold/evidence-2/32-large-me.png"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 2f75e63
+    note: "RED：accessibility3、402pt 宽下设备名截断、平台逐字折行共 8 处断言失败；GREEN：Account 38、Design 18 过，大字号下纵向排布，命中区 9/9。"
 
   - id: 23
     goal: "在「我」里切换语言后，已在导航栈里的各屏（至少三个标签页的根屏大标题）立即换成新语言，同屏不中英混杂；先以测试复现切到 English 后机器页标题仍为「机器」；切回简体中文同样即时生效。"
@@ -279,9 +279,9 @@ tasks:
     files: [agentre/pkg/wire/, agentre/.dev-kit/worktrees/2026-09-23-wire-swift-0.3.0]
     model: strong
     interfaces: "任务 1 的交付见 agentre origin/2026-09-18-agentre-ios-scaffold 上的 6c34e5bc；0.3.0 相对 0.2.0 只改了 PortForward* 消息（git diff 6c34e5bc f263fd1e -- pkg/wire/proto）"
-    status: doing
-    commit: null
-    note: "2026-09-23 用户批准（「变基到 0.3.0 并推分支（推荐）」）。起因：任务 22 查明 6c34e5bc 只在旁支、从未合进 agentre main，main 上 0.3.0 无任何 Swift 产物。合进 agentre main 另行 PR，交付时列为遗留。"
+    status: done
+    commit: agentre d6055aaf（origin 分支 2026-09-23-wire-swift-0.3.0）
+    note: "2026-09-23 用户批准（「变基到 0.3.0 并推分支（推荐）」）。起因：任务 22 查明 6c34e5bc 只在旁支、从未合进 agentre main，main 上 0.3.0 无任何 Swift 产物。合进 agentre main 另行 PR，交付时列为遗留。 cherry-pick 6c34e5bc 无冲突为 1b0c5e9c，再按 0.3.0 重生成为 d6055aaf。RED：pnpm proto:check 在重生成前 exit 1（wire.pb.swift 仍是 0.2.0 形状）；GREEN：proto:check exit 0、go test -C pkg/wire ./... exit 0、Swift 往返经 proto.Equal 实跑通过、swift test 过；金向量重生成逐字节相同。注意：go test 本身抓不到陈旧的 wire.pb.swift，只有 proto:check 抓得到。"
 
 review:
   status: pending
