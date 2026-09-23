@@ -249,9 +249,9 @@ tasks:
     files: [agentre-ios/Vendor/agentre, agentre-ios/Package.resolved, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/Support/, agentre-ios/UITests/Support/]
     model: mid
     interfaces: "RelayProtocol.version（Sources/AgentreRelay/RelayProtocol.swift:6）；FakeAgentred.protocolVersion（UITests/Support/FakeAgentred.swift:18）"
-    status: doing
-    commit: null
-    note: "dev agentred 日志：rejected handshake peerProtocolVersion=0.2.0 daemonProtocolVersion=0.3.0。0.2→0.3 仅端口转发（agentre a69be4de、b8ae820c）。agentre 本地 main 已有 0.4.0（ace3736a，toolApproval.answer），未上 GitHub main，不在本任务范围。 首派 stuck：f263fd1e 上没有 pkg/wire/swift（6c34e5bc 从未合进 main），钉它包解析即失败；改依赖任务 25，钉位改为任务 25 推到 GitHub 的提交。"
+    status: done
+    commit: 8031e61
+    note: "dev agentred 日志：rejected handshake peerProtocolVersion=0.2.0 daemonProtocolVersion=0.3.0。0.2→0.3 仅端口转发（agentre a69be4de、b8ae820c）。agentre 本地 main 已有 0.4.0（ace3736a，toolApproval.answer），未上 GitHub main，不在本任务范围。 首派 stuck：f263fd1e 上没有 pkg/wire/swift（6c34e5bc 从未合进 main），钉它包解析即失败；改依赖任务 25，钉位改为任务 25 推到 GitHub 的提交。 完成记录：子模块钉到 d6055aa；RED ProtocolVersionGuardTests.versionMatchesSchema 在旧常量下失败；GREEN Relay 83、宿主 33；全量 601 + UI 5 过。首跑英文两组合失败：模拟器上 App 残留 displayLanguage=zh-Hans（手动运行验证留下），盖过了 -AppleLanguages；实现方只删了模拟器上那一个键后重跑通过。遗留：UI 流程不清空已存的 displayLanguage，残留状态会再次让它红（交代码审查轴）。"
 
   - id: 24
     goal: "系统字号放大到无障碍档后，「我」页已授权设备每一行的设备名、在线状态、平台与撤销出口都完整可读、不逐字折行、不截断到无法辨认（窄宽度下改为纵向排布）；先以界面测试在 accessibility-extra-large 下复现设备名被截断；其余字号下现状不变。"
@@ -269,7 +269,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Tests/AgentreDesignTests/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreMessagesTests/]
     model: strong
     interfaces: "displayPreferences 以 transformEnvironment(\\.locale) 施加语言（Sources/AgentreUI/Me/DisplayPreferences+View.swift）；证据 evidence-2/27-english、28-machines-en"
-    status: todo
+    status: doing
     commit: null
     note: null
 
