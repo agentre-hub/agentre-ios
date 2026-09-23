@@ -195,36 +195,43 @@ public struct MeView: View {
 }
 
 /// 一台已授权设备：在线点、名字（备注名优先，等宽）、在线态、平台与本机标注；本机给撤销，其它设备写明到网页控制台撤销。
+/// 无障碍字号下横排放不下：名字、状态与撤销出口改为自上而下，名字可折行而不截断，状态各占一行。
 struct DeviceRow: View {
     let device: AuthorizedDevice
     let onRevoke: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(.token(device.online ? .running : .textSecondary))
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: device.shownName)
-                    .font(.body.monospaced())
-                    .foregroundStyle(.token(.textPrimary))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                HStack(spacing: 6) {
-                    // 在线与否写出来：状态不只靠那枚点的颜色。
-                    Text(device.online ? "me.devices.online" : "me.devices.offline", tableName: "Me", bundle: .module)
-                        .font(.caption)
-                        .foregroundStyle(.token(device.online ? .running : .textSecondary))
-                    if !device.platform.isEmpty {
-                        Text(verbatim: device.platform)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.token(.textSecondary))
-                    }
-                    if device.isThisDevice {
-                        Text("me.devices.thisDevice", tableName: "Me", bundle: .module)
+        let stacked = dynamicTypeSize.isAccessibilitySize
+        let row = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
+        let facts = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))
+        row {
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(.token(device.online ? .running : .textSecondary))
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: device.shownName)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.token(.textPrimary))
+                        .lineLimit(stacked ? nil : 1)
+                        .truncationMode(.middle)
+                    facts {
+                        // 在线与否写出来：状态不只靠那枚点的颜色。
+                        Text(device.online ? "me.devices.online" : "me.devices.offline", tableName: "Me", bundle: .module)
                             .font(.caption)
-                            .foregroundStyle(.token(.accent))
+                            .foregroundStyle(.token(device.online ? .running : .textSecondary))
+                        if !device.platform.isEmpty {
+                            Text(verbatim: device.platform)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.token(.textSecondary))
+                        }
+                        if device.isThisDevice {
+                            Text("me.devices.thisDevice", tableName: "Me", bundle: .module)
+                                .font(.caption)
+                                .foregroundStyle(.token(.accent))
+                        }
                     }
                 }
             }
@@ -241,7 +248,7 @@ struct DeviceRow: View {
                 Text("me.devices.revokeInConsole", tableName: "Me", bundle: .module)
                     .font(.caption)
                     .foregroundStyle(.token(.textSecondary))
-                    .multilineTextAlignment(.trailing)
+                    .multilineTextAlignment(stacked ? .leading : .trailing)
             }
         }
     }
