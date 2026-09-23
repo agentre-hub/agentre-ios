@@ -269,9 +269,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Tests/AgentreDesignTests/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreMessagesTests/]
     model: strong
     interfaces: "displayPreferences 以 transformEnvironment(\\.locale) 施加语言（Sources/AgentreUI/Me/DisplayPreferences+View.swift）；证据 evidence-2/27-english、28-machines-en"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 8dd623a
+    note: "根因经实验证实：navigationTitle(Text(key, tableName:, bundle:)) 切语言前后值相等，SwiftUI 不向导航栏推新标题；改为按当前 locale 解析成字符串（localizedNavigationTitle），替换 5 处。RED 宿主 LanguageSwitchTests 读导航栏可见标题失败；GREEN 聚焦目标过，导航栈保持。主会话全量：单元 602 过，UI 两组在本机 load average 约 100 的时段超时失败（单组耗时 1666s、4898s，正常约 130s），负载回落后 UI 5 条重跑全过（exit 0）。未覆盖：确认弹窗标题等其它由 UIKit 绘制的本地化文字可能同样不刷新。"
 
   - id: 25
     goal: "agentre 仓内：把任务 1 的 Swift 侧产物（单提交 6c34e5bc：pkg/wire/swift 包与生成物、Swift 单一来源与新鲜度守卫、二进制金向量）落到协议 0.3.0 的 origin/main f263fd1e 之上，按 0.3.0 重新生成 wire.pb.swift 与金向量，`go test -C pkg/wire ./...` 全过（含 Swift 生成物新鲜度与单份守卫），pkg/wire/swift 下 Swift 金向量测试过；在 agentre 的独立 worktree 里做，不动用户 checkout 与 main；只推到 GitHub origin 的新分支 2026-09-23-wire-swift-0.3.0（不推 gitea、不推 main、不改写已有分支），推前 fetch 并核对这一推只带本任务的提交。"
