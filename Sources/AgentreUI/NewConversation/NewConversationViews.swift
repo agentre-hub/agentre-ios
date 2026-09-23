@@ -163,7 +163,7 @@ public struct NewConversationView: View {
             }
         }
         .newConversationList()
-        .navigationTitle(Text("newconv.title", tableName: table, bundle: .module))
+        .localizedNavigationTitle("newconv.title", table: table)
     }
 }
 
@@ -204,7 +204,7 @@ public struct NewConversationProjectList: View {
             }
         }
         .newConversationList()
-        .navigationTitle(Text("newconv.projects", tableName: table, bundle: .module))
+        .localizedNavigationTitle("newconv.projects", table: table)
     }
 }
 

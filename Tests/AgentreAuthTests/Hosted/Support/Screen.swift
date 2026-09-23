@@ -95,14 +95,14 @@ final class Screen {
         return nil
     }
 
-    private func settle() async {
+    fileprivate func settle() async {
         for _ in 0..<4 {
             window.layoutIfNeeded()
             try? await Task.sleep(for: .milliseconds(30))
         }
     }
 
-    private func elements(in root: NSObject) -> [NSObject] {
+    fileprivate func elements(in root: NSObject) -> [NSObject] {
         var found: [NSObject] = []
         func visit(_ node: NSObject) {
             if let view = node as? UIView, view.isHidden || view.alpha == 0 { return }
@@ -126,7 +126,7 @@ final class Screen {
         return found
     }
 
-    private func visibleLabels(in root: UIView) -> [String] {
+    fileprivate func visibleLabels(in root: UIView) -> [String] {
         guard !root.isHidden, root.alpha > 0 else { return [] }
         let own = (root as? UILabel)?.text.map { [$0] } ?? []
         return own + root.subviews.flatMap { visibleLabels(in: $0) }
@@ -145,4 +145,26 @@ final class Screen {
 /// 界面文案的当前语言译文：断言用户看到的那句话，而不是键。
 func copy(_ key: String, table: String) -> String {
     AgentreUIResources.bundle.localizedString(forKey: key, value: nil, table: table)
+}
+
+extension Screen {
+    /// 屏上此刻看得见的导航栏标题（大标题或行内标题），按用户看到的文字读出，不读环境。
+    func navigationTitles() async -> [String] {
+        await settle()
+        return navigationBars(in: window).flatMap { bar in
+            visibleLabels(in: bar) + elements(in: bar).compactMap(\.accessibilityLabel)
+        }
+    }
+
+    private func navigationBars(in view: UIView) -> [UINavigationBar] {
+        guard !view.isHidden, view.alpha > 0 else { return [] }
+        if let bar = view as? UINavigationBar { return [bar] }
+        return view.subviews.flatMap { navigationBars(in: $0) }
+    }
+}
+
+/// 界面文案在指定语言下的译文（与进程此刻的系统语言无关）。
+func copy(_ key: String, table: String, language: String) -> String {
+    let bundle = AgentreUIResources.bundle.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:))
+    return (bundle ?? AgentreUIResources.bundle).localizedString(forKey: key, value: "⟨missing \(language):\(key)⟩", table: table)
 }

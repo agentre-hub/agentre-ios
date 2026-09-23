@@ -36,7 +36,7 @@ public struct MachinesView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(.token(.bg))
-        .navigationTitle(Text("machines.title", tableName: "Machines", bundle: .module))
+        .localizedNavigationTitle("machines.title", table: "Machines")
         .task { await model.load() }
         .refreshable { await model.load() }
     }

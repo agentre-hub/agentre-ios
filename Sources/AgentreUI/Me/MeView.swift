@@ -61,7 +61,7 @@ public struct MeView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(.token(.bg))
-        .navigationTitle(Text("me.title", tableName: "Me", bundle: .module))
+        .localizedNavigationTitle("me.title", table: "Me")
         .confirmationDialog(Text("me.devices.revoke", tableName: "Me", bundle: .module), isPresented: isPresented($pendingRevoke), titleVisibility: .hidden, presenting: pendingRevoke) { device in
             Button(role: .destructive) {
                 Task { await model.revoke(device) }
