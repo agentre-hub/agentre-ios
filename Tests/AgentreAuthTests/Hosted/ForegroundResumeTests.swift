@@ -73,10 +73,10 @@ struct ForegroundResumeTests {
 
         let key = screen.conversation.key
         let pullsBefore = harness.relay.calls(WireMethod.sessionPull).count
-        harness.relay.closeChannels("machine:machine-a")
-        // 后台期间：通道被判死（跟随记下了事实），机器跑完了那一轮。
-        _ = try await eventually("channel closed") { services.failures.facts[key] }
-        harness.machine.append("conv-1", [WireNotification.userMessage("conv-1", seq: 0, "m3")])
+        // 后台期间：通道被判死，机器跑完了那一轮。
+        try await suspend(.channelClosed, harness, services, key) {
+            harness.machine.append("conv-1", [WireNotification.userMessage("conv-1", seq: 0, "m3")])
+        }
         await services.resume()
 
         _ = try await eventually("caught up") { userTexts(screen).last == "m3" ? true : nil }
@@ -98,13 +98,31 @@ struct ForegroundResumeTests {
         var testDescription: String { rawValue }
     }
 
-    private func suspend(_ suspension: Suspension, _ harness: Harness, _ services: SignedInServices, _ key: ConversationKey) async throws {
+    /// 进后台：先断开，紧接着让机器在 App 看不见的这段时间里发生的事（`whileAway`）落到伪机器上，
+    /// 再等 App 处理完这次断开。
+    ///
+    /// `whileAway` 与断开在同一段主执行器上的同步代码里完成：App 要重新接上（跟随报出事实、回前台）
+    /// 都得先回到主执行器，所以此后任何一次 attach / 补拉看到的都已是机器的这份新状态。若先等 App
+    /// 反应再改机器，App 可能已经自己接回了通道——那之后机器上多出的帧真机会实时推过来，伪机器不推，
+    /// 用例就在与 App 的恢复抢跑。
+    ///
+    /// 通道被关时等的条件只会由假变真：跟随报出了事实，或已经重新 attach（事实随之清掉）。
+    /// 单等事实会漏掉「报出与接回同在一毫秒内」的那一次。
+    private func suspend(
+        _ suspension: Suspension, _ harness: Harness, _ services: SignedInServices, _ key: ConversationKey,
+        whileAway: () -> Void = {}
+    ) async throws {
         switch suspension {
         case .connectionDropped:
             harness.relay.dropConnections()
+            whileAway()
         case .channelClosed:
+            let attaches = harness.relay.calls(WireMethod.sessionAttach).count
             harness.relay.closeChannels("machine:machine-a")
-            _ = try await eventually("channel closed") { services.failures.facts[key] }
+            whileAway()
+            _ = try await eventually("channel closed") {
+                services.failures.facts[key] != nil || harness.relay.calls(WireMethod.sessionAttach).count > attaches ? true : nil
+            }
         }
     }
 
@@ -125,10 +143,11 @@ struct ForegroundResumeTests {
         harness.machine.setLifecycle("conv-1", "running")
         _ = try await eventually("turn running") { screen.composer.canStop ? true : nil }
 
-        try await suspend(suspension, harness, services, screen.conversation.key)
-        harness.machine.append("conv-1", [WireNotification.textDelta("conv-1", seq: 0, "done")])
-        harness.machine.setLifecycle("conv-1", "idle")
-        harness.machine.finishTurn("conv-1")
+        try await suspend(suspension, harness, services, screen.conversation.key) {
+            harness.machine.append("conv-1", [WireNotification.textDelta("conv-1", seq: 0, "done")])
+            harness.machine.setLifecycle("conv-1", "idle")
+            harness.machine.finishTurn("conv-1")
+        }
         await services.resume()
 
         _ = try await eventually("stop button gone") { screen.composer.canStop ? nil : true }
@@ -157,9 +176,10 @@ struct ForegroundResumeTests {
         await screen.composer.send()
         #expect(screen.composer.queue.items.map(\.text) == ["also lint"])
 
-        try await suspend(suspension, harness, services, screen.conversation.key)
-        harness.machine.setLifecycle("conv-1", "idle")
-        harness.machine.finishTurn("conv-1")
+        try await suspend(suspension, harness, services, screen.conversation.key) {
+            harness.machine.setLifecycle("conv-1", "idle")
+            harness.machine.finishTurn("conv-1")
+        }
         await services.resume()
 
         _ = try await eventually("leftover steer continued") { runTexts(harness) == ["also lint"] ? true : nil }
@@ -189,8 +209,9 @@ struct ForegroundResumeTests {
         _ = try await eventually("turn running") { screen.composer.canStop ? true : nil }
         let attaches = harness.relay.calls(WireMethod.sessionAttach).count
 
-        try await suspend(suspension, harness, services, screen.conversation.key)
-        harness.machine.append("conv-1", [WireNotification.textDelta("conv-1", seq: 0, "still going")])
+        try await suspend(suspension, harness, services, screen.conversation.key) {
+            harness.machine.append("conv-1", [WireNotification.textDelta("conv-1", seq: 0, "still going")])
+        }
         await services.resume()
 
         _ = try await eventually("re-attached") { harness.relay.calls(WireMethod.sessionAttach).count > attaches ? true : nil }
@@ -223,9 +244,10 @@ struct ForegroundResumeTests {
         defer { open.cancel() }
         #expect(screen.composer.canStop)
 
-        try await suspend(suspension, harness, services, key)
-        harness.machine.setLifecycle("conv-new", "idle")
-        harness.machine.finishTurn("conv-new")
+        try await suspend(suspension, harness, services, key) {
+            harness.machine.setLifecycle("conv-new", "idle")
+            harness.machine.finishTurn("conv-new")
+        }
         await services.resume()
 
         _ = try await eventually("stop button gone") { screen.composer.canStop ? nil : true }

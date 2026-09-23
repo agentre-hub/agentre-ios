@@ -160,6 +160,28 @@ struct TranscriptModelTests {
         await open.value
     }
 
+    @Test("回到前台的信号赶在实时流收场被处理之前到达：不丢，流一收场就接上")
+    func resumeArrivingBeforeTheStreamEndIsProcessedStillReattaches() async throws {
+        let store = FakeStore(frames(1...3))
+        let relay = MainActorRelay(machineFrames: frames(1...3))
+        let conversation = SavedConversation(key: conversationKey, peerFingerprint: "peer-1", lifecycleState: "idle")
+        let model = TranscriptModel(conversation: conversation, store: store, relay: relay, decoder: decoder, pageSize: 50)
+        let open = Task { await model.start() }
+        try await eventually("attached") { relay.attaches.count == 1 }
+        relay.append([stored(decoder, 4, .userMessage("m4"))])
+
+        // 服务端关掉了通道、回到前台这两件事同时发生：流已经收场，转录那一轮却还没被唤醒去处理它
+        // （两句之间没有挂起点，唤醒排在后面），回前台的信号此刻到达。
+        relay.finish()
+        model.resume()
+
+        try await eventually("reattached after the stream ended") { relay.attaches.count == 2 }
+        #expect(relay.attaches.map(\.after) == [3, 3])
+        try await eventually("caught up") { userTexts(model).last == "m4" }
+        open.cancel()
+        await open.value
+    }
+
     @Test("屏已关掉（跟随的任务被取消）：流断在等 resume 时也立即收场；之后的 resume 不再接")
     func dismissedScreenDoesNotReattach() async throws {
         let (model, _, relay) = model(local: frames(1...3), machine: frames(1...3))
@@ -232,6 +254,43 @@ struct TranscriptModelTests {
         model.toggle(header.blockKey, current: header.expanded)
         #expect(model.rows.count == 4)
     }
+}
+
+/// 伪中继，实时流的收场由测试在主执行器上同步发出：`finish()` 与随后那一句之间没有挂起点，
+/// 因此转录那一轮必定还没被唤醒去处理流的收场。
+@MainActor
+final class MainActorRelay: TranscriptRelay {
+    private(set) var machineFrames: [TranscriptFrame]
+    private(set) var attaches: [(key: ConversationKey, peer: String, after: Int64)] = []
+    private var liveContinuation: AsyncStream<LiveTranscriptFrame>.Continuation?
+
+    init(machineFrames: [TranscriptFrame] = []) {
+        self.machineFrames = machineFrames.sorted { $0.seq < $1.seq }
+    }
+
+    func pull(_ key: ConversationKey, peerFingerprint: String, cursor: Int64, limit: Int) -> TranscriptPage {
+        let after = machineFrames.filter { $0.seq > cursor }
+        let page = Array(after.prefix(limit))
+        return TranscriptPage(
+            frames: page, cursor: page.last?.seq ?? cursor,
+            hasMore: after.count > page.count, oldestSeq: machineFrames.first?.seq ?? 0
+        )
+    }
+
+    func attach(_ key: ConversationKey, peerFingerprint: String, after: Int64) -> AsyncStream<LiveTranscriptFrame> {
+        attaches.append((key, peerFingerprint, after))
+        let (stream, continuation) = AsyncStream<LiveTranscriptFrame>.makeStream()
+        for frame in machineFrames where frame.seq > after {
+            continuation.yield(LiveTranscriptFrame(seq: frame.seq, createtime: frame.createtime, payload: frame.payload))
+        }
+        liveContinuation = continuation
+        return stream
+    }
+
+    /// 机器上又多了几帧。
+    func append(_ more: [TranscriptFrame]) { machineFrames += more }
+
+    func finish() { liveContinuation?.finish() }
 }
 
 struct FailingRelay: TranscriptRelay {

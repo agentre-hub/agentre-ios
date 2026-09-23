@@ -30,6 +30,9 @@ public final class TranscriptModel {
     @ObservationIgnored private var pulling = false
     /// 实时流已收场、正等着 `resume()` 的各处跟随（同一条会话可以同时开在两个标签里）。
     @ObservationIgnored private var waiting: [UUID: AsyncStream<Void>.Continuation] = [:]
+    /// 回到前台的次数。每一轮实时流开始前记下它，收场时再比一次：这一轮期间到过的信号照样算数，
+    /// 不会因为流的收场还没被唤醒处理就丢掉。
+    @ObservationIgnored private var resumeCount = 0
 
     /// - Parameters:
     ///   - conversation: 本地库里的会话；它的键给出承载机器，`peerFingerprint` 原样带给 pull / attach。
@@ -53,13 +56,18 @@ public final class TranscriptModel {
     public func start() async {
         await load()
         while !Task.isCancelled {
+            let seen = resumeCount
             await attach()
-            await waitForResume()
+            await waitForResume(since: seen)
         }
     }
 
     /// 回到前台、网络恢复：屏还开着而实时流已收场时重新接上；流还接着、或屏已关掉时什么也不做。
+    ///
+    /// 信号在流收场的同一刻到达（通道已关，接流的那一轮还没被唤醒读到收场）也不丢：那一轮
+    /// 一醒来就发现信号变了，当场重新接上，而不是停在那里等下一次回前台。
     public func resume() {
+        resumeCount += 1
         for signal in waiting.values { signal.yield() }
     }
 
@@ -127,9 +135,10 @@ public final class TranscriptModel {
 
     // MARK: 内部
 
-    /// 等下一次 `resume()`；所在任务被取消即返回。
-    private func waitForResume() async {
-        guard !Task.isCancelled else { return }
+    /// 等下一次 `resume()`；这一轮实时流期间已经到过信号（`seen` 之后）即当场返回，
+    /// 所在任务被取消也返回。
+    private func waitForResume(since seen: Int) async {
+        guard !Task.isCancelled, resumeCount == seen else { return }
         let (signals, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
         let token = UUID()
         waiting[token] = continuation
