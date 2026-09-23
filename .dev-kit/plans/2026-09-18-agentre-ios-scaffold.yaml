@@ -238,9 +238,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreTranscriptTests/]
     model: strong
     interfaces: "ForegroundResumeTests 的两档 suspension（connectionDropped / channelClosed）；RelayChannel 的关闭与重订阅；TranscriptModel.start 的 attach → 等 resume 循环；ConversationSync.resync"
-    status: doing
-    commit: null
-    note: "2026-09-22 主会话实测：代码审查轴后 d7ec054 → 1323662，宿主整目标 1323662 跑 6 次挂 1 次（「通道被关…回到前台重新 attach」），d7ec054 跑 8 次挂 5 次（「这一轮还在跑」「信箱里还剩一条插话」）——不稳定自任务 19 引入，代码轴反而缓解。用户批准新增本任务。"
+    status: done
+    commit: b195e1e
+    note: "2026-09-22 主会话实测：代码审查轴后 d7ec054 → 1323662，宿主整目标 1323662 跑 6 次挂 1 次（「通道被关…回到前台重新 attach」），d7ec054 跑 8 次挂 5 次（「这一轮还在跑」「信箱里还剩一条插话」）——不稳定自任务 19 引入，代码轴反而缓解。用户批准新增本任务。 完成记录：主要为用例抢跑（App 报通道被关后约 1ms 即自行重连、20ms 轮询看不到；App 在用例补发前已补拉完），另有一处产品竞态——resume() 落在流已收场、循环尚未停靠之间会丢，RED resumeArrivingBeforeTheStreamEndIsProcessedStillReattaches 超时，改为计数回前台信号。用例等待改为单调条件，未加 sleep、未改断言。宿主整目标 20/20 连过；ForegroundResumeTests 30 轮修前 2 挂、修后 0；主会话全新构建全量 578 + UI 4 过（exit 0）。低频遗留：中文深色 MainlineUITests.swift:149「权限面板未收起」共观察到 3 次（任务 19 两次、本任务一次），主会话随后连跑 12/12 未复现。"
 
 review:
   status: pending
