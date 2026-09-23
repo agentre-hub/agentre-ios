@@ -143,6 +143,20 @@ struct MachineScreensTests {
         #expect(labels.contains(Self.text("machines.detail.search")))
     }
 
+    @Test("详情：会话的状态不只靠颜色——运行中与等你处理的行各带一枚写明状态的图标，闲着的行不带")
+    func detailStatusIsNotColourOnly() async throws {
+        let model = await detail()
+        let labels = await HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) }).labels()
+        let status = { (key: String) in AgentreUIResources.bundle.localizedString(forKey: key, value: "⟨missing⟩", table: "Messages") }
+        // 已保存的行是一枚按钮，标签连成一句。
+        let running = try #require(labels.first { $0.contains("Fix build") }, "\(labels)")
+        #expect(running.contains(status("messages.status.running")), "\(running)")
+        let idle = try #require(labels.first { $0.contains("Refactor relay") }, "\(labels)")
+        #expect(!idle.contains(status("messages.status.running")) && !idle.contains(status("messages.status.waiting")), "\(idle)")
+        // 未保存的行不是按钮，状态图标自成一个元素；顶上计数的「等你处理」是另一个。
+        #expect(labels.filter { $0 == status("messages.status.waiting") }.count == 2, "\(labels)")
+    }
+
     @Test("详情离线：呈现「不在线」，没有计数也没有会话")
     func detailOffline() async throws {
         let model = await detail(machine: offlineMachine())

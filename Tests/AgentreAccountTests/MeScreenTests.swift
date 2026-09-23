@@ -77,6 +77,14 @@ struct MeScreenTests {
         #expect(labels.contains(Self.text("me.devices.revokeInConsole")), "\(labels)")
     }
 
+    @Test("设备在线与否不只靠颜色：每一行把在线 / 离线写出来")
+    func deviceOnlineIsNotColourOnly() async throws {
+        let model = await loadedModel()
+        let texts = await HostedScreen(NavigationStack { MeView(model: model) }, size: Self.tall).texts()
+        #expect(texts.contains(Self.text("me.devices.online")), "\(texts)")
+        #expect(texts.contains(Self.text("me.devices.offline")), "\(texts)")
+    }
+
     @Test("语言偏好作用于界面：选了简体中文，同一个键读出中文；选了英文读出英文")
     func languageApplies() async throws {
         let zh = await HostedScreen(

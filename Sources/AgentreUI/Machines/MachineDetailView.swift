@@ -162,10 +162,7 @@ private struct MachineSessionRowView: View {
 
     private func card(@ViewBuilder trailing: () -> some View) -> some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(.token(statusToken))
-                .frame(width: 10, height: 10)
-                .opacity(row.session.activity == .idle ? 0 : 1)
+            ConversationStatusGlyph(activity: row.session.activity)
             VStack(alignment: .leading, spacing: 4) {
                 title
                 if row.session.lastMessageAt > 0 {
@@ -197,6 +194,4 @@ private struct MachineSessionRowView: View {
                 .lineLimit(1)
         }
     }
-
-    private var statusToken: ColorToken { row.session.activity.statusToken }
 }

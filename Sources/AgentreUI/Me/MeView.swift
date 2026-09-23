@@ -194,7 +194,7 @@ public struct MeView: View {
     }
 }
 
-/// 一台已授权设备：在线点、名字（备注名优先，等宽）、平台与本机标注；本机给撤销，其它设备写明到网页控制台撤销。
+/// 一台已授权设备：在线点、名字（备注名优先，等宽）、在线态、平台与本机标注；本机给撤销，其它设备写明到网页控制台撤销。
 struct DeviceRow: View {
     let device: AuthorizedDevice
     let onRevoke: () -> Void
@@ -204,7 +204,7 @@ struct DeviceRow: View {
             Circle()
                 .fill(.token(device.online ? .running : .textSecondary))
                 .frame(width: 8, height: 8)
-                .accessibilityLabel(Text(device.online ? "me.devices.online" : "me.devices.offline", tableName: "Me", bundle: .module))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: device.shownName)
                     .font(.body.monospaced())
@@ -212,6 +212,10 @@ struct DeviceRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 HStack(spacing: 6) {
+                    // 在线与否写出来：状态不只靠那枚点的颜色。
+                    Text(device.online ? "me.devices.online" : "me.devices.offline", tableName: "Me", bundle: .module)
+                        .font(.caption)
+                        .foregroundStyle(.token(device.online ? .running : .textSecondary))
                     if !device.platform.isEmpty {
                         Text(verbatim: device.platform)
                             .font(.caption.monospaced())

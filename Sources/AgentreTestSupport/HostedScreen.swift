@@ -27,6 +27,15 @@ public final class HostedScreen {
         return swiftUI + AccessibilityTree.visibleLabels(in: controller.view)
     }
 
+    /// 以文字呈现（无障碍树里带 staticText）的元素的标签：断言某个事实是写出来的，而不只是某个色块的读屏标签。
+    public func texts() async -> [String] {
+        guard AccessibilityTree.enable() else { return [] }
+        await AccessibilityTree.settle(controller.view)
+        return AccessibilityTree.elements(in: controller.view)
+            .filter { $0.accessibilityTraits.contains(.staticText) }
+            .compactMap(\.accessibilityLabel)
+    }
+
     /// 屏上此刻点不动的元素（无障碍树里带 notEnabled 的）的标签：断言「这个动作此刻不可用」。
     public func disabledLabels() async -> [String] {
         guard AccessibilityTree.enable() else { return [] }

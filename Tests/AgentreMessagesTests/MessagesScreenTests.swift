@@ -58,4 +58,19 @@ struct MessagesScreenTests {
         #expect(order.count == 5)
         #expect(order == order.sorted(), "\(labels)")
     }
+
+    @Test("状态不只靠颜色：失败、运行中、等你处理的行各带一枚写明状态的图标，闲着的行不带")
+    func statusIsNotColourOnly() async throws {
+        let labels = await HostedScreen(await screen()).labels()
+        let failed = try #require(labels.first { $0.contains("跑测试") }, "\(labels)")
+        #expect(failed.contains(Self.text("messages.status.failed")), "\(failed)")
+        let running = try #require(labels.first { $0.contains("修构建") }, "\(labels)")
+        #expect(running.contains(Self.text("messages.status.running")), "\(running)")
+        let waiting = try #require(labels.first { $0.contains("清理产物") }, "\(labels)")
+        #expect(waiting.contains(Self.text("messages.status.waiting")), "\(waiting)")
+        let idle = try #require(labels.first { $0.contains("整理文档") }, "\(labels)")
+        for key in ["messages.status.failed", "messages.status.running", "messages.status.waiting"] {
+            #expect(!idle.contains(Self.text(key)), "\(idle)")
+        }
+    }
 }

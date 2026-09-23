@@ -46,8 +46,8 @@ struct MessageRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            statusDot
-                .padding(.top, 6)
+            ConversationStatusGlyph(activity: conversation.activity)
+                .padding(.top, 3)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     title
@@ -94,15 +94,6 @@ struct MessageRow: View {
         }
     }
 
-    private var statusDot: some View {
-        Circle()
-            .fill(.token(statusToken))
-            .frame(width: 10, height: 10)
-            .opacity(conversation.activity == .idle ? 0 : 1)
-    }
-
-    private var statusToken: ColorToken { conversation.activity.statusToken }
-
     @ViewBuilder private var preview: some View {
         switch conversation.activity {
         case .waiting:
@@ -146,14 +137,35 @@ struct MessageRow: View {
     }
 }
 
+/// 会话的状态：颜色之外还有一枚各不相同的图标，读屏读出状态名——状态不只靠颜色区分。
+/// 闲着的会话不画，只留出位置。消息列表与机器详情是同一套。
+struct ConversationStatusGlyph: View {
+    let activity: ConversationActivity
+
+    var body: some View {
+        Group {
+            if let presentation = activity.statusPresentation {
+                Image(systemName: presentation.symbol)
+                    .foregroundStyle(.token(presentation.token))
+                    .accessibilityLabel(Text(presentation.label, tableName: "Messages", bundle: .module))
+            } else {
+                Color.clear
+                    .accessibilityHidden(true)
+            }
+        }
+        .font(.caption)
+        .frame(minWidth: 14, minHeight: 14)
+    }
+}
+
 extension ConversationActivity {
-    /// 状态点的颜色：消息列表与机器详情是同一套。
-    var statusToken: ColorToken {
+    /// 状态的图标、颜色与读屏名；闲着时为 nil。
+    var statusPresentation: (symbol: String, token: ColorToken, label: LocalizedStringKey)? {
         switch self {
-        case .waiting: .waiting
-        case .typing: .running
-        case .failed: .failure
-        case .idle: .textSecondary
+        case .waiting: ("hand.raised.fill", .waiting, "messages.status.waiting")
+        case .typing: ("ellipsis.circle.fill", .running, "messages.status.running")
+        case .failed: ("exclamationmark.triangle.fill", .failure, "messages.status.failed")
+        case .idle: nil
         }
     }
 }
