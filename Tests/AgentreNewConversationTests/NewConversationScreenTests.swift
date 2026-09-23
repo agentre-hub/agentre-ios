@@ -106,6 +106,13 @@ struct NewConversationScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
+    @Test("草稿：导航栏写着选中的是哪个 Agent（中央不写，由导航栏说是谁）")
+    func draftNavigationTitleNamesTheAgent() async throws {
+        let model = await loadedDraft()
+        let labels = await HostedScreen(NavigationStack { DraftConversationView(model: model, onStarted: { _ in }) }).labels()
+        #expect(labels.contains("coder"), "\(labels)")
+    }
+
     @Test("发出第一条消息后 chip 行退场；落库失败时如实说已在机器上跑起来、没进列表，并给重试")
     func draftAfterSendNotListed() async throws {
         let recorder = FakeRecorder()

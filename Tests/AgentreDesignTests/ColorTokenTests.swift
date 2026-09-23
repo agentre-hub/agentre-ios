@@ -6,7 +6,7 @@ import UIKit
 struct ColorTokenTests {
     static let backgrounds: [ColorToken] = [.bg, .surface, .surface2]
 
-    @Test("每个前景 token 在同主题的 bg / surface / surface-2 上都过对比度阈值（文本 4.5，指示色 3.0）",
+    @Test("每个前景 token 在同主题的 bg / surface / surface-2 上都过对比度阈值（凡写成文字的 4.5）",
           arguments: Theme.allCases)
     func foregroundContrast(theme: Theme) {
         for token in ColorToken.allCases {
@@ -18,15 +18,23 @@ struct ColorTokenTests {
         }
     }
 
+    @Test("状态色也写成文字（「正在输入…」、待批准的工具名、失败与在线的字样）：按文字线 4.5 过三层底色，两套主题各自算",
+          arguments: Theme.allCases)
+    func statusTokensReadAsText(theme: Theme) {
+        for token in [ColorToken.running, .waiting, .failure] {
+            for background in Self.backgrounds {
+                let ratio = contrastRatio(token.rgb(in: theme), background.rgb(in: theme))
+                #expect(ratio >= 4.5, "\(token) on \(background) in \(theme): \(ratio) < 4.5")
+            }
+        }
+    }
+
     @Test("常规前景 token 都以三层底色为对照；每个 token 都有角色，底色 token 恰是 bg / surface / surface-2")
     func rolesCoverAllLayers() {
         let backgroundTokens = ColorToken.allCases.filter { $0.role == .background }
         #expect(backgroundTokens == Self.backgrounds)
-        for token in [ColorToken.textPrimary, .textSecondary, .accent] {
+        for token in [ColorToken.textPrimary, .textSecondary, .accent, .running, .waiting, .failure] {
             #expect(token.role == .foreground(minimumContrast: 4.5, on: Self.backgrounds))
-        }
-        for token in [ColorToken.running, .waiting, .failure] {
-            #expect(token.role == .foreground(minimumContrast: 3.0, on: Self.backgrounds))
         }
         #expect(ColorToken.onAccent.role == .foreground(minimumContrast: 4.5, on: [.accent]))
     }

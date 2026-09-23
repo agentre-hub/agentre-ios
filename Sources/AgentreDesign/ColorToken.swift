@@ -61,8 +61,8 @@ extension ColorToken {
         case .textSecondary: ThemedColor(light: 0x505869, dark: 0xA6ADBB)
         case .accent: ThemedColor(light: 0x1A5CD0, dark: 0x74A6FF)
         case .onAccent: ThemedColor(light: 0xFFFFFF, dark: 0x0E1015)
-        case .running: ThemedColor(light: 0x1E8045, dark: 0x4CC57C)
-        case .waiting: ThemedColor(light: 0xA85F00, dark: 0xF0A93B)
+        case .running: ThemedColor(light: 0x1C7A42, dark: 0x4CC57C)
+        case .waiting: ThemedColor(light: 0xA05A00, dark: 0xF0A93B)
         case .failure: ThemedColor(light: 0xC62E2E, dark: 0xFF6E6E)
         }
     }
@@ -88,8 +88,8 @@ extension ColorToken {
     public var role: TokenRole {
         switch self {
         case .bg, .surface, .surface2: .background
-        case .textPrimary, .textSecondary, .accent: .foreground(minimumContrast: 4.5, on: Self.layers)
-        case .running, .waiting, .failure: .foreground(minimumContrast: 3.0, on: Self.layers)
+        // 状态色不只画点与环，也写成文字（「正在输入…」、待批准的工具名、失败与在线的字样）：按文字线算。
+        case .textPrimary, .textSecondary, .accent, .running, .waiting, .failure: .foreground(minimumContrast: 4.5, on: Self.layers)
         case .onAccent: .foreground(minimumContrast: 4.5, on: [.accent])
         }
     }

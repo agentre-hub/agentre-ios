@@ -63,6 +63,30 @@ struct LoginScreenTests {
         #expect(frame.height < whole.height * 2, "默认字号下一行排下：\(frame)")
     }
 
+    @Test("完全离线：登录屏如实说这台设备没有联网、登录点不动；上一次的失败不读作连不上服务器")
+    func offlineLogin() async throws {
+        let session = AppSession(credentials: credentials)
+        let flow = makeFlow(ScriptedDeviceAuth(authorization: .failure(TransportDown()), polls: []), session: session)
+        let signIn = Self.text("login.signIn", "Login")
+        let offline = Self.text("login.deviceOffline", "Login")
+
+        let online = HostedScreen(LoginView(flow: flow))
+        #expect(await !online.labels().contains(offline))
+        #expect(await !online.disabledLabels().contains(signIn))
+
+        let idle = HostedScreen(LoginView(flow: flow).environment(\.isOffline, true))
+        #expect(await idle.labels().contains(offline))
+        #expect(await idle.disabledLabels().contains(signIn))
+
+        await flow.signIn()
+        #expect(flow.state == .failed)
+        let failed = HostedScreen(LoginView(flow: flow).environment(\.isOffline, true))
+        let labels = await failed.labels()
+        #expect(labels.contains(offline))
+        #expect(!labels.contains(Self.text("login.failed", "Login")))
+        #expect(await failed.disabledLabels().contains(Self.text("login.signIn.again", "Login")))
+    }
+
     @Test("三标签骨架：标签栏三个目的地的命中区补满且互不重叠")
     func shellHitTargets() async throws {
         let report = await hitTargetReport(of: ShellView { Color.clear } machines: { Color.clear } me: { Color.clear })

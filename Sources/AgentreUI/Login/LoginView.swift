@@ -9,6 +9,7 @@ public struct LoginView: View {
     @State private var isEditingServer: Bool
     @State private var draftAddress = ""
     @State private var draftIsInvalid = false
+    @Environment(\.isOffline) private var isOffline
 
     public init(flow: LoginFlow) {
         self.init(flow: flow, isEditingServer: false)
@@ -110,6 +111,22 @@ public struct LoginView: View {
     }
 
     @ViewBuilder private var outcome: some View {
+        if isOffline {
+            // 本机没网：如实说是离线，登录点不动——而不是让人点下去再读到「连不上服务器」。
+            Label {
+                Text("login.deviceOffline", tableName: "Login", bundle: .module)
+                    .foregroundStyle(.token(.textPrimary))
+            } icon: {
+                Image(systemName: "wifi.slash")
+                    .foregroundStyle(.token(.textSecondary))
+            }
+            .font(.callout)
+        } else {
+            outcomeStatus
+        }
+    }
+
+    @ViewBuilder private var outcomeStatus: some View {
         switch flow.state {
         case .expired:
             status("login.expired", systemImage: "clock.badge.exclamationmark")
@@ -153,10 +170,10 @@ public struct LoginView: View {
             .foregroundStyle(.token(.onAccent))
             .frame(maxWidth: .infinity, minHeight: 52)
             .background(.token(.accent), in: Capsule())
-            .opacity(isAwaiting ? 0.7 : 1)
+            .opacity(isAwaiting || isOffline ? 0.7 : 1)
         }
         .hitTarget()
-        .disabled(isAwaiting)
+        .disabled(isAwaiting || isOffline)
     }
 
     private func save() {

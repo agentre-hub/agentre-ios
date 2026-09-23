@@ -33,6 +33,9 @@ public struct DraftConversationView: View {
             }
         }
         .background(.token(.bg))
+        // 选中的是哪个 Agent 由导航栏说，中央不再写一遍。
+        .navigationTitle(Text(verbatim: model.agent.name))
+        .navigationBarTitleDisplayMode(.inline)
         .task { if model.plan == nil { await model.loadPlan() } }
         .onChange(of: model.phase, initial: true) { _, phase in
             if case .started(let key) = phase { onStarted(key) }
