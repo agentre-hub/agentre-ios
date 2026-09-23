@@ -8,6 +8,8 @@ struct AddressField: UIViewRepresentable {
     @Binding var text: String
     let onSubmit: () -> Void
 
+    private static let placeholder = LocalizedCopy("login.server", table: "Login")
+
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 17, weight: .regular))
@@ -20,8 +22,7 @@ struct AddressField: UIViewRepresentable {
         field.spellCheckingType = .no
         field.returnKeyType = .done
         field.clearButtonMode = .never
-        field.placeholder = String(localized: "login.server", table: "Login", bundle: .module)
-        field.accessibilityLabel = field.placeholder
+        field.showPlaceholder(Self.placeholder, in: context.environment.locale)
         field.delegate = context.coordinator
         field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -31,6 +32,7 @@ struct AddressField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
+        field.showPlaceholder(Self.placeholder, in: context.environment.locale)
         if field.text != text { field.text = text }
     }
 

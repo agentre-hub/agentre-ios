@@ -8,10 +8,11 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct LanguageSwitchTests {
-    private static let roots: [(tab: Int, key: String, table: String)] = [
-        (0, "messages.title", "Messages"),
-        (1, "machines.title", "Machines"),
-        (2, "me.title", "Me"),
+    /// 每个标签页根屏导航栏上由本地化文案给出的文字：标题，以及消息页的「新对话」按钮（工具栏项的读屏标签）。
+    private static let roots: [(tab: Int, copy: [(key: String, table: String)])] = [
+        (0, [("messages.title", "Messages"), ("newconv.title", "NewConversation")]),
+        (1, [("machines.title", "Machines")]),
+        (2, [("me.title", "Me")]),
     ]
 
     @Test("切到 English、切回简体中文、再跟随系统：三个标签页根屏的大标题每次都即时换成那种语言；机器栈里打开着的详情仍在")
@@ -55,21 +56,23 @@ struct LanguageSwitchTests {
         await environment.tearDown()
     }
 
-    /// 逐个切到三个标签页，断言导航栏上看得见的标题恰是该语言的译文，且没有另一种语言的残留。
+    /// 逐个切到三个标签页，断言导航栏上看得见的标题与按钮恰是该语言的译文，且没有另一种语言的残留。
     private func expectRootTitles(on screen: Screen, language: String) async throws {
         let other = language == "en" ? "zh-Hans" : "en"
         for root in Self.roots {
             try await screen.selectTab(root.tab)
-            let expected = copy(root.key, table: root.table, language: language)
-            let stale = copy(root.key, table: root.table, language: other)
-            #expect(expected != stale)
-            do {
-                _ = try await eventually("\(root.table) title in \(language)", seconds: 3) {
-                    let titles = await screen.navigationTitles()
-                    return titles.contains(expected) && !titles.contains(stale) ? true : nil
+            for (key, table) in root.copy {
+                let expected = copy(key, table: table, language: language)
+                let stale = copy(key, table: table, language: other)
+                #expect(expected != stale)
+                do {
+                    _ = try await eventually("\(key) in \(language)", seconds: 3) {
+                        let titles = await screen.navigationTitles()
+                        return titles.contains(expected) && !titles.contains(stale) ? true : nil
+                    }
+                } catch {
+                    Issue.record("\(key): expected “\(expected)” (\(language)); nav bar shows \(await screen.navigationTitles())")
                 }
-            } catch {
-                Issue.record("\(root.table) root title: expected “\(expected)” (\(language)); nav bar shows \(await screen.navigationTitles())")
             }
         }
     }

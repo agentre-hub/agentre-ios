@@ -45,7 +45,11 @@ final class MainlineUITests: XCTestCase {
 
         let app = XCUIApplication()
         // 经启动参数指向伪服务端：`-serverAddress` 落进 UserDefaults 的参数域，App 读服务器地址就读到它。
-        app.launchArguments = ["-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-serverAddress", server.baseURL]
+        // 「我」里存下的语言与外观（手动跑过的 App 留在模拟器上）会盖过 `-AppleLanguages`：同样经参数域重置为跟随系统。
+        app.launchArguments = [
+            "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-serverAddress", server.baseURL,
+            "-displayLanguage", "system", "-displayAppearance", "system",
+        ]
         app.launch()
         let screen = Screen(app: app, test: self, prefix: "\(language)-\(appearance.rawValue)")
         let dark = appearance == .dark

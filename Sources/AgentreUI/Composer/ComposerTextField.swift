@@ -7,7 +7,7 @@ import UIKit
 struct ComposerTextField: UIViewRepresentable {
     let text: String
     let cursor: Int
-    let placeholder: String
+    let placeholder: LocalizedCopy
     let onEdit: (String, Int) -> Void
 
     private static let maximumHeight: CGFloat = 140
@@ -20,7 +20,7 @@ struct ComposerTextField: UIViewRepresentable {
         view.tintColor = ColorToken.accent.uiColor
         view.backgroundColor = nil
         view.textContainerInset = UIEdgeInsets(top: 11, left: 8, bottom: 11, right: 8)
-        view.accessibilityLabel = placeholder
+        view.showPlaceholder(placeholder, in: context.environment.locale)
         view.delegate = context.coordinator
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -29,6 +29,7 @@ struct ComposerTextField: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.parent = self
+        view.showPlaceholder(placeholder, in: context.environment.locale)
         guard view.text != text else { return }
         view.text = text
         // 内容由模型改写（选中候选、还回草稿）时，光标跟到模型给的位置。

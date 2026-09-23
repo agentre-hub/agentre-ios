@@ -115,7 +115,7 @@ public struct NewConversationView: View {
 
     public var body: some View {
         List {
-            NewConversationSearchField(text: $model.query, placeholder: String(localized: "newconv.search", table: table, bundle: .module))
+            NewConversationSearchField(text: $model.query, placeholder: LocalizedCopy("newconv.search", table: table))
                 .newConversationRow()
 
             if model.loadFailed {

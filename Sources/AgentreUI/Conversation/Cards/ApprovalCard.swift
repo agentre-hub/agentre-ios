@@ -167,7 +167,7 @@ private struct ApprovalQuestionCard: View {
                     }
                     ApprovalAnswerField(
                         text: Binding(get: { model.answer(index, of: request) }, set: { model.setAnswer($0, at: index, of: request) }),
-                        placeholder: String(localized: "question.placeholder", table: "Cards", bundle: .module),
+                        placeholder: LocalizedCopy("question.placeholder", table: "Cards"),
                         isSecure: question.isSecret
                     )
                     .padding(.horizontal, 10)
@@ -256,7 +256,7 @@ private struct ApprovalOptionButton: View {
 /// 这里让文本框本身长高。取 44pt 时在列表行里实测真实命中区只剩 43pt，故多留 4pt。
 private struct ApprovalAnswerField: UIViewRepresentable {
     @Binding var text: String
-    let placeholder: String
+    let placeholder: LocalizedCopy
     var isSecure = false
 
     func makeUIView(context: Context) -> UITextField {
@@ -266,8 +266,7 @@ private struct ApprovalAnswerField: UIViewRepresentable {
         field.adjustsFontForContentSizeCategory = true
         field.textColor = ColorToken.textPrimary.uiColor
         field.tintColor = ColorToken.accent.uiColor
-        field.placeholder = placeholder
-        field.accessibilityLabel = placeholder
+        field.showPlaceholder(placeholder, in: context.environment.locale)
         field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -276,6 +275,7 @@ private struct ApprovalAnswerField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
+        field.showPlaceholder(placeholder, in: context.environment.locale)
         if field.text != text { field.text = text }
     }
 

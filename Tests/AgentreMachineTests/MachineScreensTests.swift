@@ -93,6 +93,16 @@ struct MachineScreensTests {
         #expect(await screen.disabledLabels().contains(Self.text("machines.detail.save")))
     }
 
+    @Test("App 内选的语言与系统不同、再切回：按标题搜索框的占位与读屏标签随之换成那种语言")
+    func searchFieldFollowsInAppLanguage() async throws {
+        let model = await detail()
+        let mismatches = await inAppLanguageMismatches(
+            of: NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) }, bundle: AgentreUIResources.bundle,
+            copy: [("machines.detail.search", "Machines")]
+        )
+        #expect(mismatches.isEmpty, "\(mismatches)")
+    }
+
     @Test("名册：每台机器一个按钮，命中区补满 44×44 且互不重叠；发现数 = 3")
     func rosterHitTargets() async throws {
         let report = await hitTargetReport(of: await roster())

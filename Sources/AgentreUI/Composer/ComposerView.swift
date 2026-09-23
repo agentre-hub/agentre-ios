@@ -11,6 +11,7 @@ public struct ComposerView: View {
     private let onDeleted: () -> Void
     @State private var panel: ComposerPanel.Page?
     @Environment(\.isOffline) private var isOffline
+    @Environment(\.locale) private var locale
 
     /// - Parameters:
     ///   - contextUsage: 任务 6 的上下文用量（`TranscriptModel.contextUsage`）；nil 时环整块不渲染。
@@ -37,6 +38,7 @@ public struct ComposerView: View {
         }
         .background(.token(.bg))
         .task { if model.settings == nil { await model.load() } }
+        .onChange(of: locale, initial: true) { _, locale in model.locale = locale }
         .sheet(item: $panel) { page in
             ComposerPanel(model: model, contextUsage: contextUsage, initialPage: page, onDeleted: onDeleted)
                 .presentationDetents([.medium, .large])
@@ -143,7 +145,7 @@ public struct ComposerView: View {
         HStack(alignment: .bottom, spacing: 8) {
             ComposerTextField(
                 text: model.text, cursor: model.cursor,
-                placeholder: String(localized: "composer.message", table: composerTable, bundle: .module)
+                placeholder: LocalizedCopy("composer.message", table: composerTable)
             ) { text, cursor in
                 model.edit(text: text, cursor: cursor)
             }

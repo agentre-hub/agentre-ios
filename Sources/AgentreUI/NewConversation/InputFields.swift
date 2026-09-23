@@ -6,7 +6,7 @@ import UIKit
 /// 撑不大它的命中区；这里让文本框本身至少 44pt 高（与登录屏的地址框同一做法）。
 struct NewConversationSearchField: UIViewRepresentable {
     @Binding var text: String
-    let placeholder: String
+    let placeholder: LocalizedCopy
 
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
@@ -18,8 +18,7 @@ struct NewConversationSearchField: UIViewRepresentable {
         field.autocorrectionType = .no
         field.returnKeyType = .search
         field.clearButtonMode = .never
-        field.placeholder = placeholder
-        field.accessibilityLabel = placeholder
+        field.showPlaceholder(placeholder, in: context.environment.locale)
         field.accessibilityTraits.insert(.searchField)
         field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -29,6 +28,7 @@ struct NewConversationSearchField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
+        field.showPlaceholder(placeholder, in: context.environment.locale)
         if field.text != text { field.text = text }
     }
 
@@ -52,7 +52,7 @@ struct NewConversationSearchField: UIViewRepresentable {
 /// 输入区的多行文本框：至少 44pt 高，随内容长高到六行左右后在框内滚动。
 struct NewConversationComposerField: UIViewRepresentable {
     @Binding var text: String
-    let placeholder: String
+    let placeholder: LocalizedCopy
 
     private static let maximumHeight: CGFloat = 140
 
@@ -64,7 +64,7 @@ struct NewConversationComposerField: UIViewRepresentable {
         view.tintColor = ColorToken.accent.uiColor
         view.backgroundColor = nil
         view.textContainerInset = UIEdgeInsets(top: 11, left: 8, bottom: 11, right: 8)
-        view.accessibilityLabel = placeholder
+        view.showPlaceholder(placeholder, in: context.environment.locale)
         view.delegate = context.coordinator
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -73,6 +73,7 @@ struct NewConversationComposerField: UIViewRepresentable {
 
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.parent = self
+        view.showPlaceholder(placeholder, in: context.environment.locale)
         if view.text != text { view.text = text }
     }
 

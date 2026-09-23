@@ -35,6 +35,18 @@ struct NewConversationScreenTests {
         #expect(labels.contains(text("newconv.unpaired")))
     }
 
+    @Test("App 内选的语言与系统不同、再切回：搜索框与草稿输入框的占位与读屏标签随之换成那种语言")
+    func fieldsFollowInAppLanguage() async throws {
+        let entry = await inAppLanguageMismatches(of: await entry().0, bundle: AgentreUIResources.bundle, copy: [("newconv.search", "NewConversation")])
+        #expect(entry.isEmpty, "\(entry)")
+        let model = await loadedDraft()
+        let draft = await inAppLanguageMismatches(
+            of: DraftConversationView(model: model, onStarted: { _ in }), bundle: AgentreUIResources.bundle,
+            copy: [("newconv.message", "NewConversation")]
+        )
+        #expect(draft.isEmpty, "\(draft)")
+    }
+
     @Test("入口命中区：搜索框 + 从项目里挑 + 最近 1 行 + 全部 3 行，全都补满且互不重叠")
     func entryHitTargets() async throws {
         let view = await entry().0

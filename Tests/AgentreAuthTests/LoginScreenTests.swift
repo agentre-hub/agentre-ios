@@ -87,6 +87,16 @@ struct LoginScreenTests {
         #expect(await failed.disabledLabels().contains(Self.text("login.signIn.again", "Login")))
     }
 
+    @Test("App 内选的语言与系统不同、再切回：改地址框的占位与读屏标签随之换成那种语言，不停在系统语言或上一种语言")
+    func addressFieldFollowsInAppLanguage() async throws {
+        let session = AppSession(credentials: credentials)
+        let flow = makeFlow(ScriptedDeviceAuth(authorization: .failure(TransportDown()), polls: []), session: session)
+        let mismatches = await inAppLanguageMismatches(
+            of: LoginView(flow: flow, isEditingServer: true), bundle: AgentreUIResources.bundle, copy: [("login.server", "Login")]
+        )
+        #expect(mismatches.isEmpty, "\(mismatches)")
+    }
+
     @Test("三标签骨架：标签栏三个目的地的命中区补满且互不重叠")
     func shellHitTargets() async throws {
         let report = await hitTargetReport(of: ShellView { Color.clear } machines: { Color.clear } me: { Color.clear })

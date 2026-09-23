@@ -142,7 +142,7 @@ public struct DraftConversationView: View {
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            NewConversationComposerField(text: $model.text, placeholder: String(localized: "newconv.message", table: table, bundle: .module))
+            NewConversationComposerField(text: $model.text, placeholder: LocalizedCopy("newconv.message", table: table))
                 .overlay(alignment: .leading) {
                     if model.text.isEmpty {
                         Text("newconv.message", tableName: table, bundle: .module)

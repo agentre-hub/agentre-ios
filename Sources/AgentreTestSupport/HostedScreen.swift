@@ -27,6 +27,19 @@ public final class HostedScreen {
         return swiftUI + AccessibilityTree.visibleLabels(in: controller.view)
     }
 
+    /// 屏上 UIKit 文本输入（UITextField / UITextView）的读屏标签与占位：UIKit 自己画、自己报的字，
+    /// 不一定出现在 SwiftUI 的无障碍树里。
+    public func textInputLabels() async -> [String] {
+        await AccessibilityTree.settle(controller.view)
+        return AccessibilityTree.controls(in: controller.view).flatMap { view -> [String] in
+            switch view {
+            case let field as UITextField: [field.accessibilityLabel, field.placeholder].compactMap { $0 }
+            case let text as UITextView: [text.accessibilityLabel].compactMap { $0 }
+            default: []
+            }
+        }
+    }
+
     /// 以文字呈现（无障碍树里带 staticText）的元素的标签：断言某个事实是写出来的，而不只是某个色块的读屏标签。
     public func texts() async -> [String] {
         guard AccessibilityTree.enable() else { return [] }

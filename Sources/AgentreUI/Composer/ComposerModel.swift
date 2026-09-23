@@ -51,6 +51,10 @@ public final class ComposerModel {
     public private(set) var settings: ComposerSettings?
     public private(set) var candidates: [Candidate] = []
     public private(set) var failure: Failure?
+    /// 候选说明所用的语言：输入区视图按它所在环境的 `\.locale`（「我」里选的语言）递进来；一变就按新语言重排候选。
+    @ObservationIgnored public var locale: Locale = .autoupdatingCurrent {
+        didSet { if locale != oldValue { refreshCandidates() } }
+    }
 
     private let relay: any ComposerRelay
     private let settingsSource: any ComposerSettingsSource
@@ -306,7 +310,7 @@ public final class ComposerModel {
     private func refreshCandidates() {
         switch trigger {
         case .slash(let hit):
-            let commands = SlashCommands.available(backendType: conversation.backendType, skills: skills, describe: ComposerCopy.describe)
+            let commands = SlashCommands.available(backendType: conversation.backendType, skills: skills, describe: { [locale] in ComposerCopy.describe($0, locale: locale) })
             candidates = SlashCommands.filter(commands, query: hit.query, trigger: hit.trigger).map { Candidate(kind: .slash($0)) }
         case .mention(let hit):
             candidates = ComposerMentions.rank(mentionSources, query: hit.query).map { Candidate(kind: .mention($0)) }

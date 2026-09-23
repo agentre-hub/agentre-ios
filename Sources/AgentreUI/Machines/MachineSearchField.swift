@@ -8,6 +8,8 @@ struct MachineSearchField: UIViewRepresentable {
     @Binding var text: String
     let onSubmit: () -> Void
 
+    private static let placeholder = LocalizedCopy("machines.detail.search", table: "Machines")
+
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.font = UIFont.preferredFont(forTextStyle: .body)
@@ -25,8 +27,7 @@ struct MachineSearchField: UIViewRepresentable {
         icon.frame = CGRect(x: 0, y: 0, width: 36, height: 20)
         field.leftView = icon
         field.leftViewMode = .always
-        field.placeholder = String(localized: "machines.detail.search", table: "Machines", bundle: .module)
-        field.accessibilityLabel = field.placeholder
+        field.showPlaceholder(Self.placeholder, in: context.environment.locale)
         field.delegate = context.coordinator
         field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -36,6 +37,7 @@ struct MachineSearchField: UIViewRepresentable {
 
     func updateUIView(_ field: UITextField, context: Context) {
         context.coordinator.parent = self
+        field.showPlaceholder(Self.placeholder, in: context.environment.locale)
         if field.text != text { field.text = text }
     }
 

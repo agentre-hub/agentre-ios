@@ -40,6 +40,7 @@ Nothing leaves the Mac: no network, account or real machine is needed, and runs 
 - The app is pointed at the fake server by a launch argument (`-serverAddress <url>`, read through the UserDefaults argument domain).
 - The flow, each step asserted on screen: the login screen shows that server address → sign in by device flow (the browser opening the verification page is the approval) → choose the appearance on the Me page → Machines → machine detail, save a conversation to the phone → it is in Messages → new conversation, send → the approval card's three buttons sit in one right-aligned row → Allow Once → switch the permission mode between turns and send again (the next `runtime.run` carries it) → go to the background while the machine finishes the turn and the relay drops the channels and the connection → back in the foreground the open conversation shows the reply and the just-sent message → revoke this device → login screen.
 - It runs four times: Simplified Chinese and English (launch arguments `-AppleLanguages` / `-AppleLocale`) × light and dark (the app's own appearance setting).
+  The launch arguments `-displayLanguage system -displayAppearance system` reset the in-app language and appearance, which earlier manual runs may have saved on the simulator and which would otherwise override `-AppleLanguages`.
 - On-screen copy is read from the app's own string catalogs, which `project.yml` compiles into the test bundle.
 
 Run it alone (about two minutes per combination):

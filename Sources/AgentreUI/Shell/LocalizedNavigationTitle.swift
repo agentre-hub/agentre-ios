@@ -7,18 +7,15 @@ extension View {
     /// SwiftUI 于是不再把标题推给 UIKit 的导航栏，栏上一直是首次解析出的那种语言（在「我」里切语言后
     /// 标签栏与列表换了，大标题却没换）。这里先按环境语言解析成字符串，语言一变值就变，导航栏随之重设。
     func localizedNavigationTitle(_ key: String.LocalizationValue, table: String) -> some View {
-        modifier(LocalizedNavigationTitle(key: key, table: table))
+        modifier(LocalizedNavigationTitle(copy: LocalizedCopy(key, table: table)))
     }
 }
 
 private struct LocalizedNavigationTitle: ViewModifier {
-    let key: String.LocalizationValue
-    let table: String
+    let copy: LocalizedCopy
     @Environment(\.locale) private var locale
 
     func body(content: Content) -> some View {
-        var resource = LocalizedStringResource(key, table: table, bundle: .atURL(Bundle.module.bundleURL))
-        resource.locale = locale
-        return content.navigationTitle(String(localized: resource))
+        content.navigationTitle(copy.resolved(in: locale))
     }
 }

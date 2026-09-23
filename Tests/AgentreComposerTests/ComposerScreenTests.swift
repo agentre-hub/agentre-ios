@@ -29,6 +29,20 @@ struct ComposerScreenTests {
         #expect(report.targets.filter { abs($0.midY - ring.midY) < 1 }.count == 5)
     }
 
+    @Test("App 内选的语言与系统不同、再切回：输入框的占位与读屏标签、斜杠命令的说明都随之换成那种语言")
+    func followsInAppLanguage() async throws {
+        let model = composer()
+        let mismatches = await inAppLanguageMismatches(
+            of: ComposerView(model: model, contextUsage: usage, onDeleted: {}), bundle: AgentreUIResources.bundle,
+            copy: [("composer.message", "Composer")], partOfLabels: [("composer.slash.compact", "Composer")]
+        ) { _ in
+            // 候选按此刻的语言排出：每次切换后重新键入斜杠，候选行上的说明是那种语言。
+            model.edit(text: "", cursor: 0)
+            model.edit(text: "/", cursor: 1)
+        }
+        #expect(mismatches.isEmpty, "\(mismatches)")
+    }
+
     @Test("上下文窗口不为正：环整块不渲染")
     func noRing() async throws {
         let model = composer()

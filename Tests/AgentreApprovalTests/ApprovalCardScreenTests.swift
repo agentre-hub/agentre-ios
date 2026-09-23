@@ -38,6 +38,14 @@ struct ApprovalCardScreenTests {
         #expect(inOrder(["Bash", "/Users/dev/agentre", "$", "pnpm test --filter ui"] + dispositions, in: seen), "\(seen)")
     }
 
+    @Test("App 内选的语言与系统不同、再切回：提问卡自定义作答框的占位与读屏标签随之换成那种语言")
+    func answerFieldFollowsInAppLanguage() async throws {
+        let model = await transcript(ending: [.questionRequest(optionQuestion())])
+        let view = TranscriptView(model: model, agentName: "Claude Code") { ApprovalCard($0, model: cards()) }
+        let mismatches = await inAppLanguageMismatches(of: view, bundle: AgentreUIResources.bundle, copy: [("question.placeholder", "Cards")])
+        #expect(mismatches.isEmpty, "\(mismatches)")
+    }
+
     @Test("完全离线：卡片照常可读，三档处置都点不动")
     func offlineDispositions() async throws {
         let request = permission(input: ["command": "pnpm test --filter ui"])
