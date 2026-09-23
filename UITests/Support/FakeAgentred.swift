@@ -15,7 +15,7 @@ import SwiftProtobuf
 ///
 /// 一切调用都在服务端的 `queue` 上。
 final class FakeAgentred: @unchecked Sendable {
-    static let protocolVersion = "0.2.0"
+    static let protocolVersion = "0.3.0"
     static let boxName = "uitest-box"
     static let boxFingerprint = "fp-uitest-box"
 
