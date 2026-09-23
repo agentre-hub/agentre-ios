@@ -232,13 +232,23 @@ tasks:
     commit: 5d1b339
     note: "2026-09-22 用户批准新增，承接任务 19 退回中查明的回归。 完成记录：两处缺陷——跟随态下可见高度变化不再滚底；在底判据未扣键盘占去的底部内距。RED 三例滚动测试失败；GREEN Transcript 125 条过，变异（去掉仅跟随时）使 3/5 滚动测试红；中文深色主线连续 12/12 过，其余三组合各 1 次过；全量 561 条 + UI 4 条过（exit 0）。"
 
+  - id: 21
+    goal: "回前台那组宿主用例（Tests/AgentreAuthTests/Hosted/ForegroundResumeTests.swift，尤以 channelClosed 一档）稳定：先判定失败是 App 在「服务端关掉通道 → 回前台重新 attach」这条路上的真实竞态，还是用例自身抢跑，判据要有证据（两侧各连跑、失败时的状态快照）；真竞态改 App，用例问题改等待方式而不放宽断言；验收为 AgentreHostedTests 整目标连续 20 次全过，且全量测试（含 UI 流程）过一次。"
+    deps: [20]
+    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreTranscriptTests/]
+    model: strong
+    interfaces: "ForegroundResumeTests 的两档 suspension（connectionDropped / channelClosed）；RelayChannel 的关闭与重订阅；TranscriptModel.start 的 attach → 等 resume 循环；ConversationSync.resync"
+    status: doing
+    commit: null
+    note: "2026-09-22 主会话实测：代码审查轴后 d7ec054 → 1323662，宿主整目标 1323662 跑 6 次挂 1 次（「通道被关…回到前台重新 attach」），d7ec054 跑 8 次挂 5 次（「这一轮还在跑」「信箱里还剩一条插话」）——不稳定自任务 19 引入，代码轴反而缓解。用户批准新增本任务。"
+
 review:
-  status: running
-  axis: code
-  head: 8395987
-  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/code-2.md
-  fixes: [8395987]
-  note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。 修复轮规格轴 d9ccc8d → 8395987（十一项，全修；主会话重跑全量 572 条 + UI 4 条过）。"
+  status: pending
+  axis: none
+  head: null
+  receipt: null
+  fixes: []
+  note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。 修复轮规格轴 d9ccc8d → 8395987（十一项，全修；主会话重跑全量 572 条 + UI 4 条过）。 代码轴 d7ec054 → 1323662（六项缺陷 + 清理，受理回执 code-2.md）；其后主会话全量红：宿主回前台组不稳（非本轴引入，见任务 21），两轴须在任务 21 之后重跑。"
 
 verification:
   status: pending
