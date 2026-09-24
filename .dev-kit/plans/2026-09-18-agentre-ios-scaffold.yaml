@@ -320,16 +320,16 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Sources/AgentreDomain/Session/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: mid
     interfaces: "RelayMachineSessions 已持有本机指纹（0b8ec51）"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 67938de
+    note: "RED：-only-testing:AgentreRelayTests/MachineSessionAdapterTests + AgentreHostedTests/AssemblyTests/phoneStartedConversationIsSavedInMachineDetail() exit 65（:163-164 key 与 isSaved 不符，:169 再保存多一行；清单保留空 origin）。修：RelayMachineSessions 单一映射 domainSession 把空 origin 认作本机指纹，清单与单条查询共用；agentre peerstream/sessions.go:258 证明桌面作机器时恒报自己的指纹，空 origin 只可能是调用方。GREEN：Relay 86 / Hosted 35 / Machine 21 / Store 33 exit 0；testMainlineEnglishLight exit 0。关注：旧行为下重复保存出的机器键行不再匹配清单，留在本地不刷新（按全新发布不处理）。"
   - id: 30
     goal: "主线 UI 测试稳定：撤销本机后 App 直接在本地退出登录，不再因 401 先打两次 POST /v1/oauth/token/refresh（主线 :203 偶发失败）；每个主线流程开跑前清掉上一流程失败时留在钥匙串里的登录态，一个流程失败不再连带下一个。先复现 :203 的失败，再修。"
     deps: [29]
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreDomain/Core/, agentre-ios/Sources/AgentreDomain/Ports/, agentre-ios/Sources/AgentreREST/, agentre-ios/Sources/AgentreUI/Me/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/UITests/]
     model: mid
     interfaces: null
-    status: todo
+    status: doing
     commit: null
     note: null
 
