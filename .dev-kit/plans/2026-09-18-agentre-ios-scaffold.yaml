@@ -339,7 +339,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: null
-    status: todo
+    status: doing
     commit: null
     note: null
   - id: 32
@@ -348,7 +348,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
     model: mid
     interfaces: null
-    status: todo
+    status: doing
     commit: null
     note: null
 
