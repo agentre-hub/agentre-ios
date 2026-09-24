@@ -8,11 +8,15 @@ import Foundation
 ///
 /// 清库之前先跑 `beforeClearing`（装配层在这里拆掉登录态那一套：中继连接、跟随、在途的调用）：
 /// 否则一个在途的派单或跟随会在库清空之后把上一个账号的会话写回来。
+///
+/// 这之前先让令牌提供方作废这份登录（`tokens`，装配层接上）：拆登录态途中还在路上的请求撞上 401
+/// （撤销本机后服务端当场作废令牌）时不去刷新，也不因刷新被拒再登出一次。
 @MainActor
 public final class SignOut {
     private let session: AppSession
     private let store: any ConversationStore
     public var beforeClearing: (@MainActor () async -> Void)?
+    public var tokens: AccessTokenProvider?
 
     public init(session: AppSession, store: any ConversationStore) {
         self.session = session
@@ -20,6 +24,7 @@ public final class SignOut {
     }
 
     public func run() async {
+        await tokens?.retire()
         await beforeClearing?()
         if (try? await store.removeAll()) == nil {
             try? await store.removeAll()

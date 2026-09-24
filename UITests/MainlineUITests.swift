@@ -43,33 +43,10 @@ final class MainlineUITests: XCTestCase {
             )
         }
 
-        let app = XCUIApplication()
-        // 经启动参数指向伪服务端：`-serverAddress` 落进 UserDefaults 的参数域，App 读服务器地址就读到它。
-        // 「我」里存下的语言与外观（手动跑过的 App 留在模拟器上）会盖过 `-AppleLanguages`：同样经参数域重置为跟随系统。
-        app.launchArguments = [
-            "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-serverAddress", server.baseURL,
-            "-displayLanguage", "system", "-displayAppearance", "system",
-        ]
-        app.launch()
+        let app = launch(against: server, language: language, locale: locale)
         let screen = Screen(app: app, test: self, prefix: "\(language)-\(appearance.rawValue)")
         let dark = appearance == .dark
-        signOutLeftover(screen, copy)
-
-        // 登录屏：当前服务器地址（启动参数给的伪服务端）与一个主操作。
-        screen.expect(screen.button(copy("Login", "login.signIn")), "sign-in button")
-        screen.expect(screen.text(server.baseURL), "server address from the launch argument")
-        screen.shot("01 login")
-
-        // 设备流：App 直接打开带确认码的验证地址；浏览器取到那一页即批准，轮询换得令牌落到三标签。
-        screen.tap(screen.button(copy("Login", "login.signIn")), "sign in")
-        screen.expect("the browser opened the verification address with the user code", timeout: 60) {
-            server.verificationPageVisits.contains(FakeAgentreServer.userCode)
-        }
-        screen.shot("03 verification page")
-        app.activate()
-        screen.expect(screen.tab(copy("Shell", "shell.tab.messages")), "Messages tab after sign-in", timeout: 30)
-        XCTAssertFalse(server.signedInFingerprint.isEmpty, "authorize carried no device fingerprint")
-        screen.shot("04 signed in")
+        signIn(app, screen, copy, server)
 
         // 「我」：账号、本机、外观（App 自己的外观设置）。
         screen.tap(screen.tab(copy("Shell", "shell.tab.me")), "Me tab")
@@ -204,17 +181,59 @@ final class MainlineUITests: XCTestCase {
         XCTAssertEqual(server.read { _ in box.unhandledMethods }, [], "the app called wire methods the fake agentred does not answer")
     }
 
-    /// 上一次跑到一半留下的登录态（钥匙串在模拟器上不随 App 清掉）：经「我」里的退出登录回到登录屏。
-    private func signOutLeftover(_ screen: Screen, _ copy: Copy) {
-        let me = screen.tab(copy("Shell", "shell.tab.me"))
-        let signIn = screen.button(copy("Login", "login.signIn"))
-        screen.expect("the app settled on the login screen or a signed-in shell") { signIn.exists || me.exists }
-        guard !signIn.exists else { return }
-        screen.tap(me, "Me tab (leftover session)")
-        let signOut = screen.button(copy("Me", "me.signOut"))
-        screen.reveal(signOut, "sign out (leftover session)")
-        screen.tap(signOut, "sign out (leftover session)")
-        screen.expect(signIn, "login screen after signing out the leftover session")
+    /// 上一个流程跑到一半失败时，登录态留在模拟器的钥匙串里（不随 App 清掉），本地库也留着；下一个流程对着一台
+    /// 全新的伪服务端，那枚令牌它不认得。每个流程都得从登出状态起步，不论上一个怎么收场。
+    func testLeftoverSignInDoesNotCarryIntoNextFlow() throws {
+        continueAfterFailure = false
+        let copy = Copy(language: "en")
+        let previous = try FakeAgentreServer(machines: [FakeAgentred()])
+        defer { previous.stop() }
+        let app = launch(against: previous, language: "en", locale: "en_US")
+        let screen = Screen(app: app, test: self, prefix: "leftover")
+        signIn(app, screen, copy, previous)
+        // 上一个流程在这里失败：不退出登录就收场。
+        app.terminate()
+
+        let server = try FakeAgentreServer(machines: [FakeAgentred()])
+        defer { server.stop() }
+        let next = Screen(app: launch(against: server, language: "en", locale: "en_US"), test: self, prefix: "leftover-next")
+        next.expect(next.button(copy("Login", "login.signIn")), "login screen although the previous flow stayed signed in")
+        next.expect(next.text(server.baseURL), "server address of the new flow")
+        XCTAssertFalse(next.tab(copy("Shell", "shell.tab.messages")).exists, "the previous flow's sign-in carried over")
+        XCTAssertEqual(server.unhandledRequests, [], "the app called REST endpoints the fake server does not know")
+        next.shot("leftover signed out")
+    }
+
+    /// 经启动参数指向伪服务端：`-serverAddress` 落进 UserDefaults 的参数域，App 读服务器地址就读到它。
+    /// 「我」里存下的语言与外观（手动跑过的 App 留在模拟器上）会盖过 `-AppleLanguages`：同样经参数域重置为跟随系统。
+    /// 钥匙串里的登录态与本地库不随 App 清掉：经启动环境让 App 从登出状态起步。
+    private func launch(against server: FakeAgentreServer, language: String, locale: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-serverAddress", server.baseURL,
+            "-displayLanguage", "system", "-displayAppearance", "system",
+        ]
+        app.launchEnvironment["AGENTRE_START_SIGNED_OUT"] = "1"
+        app.launch()
+        return app
+    }
+
+    /// 登录屏：当前服务器地址（启动参数给的伪服务端）与一个主操作。设备流：App 直接打开带确认码的验证地址；
+    /// 浏览器取到那一页即批准，轮询换得令牌落到三标签。
+    private func signIn(_ app: XCUIApplication, _ screen: Screen, _ copy: Copy, _ server: FakeAgentreServer) {
+        screen.expect(screen.button(copy("Login", "login.signIn")), "sign-in button")
+        screen.expect(screen.text(server.baseURL), "server address from the launch argument")
+        screen.shot("01 login")
+
+        screen.tap(screen.button(copy("Login", "login.signIn")), "sign in")
+        screen.expect("the browser opened the verification address with the user code", timeout: 60) {
+            server.verificationPageVisits.contains(FakeAgentreServer.userCode)
+        }
+        screen.shot("03 verification page")
+        app.activate()
+        screen.expect(screen.tab(copy("Shell", "shell.tab.messages")), "Messages tab after sign-in", timeout: 30)
+        XCTAssertFalse(server.signedInFingerprint.isEmpty, "authorize carried no device fingerprint")
+        screen.shot("04 signed in")
     }
 
     /// 三枚处置同处一行（竖直中线对齐）、按次序从左到右互不重叠，且整行贴着卡片右缘（最右一枚靠近屏幕右边）。

@@ -66,6 +66,58 @@ struct SignOutTests {
         #expect(model.failure == .signedOut)
     }
 
+    @Test("撤销本机：拆登录态途中另一个请求撞上 401，也不拿已撤销的刷新令牌去刷新，只登出一次")
+    func revokingThisDeviceNeverRefreshes() async throws {
+        let directory = try TemporaryDirectory()
+        let store = try await storeWithPreviousAccountRows(directory)
+        let credentials = InMemoryCredentialStore(credentials: signedInCredentials)
+        let session = AppSession(credentials: credentials)
+        let signOut = SignOut(session: session, store: store)
+        let server = ServerAddress.production
+
+        // 与真实服务端同形：撤销后该设备的令牌一律 401，刷新链整条作废（invalid_grant，device revoked）。
+        let revoked = HitCounter()
+        let wire = FakeHTTPTransport { request in
+            switch request.url.path {
+            case "/v1/oauth/token/revoke":
+                revoked.hit()
+                return HTTPResponse(status: 200, body: Data(#"{"code":0,"msg":"ok","data":{}}"#.utf8))
+            case "/v1/oauth/token/refresh":
+                return .oauthError("invalid_grant", status: 400)
+            default:
+                return revoked.value > 0 ? HTTPResponse(status: 401) : .cagoData(#"{"devices":[]}"#)
+            }
+        }
+        let rejections = HitCounter()
+        let tokens = AccessTokenProvider(
+            credentials: credentials,
+            refresher: DeviceAuthClient(transport: wire, platform: "ios", version: "1", deviceName: "iPhone"),
+            server: { server },
+            onRejected: { rejections.hit(); await signOut.run() }
+        )
+        signOut.tokens = tokens
+        let account = AccountClient(transport: AuthorizedTransport(inner: wire, tokens: tokens))
+        // 拆登录态的途中，某一屏的请求还在路上（真机上是跟随与各屏的读取），带着已撤销的令牌撞上 401。
+        var teardowns = 0
+        signOut.beforeClearing = {
+            teardowns += 1
+            guard teardowns == 1 else { return }
+            _ = try? await account.devices(server: server)
+        }
+        let model = MeModel(
+            account: account, servers: InMemoryServerAddressStore(), preferences: InMemoryDisplayPreferencesStore(), signOut: signOut
+        )
+
+        await model.revoke(thisPhone)
+
+        #expect(await wire.requests.map(\.url.path).filter { $0 == "/v1/oauth/token/refresh" }.isEmpty)
+        #expect(rejections.value == 0)
+        #expect(teardowns == 1)
+        #expect(session.phase == .signedOut)
+        #expect(credentials.stored == nil)
+        #expect(try await store.conversations().isEmpty)
+    }
+
     @Test("本地库删行失败：上一个账号的行在本实例与冷启动重开后都读不到，令牌照样清掉")
     func clearFailureLeavesNothingReadable() async throws {
         struct ClearFailed: Error {}
@@ -98,4 +150,12 @@ struct SignOutTests {
         #expect(credentials.stored == nil)
         #expect(await store.removeAllCalls >= 1)
     }
+}
+
+/// 跨并发域计数（伪服务端的处理闭包与令牌提供方的回调里都要记）。
+private final class HitCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func hit() { lock.withLock { count += 1 } }
 }

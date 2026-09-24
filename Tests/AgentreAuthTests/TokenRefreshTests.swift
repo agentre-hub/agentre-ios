@@ -121,6 +121,60 @@ struct TokenRefreshTests {
         #expect(store.stored == nil)
     }
 
+    @Test("登出已开始（令牌还在钥匙串里）：这份登录不再交出令牌、遇 401 也不刷新")
+    func retiredLoginNeverRefreshes() async throws {
+        let refresher = GatedRefresher(outcome: .success(Self.fresh))
+        await refresher.release()
+        let rejections = RejectionCounter()
+        let provider = AccessTokenProvider(
+            credentials: InMemoryCredentialStore(credentials: Self.old), refresher: refresher, server: { .production }, onRejected: { rejections.hit() }
+        )
+
+        await provider.retire()
+
+        await #expect(throws: AuthError.signedOut) { try await provider.accessToken() }
+        await #expect(throws: AuthError.signedOut) { try await provider.refreshedToken(replacing: "old-at") }
+        await #expect(throws: AuthError.signedOut) { try await provider.unexpiredAccessToken() }
+        #expect(await refresher.calls.isEmpty)
+        #expect(rejections.value == 0)
+    }
+
+    @Test("刷新在路上时登出开始：刷回来的令牌不落库、被拒也不再登出一次，调用方得到 signedOut")
+    func retireDuringRefresh() async throws {
+        for outcome in [Result<TokenGrant, AuthError>.success(Self.fresh), .failure(.refreshRejected)] {
+            let store = InMemoryCredentialStore(credentials: Self.old)
+            let refresher = GatedRefresher(outcome: outcome)
+            let rejections = RejectionCounter()
+            let provider = AccessTokenProvider(credentials: store, refresher: refresher, server: { .production }, onRejected: { rejections.hit() })
+
+            let refreshing = Task { try await provider.refreshedToken(replacing: "old-at") }
+            for _ in 0..<1_000 where await refresher.waiting == 0 { await Task.yield() }
+            await provider.retire()
+            await refresher.release()
+
+            await #expect(throws: AuthError.signedOut) { try await refreshing.value }
+            #expect(store.stored == Self.old)
+            #expect(rejections.value == 0)
+        }
+    }
+
+    @Test("登出之后又登录了另一份：新登录照常取令牌与刷新")
+    func signInAfterRetire() async throws {
+        let store = InMemoryCredentialStore(credentials: Self.old)
+        let refresher = GatedRefresher(outcome: .success(Self.fresh))
+        await refresher.release()
+        let provider = AccessTokenProvider(credentials: store, refresher: refresher, server: { .production }, onRejected: {})
+        await provider.retire()
+        try store.clearCredentials()
+
+        let next = Credentials(accessToken: "next-at", refreshToken: "next-rt", accessTokenExpiresAt: .distantPast, refreshTokenExpiresAt: .distantFuture, deviceID: 9)
+        try store.saveCredentials(next)
+
+        #expect(try await provider.accessToken() == "next-at")
+        #expect(try await provider.refreshedToken(replacing: "next-at") == "new-at")
+        #expect(await refresher.calls == ["next-rt"])
+    }
+
     @Test("刷新途中登出又登录了另一份：旧的刷新结果不盖掉新凭据，被拒也不把新登录登出")
     func reSignInDuringRefreshKeepsNewLogin() async throws {
         let other = Credentials(accessToken: "other-at", refreshToken: "other-rt", accessTokenExpiresAt: .distantFuture, refreshTokenExpiresAt: .distantFuture, deviceID: 11)

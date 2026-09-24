@@ -23,8 +23,14 @@ final class AppEnvironment {
     let connectivity: Connectivity
     private(set) var services: SignedInServices?
 
-    init(_ dependencies: AppDependencies) throws {
+    /// `startSignedOut`：上一次留下的登录态与本地库一并丢掉再起步（界面流程的每个用例都从登录屏开始，
+    /// 不论上一个怎么收场——钥匙串不随 App 清掉）。与登出同一次序：先库、后令牌；设备指纹不动。
+    init(_ dependencies: AppDependencies, startSignedOut: Bool = false) throws {
         self.dependencies = dependencies
+        if startSignedOut {
+            try? FileManager.default.removeItem(at: dependencies.storeDirectory)
+            try? dependencies.credentials.clearCredentials()
+        }
         store = try Self.openStore(in: dependencies.storeDirectory)
         let session = AppSession(credentials: dependencies.credentials)
         self.session = session
@@ -42,6 +48,7 @@ final class AppEnvironment {
             credentials: dependencies.credentials, refresher: deviceAuth, server: { servers.load() },
             onRejected: { await signOut.run() }
         )
+        signOut.tokens = tokens
         transport = AuthorizedTransport(inner: dependencies.http, tokens: tokens)
         me = MeModel(account: AccountClient(transport: transport), servers: servers, preferences: dependencies.preferences, signOut: signOut)
         connectivity = Connectivity(updates: dependencies.networkPath())

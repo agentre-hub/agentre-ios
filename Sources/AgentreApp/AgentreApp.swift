@@ -17,10 +17,15 @@ struct AgentreApp: App {
     static func environment(for process: [String: String]) -> AppEnvironment? {
         guard process["XCTestConfigurationFilePath"] == nil else { return nil }
         do {
-            return try AppEnvironment(.live())
+            return try AppEnvironment(.live(), startSignedOut: startsSignedOut(process))
         } catch {
             // 库目录建不起来（沙盒不可写）时应用无从运转；这不是用户能处理的情形。
             fatalError("local store unavailable")
         }
+    }
+
+    /// 界面流程（XCUITest）经启动环境要求从登出状态起步。
+    static func startsSignedOut(_ process: [String: String]) -> Bool {
+        process["AGENTRE_START_SIGNED_OUT"] == "1"
     }
 }

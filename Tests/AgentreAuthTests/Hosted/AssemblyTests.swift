@@ -485,6 +485,28 @@ struct AssemblyTests {
         #expect(environment.me.profile == nil && environment.me.devices.isEmpty && environment.me.failure == nil)
     }
 
+    @Test("从登出状态起步（界面流程的启动环境）：上一次留在钥匙串里的令牌与库里的会话都不带进来，设备指纹不变")
+    func startSignedOutDropsLeftovers() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let fingerprint = try harness.credentials.deviceFingerprint()
+        do {
+            let previous = try harness.environment()
+            _ = try await savedElsewhere(harness, previous)
+            #expect(try await !previous.store.conversations().isEmpty)
+        }
+
+        let environment = try AppEnvironment(harness.dependencies(), startSignedOut: true)
+
+        #expect(environment.session.phase == .signedOut)
+        #expect(try harness.credentials.loadCredentials() == nil)
+        #expect(try await environment.store.conversations().isEmpty)
+        #expect(try harness.credentials.deviceFingerprint() == fingerprint)
+        #expect(AgentreApp.startsSignedOut(["AGENTRE_START_SIGNED_OUT": "1"]))
+        #expect(!AgentreApp.startsSignedOut([:]))
+    }
+
     @Test("作为测试宿主启动时不装配真实环境：不读真钥匙串里的令牌、不连默认的生产服务器、不开真实的本地库")
     func testHostBuildsNoLiveEnvironment() {
         #expect(AgentreApp.environment(for: ["XCTestConfigurationFilePath": "/tmp/run.xctestconfiguration"]) == nil)
