@@ -178,4 +178,29 @@ struct MachineScreensTests {
         #expect(!joined.contains("Fix build"))
         #expect(!labels.contains(Self.text("machines.detail.save")))
     }
+
+    @Test("会话行的标题从行首起排、占去行宽的大半：闲着的行与等你处理 / 运行中 / 失败的行都一样（iPhone 17 宽度）")
+    func sessionTitleStartsAtRowLeadingAndFillsTheRow() async throws {
+        let long = "只用文字回答，绝对不要调用任何工具、不要读写任何文件：写一段大约 800 字的短文，介绍 Go 语言的并发模型。"
+        let sessions = [
+            session("c-idle", title: "闲着 · " + long, at: 400),
+            session("c-waiting", title: "等你 · " + long, lifecycle: "running", waiting: true, at: 300),
+            session("c-running", title: "运行 · " + long, lifecycle: "running", at: 200),
+            session("c-failed", title: "失败 · " + long, lifecycle: "failed", at: 100),
+        ]
+        let model = MachineDetailModel(
+            machine: onlineMachine(), sessions: FakeSessionSource(sessions), store: FakeSavingStore(), transfer: FakeTransfer(), pageSize: 10
+        )
+        await model.load()
+        #expect(model.rows.count == 4)
+        let phoneWidth: CGFloat = 402, rowInset: CGFloat = 16
+        let screen = HostedScreen(MachineDetailView(model: model, onOpen: { _ in }), size: CGSize(width: phoneWidth, height: 874))
+        let rowWidth = phoneWidth - 2 * rowInset
+        for session in sessions {
+            let title = try #require(await screen.frame(of: session.title), "找不到标题 \(session.title)")
+            // 行内留白加一枚状态图标的位置：标题不得再往右。
+            #expect(title.minX - rowInset <= 44, "\(session.conversationID)：标题起于 \(title.minX)")
+            #expect(title.width >= rowWidth * 0.6, "\(session.conversationID)：标题宽 \(title.width) / 行宽 \(rowWidth)")
+        }
+    }
 }

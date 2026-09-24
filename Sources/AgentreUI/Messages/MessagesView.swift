@@ -149,7 +149,10 @@ struct ConversationStatusGlyph: View {
                     .foregroundStyle(.token(presentation.token))
                     .accessibilityLabel(Text(presentation.label, tableName: "Messages", bundle: .module))
             } else {
-                Color.clear
+                // 同一字号下一枚图标的宽度，不多占：Color.clear 会吃掉 HStack 分出来的富余宽度，
+                // 与标题对半分行宽，把标题挤到行中右。
+                Image(systemName: "circle")
+                    .hidden()
                     .accessibilityHidden(true)
             }
         }

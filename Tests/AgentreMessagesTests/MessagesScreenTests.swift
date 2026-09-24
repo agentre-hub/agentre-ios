@@ -73,4 +73,36 @@ struct MessagesScreenTests {
             #expect(!idle.contains(Self.text(key)), "\(idle)")
         }
     }
+
+    /// iPhone 17 的逻辑宽度，与列表行两侧各 16 的留白。
+    static let phoneWidth: CGFloat = 402
+    static let rowInset: CGFloat = 16
+
+    @Test("标题从行首起排、占去行宽的大半：闲着的行与等你处理 / 运行中 / 失败的行都一样（iPhone 17 宽度）")
+    func titleStartsAtRowLeadingAndFillsTheRow() async throws {
+        let long = "只用文字回答，绝对不要调用任何工具、不要读写任何文件：写一段大约 800 字的短文，介绍 Go 语言的并发模型。"
+        let rows = [
+            SavedConversation(key: key("idle"), title: "闲着 · " + long, lifecycleState: "idle", lastMessageAt: 400, readMarker: 0, lastText: "好"),
+            SavedConversation(
+                key: key("waiting"), title: "等你 · " + long, lifecycleState: "running", waitingForInput: true, lastMessageAt: 300,
+                pending: .permission(tool: "Bash", detail: "pwd")
+            ),
+            SavedConversation(key: key("typing"), title: "运行 · " + long, lifecycleState: "running", lastMessageAt: 200),
+            SavedConversation(key: key("failed"), title: "失败 · " + long, lifecycleState: "failed", lastMessageAt: 100, readMarker: 100),
+        ]
+        // 整行在列表里是一个按钮，读屏把它合成一句；这里把同一个行视图按列表的行宽排开，量标题本身。
+        let screen = HostedScreen(
+            VStack(spacing: 8) { ForEach(rows) { MessageRow(conversation: $0) } }
+                .padding(.horizontal, Self.rowInset)
+                .frame(maxHeight: .infinity, alignment: .top),
+            size: CGSize(width: Self.phoneWidth, height: 874)
+        )
+        let rowWidth = Self.phoneWidth - 2 * Self.rowInset
+        for row in rows {
+            let title = try #require(await screen.frame(of: row.title), "找不到标题 \(row.title)")
+            // 行内留白加一枚状态图标的位置：标题不得再往右。
+            #expect(title.minX - Self.rowInset <= 44, "\(row.key.conversationID)：标题起于 \(title.minX)")
+            #expect(title.width >= rowWidth * 0.6, "\(row.key.conversationID)：标题宽 \(title.width) / 行宽 \(rowWidth)")
+        }
+    }
 }
