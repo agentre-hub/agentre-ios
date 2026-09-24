@@ -24,8 +24,13 @@ struct AgentreApp: App {
         }
     }
 
-    /// 界面流程（XCUITest）经启动环境要求从登出状态起步。
+    /// 界面流程（XCUITest）经启动环境要求从登出状态起步。它删本地库与钥匙串里的令牌，只留在 Debug：
+    /// 界面流程跑的是 Debug，发行版里不该有一个经启动环境就能清掉用户登录态的开关。
     static func startsSignedOut(_ process: [String: String]) -> Bool {
-        process["AGENTRE_START_SIGNED_OUT"] == "1"
+        #if DEBUG
+            process["AGENTRE_START_SIGNED_OUT"] == "1"
+        #else
+            false
+        #endif
     }
 }

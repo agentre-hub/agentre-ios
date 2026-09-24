@@ -242,11 +242,12 @@ final class FakeMachine: @unchecked Sendable {
         _ = lock.withLock { activeTurns.remove(conversationID) }
     }
 
-    /// 会话行上的生命周期（agentred 开一轮落 running、收场落 idle / failed），会话清单照它答。
+    /// 会话的发起端：没给的算机器自己发起的。
     private func origin(of session: Session) -> String {
         session.peerFingerprint.isEmpty ? fingerprint : session.peerFingerprint
     }
 
+    /// 会话行上的生命周期（agentred 开一轮落 running、收场落 idle / failed），会话清单照它答。
     func setLifecycle(_ conversationID: String, _ state: String) {
         lock.withLock {
             guard let index = sessions.firstIndex(where: { $0.conversationID == conversationID }) else { return }

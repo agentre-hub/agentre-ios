@@ -36,7 +36,7 @@ struct TranscriptScrollTests {
 
         // 用户上滚。
         scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: false)
-        try await host.settle { !model.follow.isFollowing }
+        try await host.settle("上滚后仍在跟随：\(host.describe(scrollView))") { !model.follow.isFollowing }
 
         model.merge(live: [liveFrame(decoder, 42, .userMessage("第 42 句")), liveFrame(decoder, 43, .userMessage("第 43 句"))])
         try await host.settle { model.follow.unseen == 2 }
@@ -89,7 +89,7 @@ struct TranscriptScrollTests {
         let (model, host, scrollView) = try await openAtBottom(rows: 40)
 
         scrollView.setContentOffset(CGPoint(x: 0, y: -scrollView.adjustedContentInset.top), animated: false)
-        try await host.settle { !model.follow.isFollowing }
+        try await host.settle("上滚后仍在跟随：\(host.describe(scrollView))") { !model.follow.isFollowing }
         let away = scrollView.contentOffset.y
 
         model.merge(live: [liveFrame(decoder, 41, .userMessage("第 41 句")), liveFrame(decoder, 42, .userMessage("第 42 句"))])
