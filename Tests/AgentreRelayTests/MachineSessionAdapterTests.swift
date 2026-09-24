@@ -65,6 +65,21 @@ private func durableFrame(_ seq: Int64, createtime: Int64) -> Agentre_Wire_Durab
         ))
     }
 
+    @Test("清单里的发起端：agentred 对调用方自己发起的那行不回显（空），交回的是本机指纹；他端与机器自己的原样")
+    func listNamesTheCallerAsOriginOfItsOwnSessions() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayMachineSessions(connection: harness.connection, caller: "phone-fp")
+        async let page = adapter.sessions(on: "fp-1", keyword: "", cursor: "", limit: 20)
+        let (socket, id) = try await harness.machineChannel("fp-1")
+        let request = try await socket.nextRequest(on: id, method: .sessionList)
+        var response = Agentre_Wire_SessionListResponse()
+        response.sessions = [summary("mine", peer: ""), summary("desk", peer: "desktop-fp"), summary("host", peer: "fp-1")]
+        socket.respond(id, to: request, with: response)
+
+        let origins = try await page.sessions.map(\.peerFingerprint)
+        #expect(origins == ["phone-fp", "desktop-fp", "fp-1"])
+    }
+
     @Test("计数：sessionCounts 的三个数原样交出")
     func countsSessions() async throws {
         let harness = await Harness.started()
@@ -111,9 +126,10 @@ private func durableFrame(_ seq: Int64, createtime: Int64) -> Agentre_Wire_Durab
         let desktop = ConversationKey(machineFingerprint: "desktop-fp", conversationID: "conv-1")
         #expect(try await lookUp(desktop, answering: [summary("conv-1", peer: "")]) == nil)
         #expect(try await lookUp(desktop, answering: [summary("conv-1", peer: "desktop-fp")])?.peerFingerprint == "desktop-fp")
-        // 从机器详情页按清单原样存下、键落在承载机上的那一行，照旧认得。
+        // 机器自己发起的（发起端报的是承载机自己的指纹）键落在承载机上，照旧认得；空发起端那行是本机的，不是它。
         let carrierKeyed = ConversationKey(machineFingerprint: "fp-1", conversationID: "conv-1")
-        #expect(try await lookUp(carrierKeyed, answering: [summary("conv-1", peer: "")])?.peerFingerprint == "")
+        #expect(try await lookUp(carrierKeyed, answering: [summary("conv-1", peer: "fp-1")])?.peerFingerprint == "fp-1")
+        #expect(try await lookUp(carrierKeyed, answering: [summary("conv-1", peer: "")]) == nil)
     }
 
     @Test("保存到手机：attach 带 conversation_id 与发起端指纹，答复最高帧号；pull 的帧载荷是 RpcNotification 字节，createtime 原样")

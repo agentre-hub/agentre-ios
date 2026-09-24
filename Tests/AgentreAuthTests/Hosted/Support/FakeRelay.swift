@@ -188,9 +188,11 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 /// 会话清单照搬 agentred 的发起端回显：只标在**别的对端**发起的会话上，调用方自己发起的那几条
 /// peer_fingerprint 为空（agentre/internal/daemon/handlers/session_catchup.go:167 `row.PeerFingerprint != peer`）。
 /// 调用方是中继按访问令牌认出的那台设备，不在任何请求字段里，所以由 `caller` 给出。
+/// 真实清单里别人发起的行从不为空：不给发起端的会话算作机器自己发起的，报机器自己的指纹（桌面端作承载机时即如此）。
 final class FakeMachine: @unchecked Sendable {
     struct Session {
         var conversationID: String
+        /// 发起端；空 = 机器自己。
         var peerFingerprint = ""
         var title = ""
         var lifecycleState = "idle"
@@ -241,6 +243,10 @@ final class FakeMachine: @unchecked Sendable {
     }
 
     /// 会话行上的生命周期（agentred 开一轮落 running、收场落 idle / failed），会话清单照它答。
+    private func origin(of session: Session) -> String {
+        session.peerFingerprint.isEmpty ? fingerprint : session.peerFingerprint
+    }
+
     func setLifecycle(_ conversationID: String, _ state: String) {
         lock.withLock {
             guard let index = sessions.firstIndex(where: { $0.conversationID == conversationID }) else { return }
@@ -292,7 +298,7 @@ final class FakeMachine: @unchecked Sendable {
                 for session in sessions {
                     r.message(1, Proto { s in
                         s.string(1, session.conversationID)
-                        s.string(2, session.peerFingerprint == caller ? "" : session.peerFingerprint)
+                        s.string(2, origin(of: session) == caller ? "" : origin(of: session))
                         s.string(4, session.title)
                         s.string(7, session.cwd)
                         s.string(9, session.backendType)

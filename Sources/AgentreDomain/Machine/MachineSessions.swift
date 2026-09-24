@@ -3,7 +3,8 @@ import Foundation
 /// 机器会话清单里的一条（wire `SessionSummary` 的领域形状），机器现答的。
 public struct MachineSession: Sendable, Equatable, Identifiable {
     public let conversationID: String
-    /// 清单里原样回显的发起端指纹；空表示「就是这台机器」。
+    /// 发起端指纹。机器对调用方自己发起的会话不回显发起端，适配器把那一格补成本机指纹；
+    /// 空只剩「不知道是谁」一种，键回落到承载机。
     public let peerFingerprint: String
     public let title: String
     public let agentSyncID: String

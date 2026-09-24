@@ -137,6 +137,39 @@ struct AssemblyTests {
         #expect(list.target == "machine:machine-a")
     }
 
+    @Test("机器详情里手机自己新建的对话（清单对调用方不回显发起端）：读作已保存，再保存也不多出一行；他端发起的照旧未保存")
+    func phoneStartedConversationIsSavedInMachineDetail() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let phone = try harness.credentials.deviceFingerprint().value
+        harness.machine.add(
+            FakeMachine.Session(conversationID: "conv-new", peerFingerprint: phone, title: "New"),
+            frames: [WireNotification.userMessage("conv-new", seq: 0, "hello")]
+        )
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-desk", peerFingerprint: "origin-desktop", title: "Desk"), frames: [])
+        let environment = try harness.environment()
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let request = DispatchRequest(
+            conversationID: "conv-new", title: "New", userText: "hello", agentSyncID: "", projectSyncID: nil,
+            target: DispatchChoice(deviceFingerprint: "machine-a", deviceName: "mac-studio", backendType: "claudecode", cwd: "/work")
+        )
+        let key = try await services.startedRecorder.record(StartedConversation(request: request))
+
+        let detail = services.detailModel(for: Machine(id: 10, fingerprint: "machine-a", name: "mac-studio", online: true))
+        await detail.load()
+        let mine = try #require(detail.rows.first { $0.session.conversationID == "conv-new" })
+        #expect(mine.key == key)
+        #expect(mine.isSaved)
+        #expect(detail.rows.first { $0.session.conversationID == "conv-desk" }?.isSaved == false)
+
+        let machine = Machine(id: 10, fingerprint: "machine-a", name: "mac-studio", online: true)
+        try await ConversationSaver(store: environment.store, transfer: services.transfer).save(mine.session, on: machine)
+        #expect(try await environment.store.conversations().map(\.key) == [key])
+        #expect(try await environment.store.conversation(key)?.peerFingerprint == phone)
+    }
+
     @Test("服务端关掉承载机的通道：跟随停下并如实说出来，不留一条无声冻住的会话")
     func closedChannelIsReported() async throws {
         let harness = try Harness()
