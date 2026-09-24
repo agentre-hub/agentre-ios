@@ -358,9 +358,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: b3032a1
+    note: "根因（实测）：每个流式增量都把整条回复作为一个 Text 重新排版，成本随回复增长（1k 字约 27ms/增量，15k 字约 460ms），转录落后机器数分钟，视图停在尚未追上的文本底部；不是高度估算偏小。dev 证据里长文标签在滑动中从 13043 涨到 17142 字。修：超长文本行在空行处拆为多个单元格（每段至少 3000 字节，TranscriptCells.swift），只重排最后一段，段间补回行距。RED：TranscriptScrollTests/streamingDeltaCostDoesNotGrowWithReply exit 65（20 个增量 1000 字 0.29s、15000 字 3.39s）。GREEN：openingOnHugeRepliesLandsOnLastRow（修前也过）、followingHugeStreamingReplyEndsOnLastRow（42.6s→7.6s）、segmentsStackToTheSameHeight 过；任务 32 的 7 条滚动用例过；AgentreTranscriptTests 141 exit 0；AgentreApprovalTests 42 + 主线 UI 4 条 exit 0。关注：超过约 3000 字节的回复，长按复制与 VoiceOver 改为逐段；无空行的超大段不拆仍慢；重新打开时积压预览帧的真实投递路径未在真机复核。"
 
 review:
   status: pending
