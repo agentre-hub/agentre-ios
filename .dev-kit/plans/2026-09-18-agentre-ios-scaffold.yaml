@@ -320,7 +320,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Sources/AgentreDomain/Session/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: mid
     interfaces: "RelayMachineSessions 已持有本机指纹（0b8ec51）"
-    status: todo
+    status: doing
     commit: null
     note: null
   - id: 30
