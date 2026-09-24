@@ -290,9 +290,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Tests/AgentreMessagesTests/, agentre-ios/Tests/AgentreMachineTests/]
     model: mid
     interfaces: "ConversationStatusGlyph（Sources/AgentreUI/Messages/MessagesView.swift、Sources/AgentreUI/Machines/MachineDetailView.swift）"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 209ac4f
+    note: "RED：AgentreKit 方案在隔离包副本上跑（Agentre 方案被并发任务 28 的在制品挡住编译），exit 65，两项 402pt 测试仅空闲行失败（Messages 标题起于 207、宽 84/370；机器详情起于 183、宽 135/370）。GREEN：同命令 exit 0，Messages 27 + Machine 33 + Design 19 全过，含「状态不只靠颜色」、44×44 点击区、本地化覆盖。根因：空闲占位 Color.clear 只设 minWidth，会吃掉剩余行宽；改为隐藏 circle 图标。关注：Messages 行整体是按钮，测试按列表行宽单独布局 MessageRow。"
 
   - id: 27
     goal: "模型面板与常驻行/面板里「当前模型」显示模型的可读名（引擎目录里的 name，缺失时回落到 modelId，再缺才用 modelKey），不再只显示 UUID 形的 modelKey；选择仍以 modelKey 下发；先以测试对现状失败（运行验证 evidence-3/72-model：逐行 UUID）。对照控制台 / 桌面端的模型选择器怎样显示名称。"
