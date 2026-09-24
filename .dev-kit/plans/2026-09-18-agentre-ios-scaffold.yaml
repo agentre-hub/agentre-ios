@@ -339,9 +339,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 7057cd7
+    note: "根因：真实 agentred 在发 run_result_done 之前先把回合从该连接的会话表注销（agentre internal/daemon/handlers/runtime.go:940-941），DrainPending 经 resolveSession 查表（:1349-1354、:1682-1689）得 -32010 no active turn，手机把它当作取回失败落成「未发送」；插话仍在 claudecode 收件箱。steer/drain 日志为 Debug 级故 dev info 日志无记录。修：RelayComposer.drainPending 先 session.attach（AdoptForPeer 放回占位行，runtime.go:243-254）再取回；attach 被拒则报错不取回。假对端按真实会话表建模，FakeAgentred 新增 runtimeSteer/runtimeDrainPending。RED：AgentreHostedTests/AssemblyTests/leftoverSteerAfterOwnTurnContinues() exit 65（dropped 非空、第二次 run 未发生），修后 exit 0。GREEN：Relay 87 + Composer 83 exit 0；Hosted 37 exit 0；主线 UI 新增排队步：四组合 + LeftoverSignIn 过（一条命令 595s 超时后 zh-Hans Light 单跑 exit 0）。UI 新步未对旧实现跑 RED。旁注：agentre-server 控制台 useSteerAutoContinue 同样不先 attach 就取回，可能同病，不在本仓。"
   - id: 32
     goal: "打开着的对话屏在底部跟随时 App 进后台、该轮在后台结束，回前台后仍停在最新处继续跟随，不出现「回到最新」；只有用户上滚才停止跟随（规格转录「用户向上滚动后即停止自动跟随」）。dev 实测（report-4 #11，evidence-4/38-return-probe*.png、40-down-4.png）回前台后视口停在更早内容、出现「回到最新 · 6 条新内容」。先以转录层测试复现（回前台补齐大量行时跟随状态被误判为用户上滚），再修。"
     deps: []
