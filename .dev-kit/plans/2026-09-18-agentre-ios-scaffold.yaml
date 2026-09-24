@@ -329,9 +329,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreDomain/Core/, agentre-ios/Sources/AgentreDomain/Ports/, agentre-ios/Sources/AgentreREST/, agentre-ios/Sources/AgentreUI/Me/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/UITests/]
     model: mid
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: a2f559f
+    note: "RED：AgentreAccountTests/SignOutTests exit 65（撤销本机拆登录态途中 401 触发一次 refresh、二次登出、两次 teardown；真实 server 对已撤销设备 refresh 回 400 invalid_grant，假服务端回 404 故落进 unhandledRequests）；AgentreAuthTests/TokenRefreshTests exit 65（retire() 三条规格）；AgentreUITests/MainlineUITests/testLeftoverSignInDoesNotCarryIntoNextFlow exit 65 :200。修：AccessTokenProvider.retire() 由 SignOut.run() 先调，作废后不给令牌、不刷新、在途刷新不落盘不再登出；启动环境 AGENTRE_START_SIGNED_OUT=1 让 AppEnvironment 先删本地库再删钥匙串令牌（保留设备指纹），UI 测试每次启动都带，删去 signOutLeftover。GREEN：AuthTests 54 / AccountTests 39 / HostedTests 36 exit 0；testLeftoverSignInDoesNotCarryIntoNextFlow exit 0；四个主线组合一条命令 exit 0（负载约 10）；FakeServerTests + leftover exit 0（负载约 440）。备注：该启动钩子随所有构建发布，作用仅为启动时登出。"
 
 review:
   status: pending
