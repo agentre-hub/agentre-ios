@@ -130,6 +130,42 @@ struct TranscriptScrollTests {
         #expect(abs(scrollView.contentOffset.y - away) < 2, "视口被拉回：\(host.describe(scrollView))")
     }
 
+    @Test("跟随中一大段流式回复落定（整行换成入库的那一行）、下一轮接着涌入：仍在底部跟随，不出现「回到最新」")
+    func followingSurvivesSettledStreamingReply() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40)
+        var seq: Int64 = 40
+        func next() -> Int64 { seq += 1; return seq }
+        // 几屏高的回复：预览帧逐段长出来，每段之间布局一次（回前台后补齐与实时流都是这样到的）。
+        let paragraphs = (1...60).map { "第 \($0) 段：所有权、借用与生命周期的长篇说明，写得够长，让这一行撑到好几屏高。\n\n" }
+        var frames = [liveFrame(decoder, next(), .userMessage("讲讲 Rust 的所有权")), liveFrame(decoder, next(), .turnStarted)]
+        frames += paragraphs.map { liveFrame(decoder, nil, .textDelta($0), preview: true) }
+        // 这一轮落定：预览那一行被入库的同一段文字取代；紧接着排队的下一句开了新的一轮。
+        frames += [
+            liveFrame(decoder, next(), .textDelta(paragraphs.joined())),
+            liveFrame(decoder, next(), .turnDone(TurnDone(durationMs: 35_000))),
+            liveFrame(decoder, next(), .userMessage("再讲讲 Kotlin 协程")),
+            liveFrame(decoder, next(), .turnStarted),
+            liveFrame(decoder, next(), .thinkingDelta("想一想")),
+            liveFrame(decoder, next(), .toolCall(use("k-1"))),
+            liveFrame(decoder, next(), .toolResult(result("k-1"))),
+        ]
+        for (index, frame) in frames.enumerated() {
+            model.merge(live: [frame])
+            try await host.frames(1)
+            guard model.follow.isFollowing else {
+                Issue.record("第 \(index) 帧后停止了跟随，用户并没有滚动：\(host.describe(scrollView))")
+                return
+            }
+        }
+        try await host.settle("没有回到底部：\(host.describe(scrollView))") { host.isAtBottom(scrollView) && host.isShowingLastRow(scrollView, model: model) }
+        try await host.frames(15)
+        #expect(model.follow.isFollowing)
+        #expect(model.follow.unseen == 0)
+        #expect(host.isAtBottom(scrollView), "\(host.describe(scrollView))")
+        let jumpLabel = text("transcript.jumpToLatest")
+        #expect(await host.element(labelled: jumpLabel) == nil, "屏上出现了「\(jumpLabel)」")
+    }
+
     /// 打开 `rows` 句的转录，等它在底部、在跟随。
     private func openAtBottom(rows count: Int) async throws -> (TranscriptModel, ScrollHost, UIScrollView) {
         let frames = (1...count).map { stored(decoder, Int64($0), .userMessage("第 \($0) 句")) }

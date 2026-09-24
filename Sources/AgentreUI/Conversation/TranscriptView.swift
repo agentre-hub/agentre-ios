@@ -10,6 +10,7 @@ public struct TranscriptView<Card: View>: View {
     private let model: TranscriptModel
     private let agentName: String
     private let card: (TranscriptCard) -> Card
+    @State private var pin = Pin()
 
     /// - Parameters:
     ///   - agentName: 署名（由宿主给出）。
@@ -45,33 +46,37 @@ public struct TranscriptView<Card: View>: View {
                     offset: geometry.contentOffset.y,
                     contentHeight: geometry.contentSize.height,
                     visibleHeight: visibleHeight,
-                    atBottom: geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom >= geometry.contentSize.height - 32
+                    belowViewport: geometry.contentSize.height - (geometry.contentOffset.y + geometry.containerSize.height - geometry.contentInsets.bottom)
                 )
             } action: { old, new in
-                // 跟随中布局变了（键盘弹回、回前台、行高落定）：重新贴到最新一行。行变化另由下面的 onChange 贴。
-                if model.follow.isFollowing, new.contentHeight > 0,
-                   abs(new.visibleHeight - old.visibleHeight) >= 1 || abs(new.contentHeight - old.contentHeight) >= 1,
-                   let last = model.rows.last {
-                    proxy.scrollTo(last.id, anchor: .bottom)
+                // 这一步是上一次贴底挪出来的，不是用户滚的。贴底按最新一行的位置滚；那一行刚换了身份（流式回复
+                // 落定成入库的那一行）时位置还是估计值，会落在几屏之上——还在跟随就照实际位置再贴一次。
+                let pinned = pin.pending
+                pin.pending = false
+                // 跟随中布局变了（新行、键盘弹回、回前台、行高落定）：重新贴到最新一行。
+                // 已经分毫不差地贴着底就不再贴：这一贴挪不动视口，记号便等不到它的那一步，会把用户随后的上滚认领走。
+                if model.follow.isFollowing, new.contentHeight > 0, new.belowViewport >= 1,
+                   pinned || abs(new.visibleHeight - old.visibleHeight) >= 1 || abs(new.contentHeight - old.contentHeight) >= 1 {
+                    pin.toLatest(model.rows, proxy)
                 }
                 // 只认内容不变时视口自己的移动：内容增减（含首次布局、补进历史）带动的偏移不算滚动。
                 // 移到底部即恢复跟随；离开底部只认往上走——跟随的滚动只往下走。
                 // 首次布局时内容还是空的，安全区内边距会把偏移挪一下，那不是滚动。
-                guard new.contentHeight > 0, abs(new.contentHeight - old.contentHeight) < 1, abs(new.offset - old.offset) > 1 else { return }
+                guard !pinned, new.contentHeight > 0, abs(new.contentHeight - old.contentHeight) < 1, abs(new.offset - old.offset) > 1 else { return }
                 if new.atBottom {
                     if !model.follow.isFollowing { model.reachedBottom() }
                 } else if new.offset < old.offset, model.follow.isFollowing {
                     model.userScrolledAway()
                 }
             }
-            .onChange(of: model.rows) {
-                guard model.follow.isFollowing, let last = model.rows.last else { return }
-                proxy.scrollTo(last.id, anchor: .bottom)
+            .onScrollPhaseChange { _, phase in
+                // 用户上手了：此后的移动都归用户。
+                if phase == .tracking || phase == .interacting { pin.pending = false }
             }
             .safeAreaInset(edge: .bottom) {
                 if !model.follow.isFollowing {
                     JumpToLatestButton(unseen: model.follow.unseen) {
-                        if let last = model.rows.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                        pin.toLatest(model.rows, proxy)
                         model.jumpToLatest()
                     }
                     .padding(.bottom, 8)
@@ -95,7 +100,21 @@ fileprivate struct ScrollPosition: Equatable {
     var contentHeight: CGFloat
     /// 扣掉上下内边距后的可见高度。
     var visibleHeight: CGFloat
-    var atBottom: Bool
+    /// 可见区底边之下还有多少内容；贴底时为 0（越界回弹时为负）。
+    var belowViewport: CGFloat
+    var atBottom: Bool { belowViewport <= 32 }
+}
+
+/// 视图自己发起的贴底；它挪出来的下一步视口移动不算用户滚动。引用类型：记号变化不必重画转录。
+@MainActor
+private final class Pin {
+    var pending = false
+
+    func toLatest(_ rows: [TranscriptRow], _ proxy: ScrollViewProxy) {
+        guard let last = rows.last else { return }
+        pending = true
+        proxy.scrollTo(last.id, anchor: .bottom)
+    }
 }
 
 /// 回到最新：上滚离开底部时出现，标明其间新增了多少。
