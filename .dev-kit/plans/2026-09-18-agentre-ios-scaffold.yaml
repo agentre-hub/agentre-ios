@@ -310,9 +310,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/UITests/]
     model: strong
     interfaces: "任务 19 的 ComposerModel.reconcile(lifecycle:) 与 ConversationSync 摘要刷新；证据 e2e/scratch/…/evidence-3/64–68 与 report-3.md 的时间线"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 0b8ec51
+    note: "根因：agentred 会话清单只对非调用方发起的会话填 peer_fingerprint（agentre internal/daemon/handlers/session_catchup.go:167），手机发起的会话回来是空 origin，RelayMachineSessions 按本机指纹找不到行。两个假对端原先回显本机指纹，已改成与真实一致。RED：Hosted phoneStartedTurnEndedInBackground exit 65「stop button gone 超时」、MachineSessionAdapterTests exit 65、UI testMainlineEnglishLight :182 exit 65。GREEN：AgentreHostedTests 两次 34/34 exit 0；AgentreRelayTests 85、AgentreComposerTests 83 exit 0；AgentreUITests 分两批 exit 0 全过。约 90 秒空闲：是 scratch 驱动 testBackground 与 settle() 各睡一次 DRIVE_WAIT（Drive.swift:10,64），不是 App。阻塞关注：机器详情清单仍保留空 origin，领域层把空 origin 当作「机器上发起」（键回落到机器指纹），真实 agentred 下手机发起的会话在机器详情里大概会显示为未保存、再存一次可能落重复行；任务 19 的修复只对旧假对端成立。另：主线 :203 撤销本机后偶发两次 POST /v1/oauth/token/refresh，HEAD 未改动时同样出现。"
 
 review:
   status: pending
