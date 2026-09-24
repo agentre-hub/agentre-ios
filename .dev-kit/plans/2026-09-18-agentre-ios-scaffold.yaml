@@ -334,15 +334,15 @@ tasks:
     note: "RED：AgentreAccountTests/SignOutTests exit 65（撤销本机拆登录态途中 401 触发一次 refresh、二次登出、两次 teardown；真实 server 对已撤销设备 refresh 回 400 invalid_grant，假服务端回 404 故落进 unhandledRequests）；AgentreAuthTests/TokenRefreshTests exit 65（retire() 三条规格）；AgentreUITests/MainlineUITests/testLeftoverSignInDoesNotCarryIntoNextFlow exit 65 :200。修：AccessTokenProvider.retire() 由 SignOut.run() 先调，作废后不给令牌、不刷新、在途刷新不落盘不再登出；启动环境 AGENTRE_START_SIGNED_OUT=1 让 AppEnvironment 先删本地库再删钥匙串令牌（保留设备指纹），UI 测试每次启动都带，删去 signOutLeftover。GREEN：AuthTests 54 / AccountTests 39 / HostedTests 36 exit 0；testLeftoverSignInDoesNotCarryIntoNextFlow exit 0；四个主线组合一条命令 exit 0（负载约 10）；FakeServerTests + leftover exit 0（负载约 440）。备注：该启动钩子随所有构建发布，作用仅为启动时登出。"
 
 review:
-  status: running
-  axis: code
-  head: 4d7241f
-  receipt: .dev-kit/reviews/2026-09-18-agentre-ios-scaffold/code-5.md
-  fixes: []
-  note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。 修复轮规格轴 d9ccc8d → 8395987（十一项，全修；主会话重跑全量 572 条 + UI 4 条过）。 代码轴 d7ec054 → 1323662（六项缺陷 + 清理，受理回执 code-2.md）；其后主会话全量红：宿主回前台组不稳（非本轴引入，见任务 21），两轴须在任务 21 之后重跑。 任务 21 后重跑：规格轴 78a8534 → 3b67ebd（三项「状态不只靠颜色」，全修；主会话全新构建全量 581 + UI 4 过）。 代码轴 654bcb8 → a4a1572（十九项缺陷 RED 先行 + 四项整理，七项留原因于 code-3.md；点名风险 :149 判为用例拖拽关面板受时序影响，改点遮罩；主会话全新构建全量 598 + UI 5 过）。 修复轮二：规格轴 d1db44c → b17ac6f（三项：离线登录、草稿导航栏写 Agent、状态色作文字按 4.5；主会话全新构建全量 605 + UI 5 过）。 代码轴 e2bf29e → f33bbb5（UIKit 文本框占位与读屏标签、斜杠命令说明按 App 内语言解析并随切换更新；界面流程启动重置语言与外观；两项点名风险有结论；主会话全新构建全量 610 + UI 5 过）。计划中代码轴 head 记为 ead4fc9 系 amend 前的哈希，实际派发 HEAD 为 e2bf29e。 修复轮三：规格轴 4d7241f → 4d7241f（无发现、无提交；轴内全量 626 + UI 6 过；与主会话在 a2f559f 上的全绿全量仅差计划文件）。"
+  status: passed
+  axis: none
+  head: null
+  receipt: null
+  fixes: [7f4c463]
+  note: "修复轮重开两轴。首轮：规格轴 6472956 → 2321282（八项，全修）；代码轴 1394979 → ffe3c8e（全修；全量 536 条过）。首轮代码轴记录未修两条：实时帧不带来源设备，同一机器上同 ID 的两条会话仍可能串帧，需改协议；逐通道握手把账号令牌交给机器，属规格决策 3 的既定设计。 修复轮规格轴 d9ccc8d → 8395987（十一项，全修；主会话重跑全量 572 条 + UI 4 条过）。 代码轴 d7ec054 → 1323662（六项缺陷 + 清理，受理回执 code-2.md）；其后主会话全量红：宿主回前台组不稳（非本轴引入，见任务 21），两轴须在任务 21 之后重跑。 任务 21 后重跑：规格轴 78a8534 → 3b67ebd（三项「状态不只靠颜色」，全修；主会话全新构建全量 581 + UI 4 过）。 代码轴 654bcb8 → a4a1572（十九项缺陷 RED 先行 + 四项整理，七项留原因于 code-3.md；点名风险 :149 判为用例拖拽关面板受时序影响，改点遮罩；主会话全新构建全量 598 + UI 5 过）。 修复轮二：规格轴 d1db44c → b17ac6f（三项：离线登录、草稿导航栏写 Agent、状态色作文字按 4.5；主会话全新构建全量 605 + UI 5 过）。 代码轴 e2bf29e → f33bbb5（UIKit 文本框占位与读屏标签、斜杠命令说明按 App 内语言解析并随切换更新；界面流程启动重置语言与外观；两项点名风险有结论；主会话全新构建全量 610 + UI 5 过）。计划中代码轴 head 记为 ead4fc9 系 amend 前的哈希，实际派发 HEAD 为 e2bf29e。 修复轮三：规格轴 4d7241f → 4d7241f（无发现、无提交；轴内全量 626 + UI 6 过；与主会话在 a2f559f 上的全绿全量仅差计划文件）。 代码轴 6d2081c → 7f4c463（启动登出开关只留 Debug；滚动等待失败带出视口几何；注释归位；两项点名风险有结论，见 code-5.md；主会话全新构建全量 626 + UI 6 过）。计划中代码轴 head 记为 4d7241f，实际派发 HEAD 为 6d2081c。"
 
 verification:
-  status: pending
-  report: null
-  head: null
-  note: "首轮运行验证（head 7531c98）已报告于 e2e/scratch/2026-09-18-agentre-ios-scaffold/report.md：holds 16、does not hold 3（英文审批三钮竖排、两轮之间切权限模式 Not changed、回前台对话屏未续上），用户选择开修复轮（任务 15–18）。修复轮收尾后重新运行验证。 修复轮验证授权（用户原话选项）：「跑，授权上述四项（推荐）」——dev MySQL 写一条 mobile 设备记录（末尾撤销）、docker 上 agentred 真跑一个 agent、批准一条只在 pwd/ls 范围内的命令、dev Redis 为 user 1 铸临时会话替浏览器批准登录并用完删除。 修复轮验证（report-2.md）：dev 上 agentred 已是协议 0.3.0、手机 0.2.0，经中继的要求全部 not observed（含上轮三项不成立中的两项复验）；holds 含 3b 版本不等提示更新、7b 从项目挑、离线机器详情、中文系统下为中文；does not hold 两项：App 内切语言后机器页大标题不刷新、最大字号下「我」页设备名截断不可辨。用户选择新增任务跟到 0.3.0。 修复轮二验证授权（用户原话选项）：「跑，授权上述四项（推荐）」——同前四项。 修复轮二验证（report-3.md）：首轮三项不成立（英文审批三钮、两轮之间切档、回前台续上）与上轮两项（切语言、大字号设备行）复验均 holds；经中继主线全通。does not hold 三项：机器详情与消息列表的行左侧大片空白、标题被截；模型面板只显示 UUID；后台结束的一轮回前台后停止钮仍在（任务 19 在真实环境不成立）。运行中经用户授权把 agentred 服务端地址改为 docker.lan 并重启。"
+  status: running
+  report: e2e/scratch/2026-09-18-agentre-ios-scaffold/report-4.md
+  head: 7f4c463
+  note: "修复轮三验证授权（用户原话）：「可以去dev上复验」，针对主会话列出的四项：dev MySQL 写入并撤销一台手机设备、agentred 真跑 agent、批准一条限 pwd/ls 的命令、为 user 1 铸临时会话批准设备登录并用后删除。报告 report-4.md。 首轮运行验证（head 7531c98）已报告于 e2e/scratch/2026-09-18-agentre-ios-scaffold/report.md：holds 16、does not hold 3（英文审批三钮竖排、两轮之间切权限模式 Not changed、回前台对话屏未续上），用户选择开修复轮（任务 15–18）。修复轮收尾后重新运行验证。 修复轮验证授权（用户原话选项）：「跑，授权上述四项（推荐）」——dev MySQL 写一条 mobile 设备记录（末尾撤销）、docker 上 agentred 真跑一个 agent、批准一条只在 pwd/ls 范围内的命令、dev Redis 为 user 1 铸临时会话替浏览器批准登录并用完删除。 修复轮验证（report-2.md）：dev 上 agentred 已是协议 0.3.0、手机 0.2.0，经中继的要求全部 not observed（含上轮三项不成立中的两项复验）；holds 含 3b 版本不等提示更新、7b 从项目挑、离线机器详情、中文系统下为中文；does not hold 两项：App 内切语言后机器页大标题不刷新、最大字号下「我」页设备名截断不可辨。用户选择新增任务跟到 0.3.0。 修复轮二验证授权（用户原话选项）：「跑，授权上述四项（推荐）」——同前四项。 修复轮二验证（report-3.md）：首轮三项不成立（英文审批三钮、两轮之间切档、回前台续上）与上轮两项（切语言、大字号设备行）复验均 holds；经中继主线全通。does not hold 三项：机器详情与消息列表的行左侧大片空白、标题被截；模型面板只显示 UUID；后台结束的一轮回前台后停止钮仍在（任务 19 在真实环境不成立）。运行中经用户授权把 agentred 服务端地址改为 docker.lan 并重启。"
