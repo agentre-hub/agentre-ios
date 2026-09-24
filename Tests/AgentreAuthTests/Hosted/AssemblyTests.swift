@@ -172,7 +172,8 @@ struct AssemblyTests {
 
         let conversation = try #require(try await environment.store.conversation(key))
         let settings = try await services.settings.settings(for: conversation)
-        #expect(settings.models == [ComposerModelChoice(providerKey: "anthropic", modelKey: "opus")])
+        // 停用的不列；每个模型带上目录里人读的几格，下发仍用两枚键。
+        #expect(settings.models == [ComposerModelChoice(providerKey: "anthropic", modelKey: "opus", modelId: "o", name: "Opus", providerName: "Anthropic")])
         #expect(settings.permissionModes == ["default", "plan"])
         #expect(settings.permissionMode == "default")
         let capabilities = try #require(harness.relay.calls(WireMethod.runtimeCapabilities).first)

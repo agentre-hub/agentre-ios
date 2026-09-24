@@ -19,6 +19,22 @@ let sampleSettings = ComposerSettings(
     reasoningEffort: "high"
 )
 
+/// 引擎目录的真实形状：modelKey 是 UUID 形的稳定键，人读的是 name（缺了回落 modelId）；
+/// 两家供应商下各有一个叫 Opus 的模型（运行验证 evidence-3/72-model 的现场即逐行 UUID）。
+let namedCatalog = [
+    ComposerModelChoice(
+        providerKey: "anthropic", modelKey: "9f1c2e7a-0000-4000-8000-000000000001", modelId: "claude-opus-4-1", name: "Opus",
+        providerName: "Anthropic"
+    ),
+    ComposerModelChoice(
+        providerKey: "anthropic", modelKey: "9f1c2e7a-0000-4000-8000-000000000002", modelId: "claude-sonnet-4-5", providerName: "Anthropic"
+    ),
+    ComposerModelChoice(providerKey: "relay", modelKey: "9f1c2e7a-0000-4000-8000-000000000003", providerName: "Relay"),
+    ComposerModelChoice(
+        providerKey: "relay", modelKey: "9f1c2e7a-0000-4000-8000-000000000004", modelId: "claude-opus-4-1", name: "Opus", providerName: "Relay"
+    ),
+]
+
 // MARK: 伪端口
 
 /// 记下每一次中继调用；应答可按方法预设。

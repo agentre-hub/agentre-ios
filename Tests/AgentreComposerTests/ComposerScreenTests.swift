@@ -179,6 +179,42 @@ struct ComposerScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
+    @Test("模型一页：每行是可读名（name → modelId → modelKey），同名的按供应商分组、副行是模型 ID；UUID 形的键不上脸")
+    func modelPage() async throws {
+        var settings = FakeSettingsSource()
+        settings.settings.models = namedCatalog
+        settings.settings.model = namedCatalog[3]
+        let model = composer(settings: settings)
+        await model.load()
+        let view = ComposerPanel(model: model, contextUsage: usage, initialPage: .model, onDeleted: {})
+        let labels = await HostedScreen(view).labels()
+        #expect(!labels.contains { $0.contains("9f1c2e7a-0000-4000-8000-000000000001") }, "有名字的不显示键：\(labels)")
+        #expect(!labels.contains { $0.contains("9f1c2e7a-0000-4000-8000-000000000002") }, "有模型 ID 的不显示键：\(labels)")
+        #expect(labels.filter { $0.hasPrefix("Opus") && $0.contains("claude-opus-4-1") }.count == 2, "\(labels)")
+        #expect(labels.contains { $0.hasPrefix("claude-sonnet-4-5") }, "\(labels)")
+        #expect(labels.contains { $0.hasPrefix("9f1c2e7a-0000-4000-8000-000000000003") }, "名字与 ID 都缺才用键：\(labels)")
+        // 同名的两个 Opus 由供应商分组区分（宿主 model-target-picker 以供应商名为组头）。
+        let anthropic = try #require(labels.firstIndex(of: "Anthropic"), "\(labels)")
+        let relay = try #require(labels.firstIndex(of: "Relay"), "\(labels)")
+        let opuses = labels.indices.filter { labels[$0].hasPrefix("Opus") }
+        #expect(opuses.count == 2 && anthropic < opuses[0] && opuses[0] < relay && relay < opuses[1], "\(labels)")
+        let report = await hitTargetReport(of: view)
+        #expect(report.targets.count == 5, "返回 + 四个模型：\(report.targets)")
+        #expect(report.violations.isEmpty, "\(report.violations)")
+    }
+
+    @Test("根页的当前模型标注供应商与可读名，不标 UUID 形的键")
+    func panelCurrentModelName() async throws {
+        var settings = FakeSettingsSource()
+        settings.settings.models = namedCatalog
+        settings.settings.model = namedCatalog[0]
+        let model = composer(settings: settings)
+        await model.load()
+        let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, onDeleted: {})).labels()
+        #expect(labels.contains { $0.hasPrefix(text("composer.model")) && $0.contains("Anthropic · Opus") }, "\(labels)")
+        #expect(!labels.contains { $0.contains("9f1c2e7a") }, "\(labels)")
+    }
+
     @Test("面板里的思考档位：会话行没设定时标注默认")
     func panelDefaultEffort() async throws {
         var settings = FakeSettingsSource()

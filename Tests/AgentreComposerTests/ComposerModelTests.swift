@@ -69,6 +69,39 @@ struct ComposerModelTests {
         #expect(ComposerSettings(conversation: conversation(), permissionMode: "", permissionModes: [], models: models).model == nil)
     }
 
+    @Test("会话行上的当前模型按两枚键在引擎目录里认出，带上可读名；目录里没有它时只剩键")
+    func currentModelResolvedFromCatalog() {
+        var saved = conversation()
+        saved.providerKey = "relay"
+        saved.modelKey = "9f1c2e7a-0000-4000-8000-000000000004"
+        let settings = ComposerSettings(conversation: saved, permissionMode: "", permissionModes: [], models: namedCatalog)
+        #expect(settings.model == namedCatalog[3])
+        #expect(settings.model?.displayName == "Opus")
+        #expect(settings.model?.label == "Relay · Opus")
+        saved.modelKey = "gone"
+        let missing = ComposerSettings(conversation: saved, permissionMode: "", permissionModes: [], models: namedCatalog)
+        #expect(missing.model == ComposerModelChoice(providerKey: "relay", modelKey: "gone"))
+        #expect(missing.model?.label == "relay · gone", "查不到时如宿主 resolveTargetLabel 回落原始两枚键")
+    }
+
+    @Test("模型的可读名：name → modelId → modelKey")
+    func modelDisplayName() {
+        #expect(namedCatalog.map(\.displayName) == ["Opus", "claude-sonnet-4-5", "9f1c2e7a-0000-4000-8000-000000000003", "Opus"])
+        #expect(ComposerModelChoice(providerKey: "", modelKey: "k").label == "k", "没有供应商时不带前缀")
+    }
+
+    @Test("选一个有名字的模型：下发的仍是供应商键与模型键")
+    func selectingNamedModelSendsKeys() async throws {
+        let relay = FakeComposerRelay()
+        var settings = FakeSettingsSource()
+        settings.settings.models = namedCatalog
+        let model = composer(relay: relay, settings: settings)
+        await model.load()
+        await model.setModel(namedCatalog[3])
+        #expect(await relay.calls == [.model("relay", "9f1c2e7a-0000-4000-8000-000000000004")])
+        #expect(model.settings?.model == namedCatalog[3])
+    }
+
     @Test("一轮运行中可以停止本轮：发出 runtimeAbort；停的调用在飞时不重复发")
     func stopsRunningTurn() async throws {
         let relay = FakeComposerRelay()

@@ -46,7 +46,7 @@ struct RESTMentionSource: ComposerMentionSource {
 
 /// 引擎目录里可选的模型：`GET /v1/engine/snapshot`（agentre-server/internal/api/engine/engine.go:192-199，
 /// 挂在 router.go:363-370 的设备令牌组——`/v1/engine/providers` 只认浏览器会话，设备令牌进不去）。
-/// 应答里带着供应商的 API key：这里只解模型键，别的字段一概不解、不留。
+/// 应答里带着供应商的 API key：这里只解模型的两枚键与人读的名字（供应商名、模型名、模型 ID），别的字段一概不解、不留。
 struct EngineCatalogClient: Sendable {
     let transport: any HTTPTransport
     let server: ServerAddress
@@ -60,7 +60,12 @@ struct EngineCatalogClient: Sendable {
             throw AuthError.unexpectedResponse(status: response.status)
         }
         return snapshot.providers.flatMap { provider in
-            provider.models.filter(\.enabled).map { ComposerModelChoice(providerKey: provider.providerKey, modelKey: $0.modelKey) }
+            provider.models.filter(\.enabled).map {
+                ComposerModelChoice(
+                    providerKey: provider.providerKey, modelKey: $0.modelKey, modelId: $0.modelId ?? "", name: $0.name ?? "",
+                    providerName: provider.name ?? ""
+                )
+            }
         }
     }
 
@@ -74,11 +79,14 @@ struct EngineCatalogClient: Sendable {
 
     private struct Provider: Decodable {
         let providerKey: String
+        let name: String?
         let models: [Model]
     }
 
     private struct Model: Decodable {
         let modelKey: String
+        let modelId: String?
+        let name: String?
         let enabled: Bool
     }
 }

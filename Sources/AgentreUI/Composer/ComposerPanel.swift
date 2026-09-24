@@ -65,7 +65,7 @@ public struct ComposerPanel: View {
             if let mode = settings?.permissionMode, !mode.isEmpty { Text(verbatim: mode).monospaced() }
         }
         ComposerPanelRow("composer.model") { page = .model } value: {
-            if let current = settings?.model { Text(verbatim: current.modelKey).monospaced() }
+            if let current = settings?.model { Text(verbatim: current.label) }
         }
         ComposerPanelRow("composer.effort") { page = .effort } value: {
             if let settings { ComposerEffortLabel(effort: settings.reasoningEffort) }
@@ -103,13 +103,41 @@ public struct ComposerPanel: View {
     @ViewBuilder private var modelPage: some View {
         back("composer.model")
         let current = model.settings?.model
-        ForEach(model.settings?.models ?? [], id: \.self) { choice in
-            ComposerOptionRow(selected: choice == current) {
-                Task { await model.setModel(choice) }
-            } label: {
-                Text(verbatim: choice.modelKey).monospaced()
+        // 与宿主 model-target-picker 同：按供应商分组、组头是供应商名，行是可读名、副行是模型 ID——
+        // 两家供应商下同名的模型由组头区分。
+        ForEach(Self.providerGroups(model.settings?.models ?? []), id: \.providerKey) { group in
+            Text(verbatim: group.title)
+                .font(.footnote)
+                .foregroundStyle(.token(.textSecondary))
+                .composerRow()
+            ForEach(group.models, id: \.self) { choice in
+                ComposerOptionRow(selected: choice == current) {
+                    Task { await model.setModel(choice) }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: choice.displayName)
+                        if !choice.modelId.isEmpty, choice.modelId != choice.displayName {
+                            Text(verbatim: choice.modelId)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.token(.textSecondary))
+                        }
+                    }
+                }
             }
         }
+    }
+
+    /// 目录次序里按供应商归组（目录本就按供应商连续排列；保持首次出现的次序）。
+    private static func providerGroups(_ models: [ComposerModelChoice]) -> [(providerKey: String, title: String, models: [ComposerModelChoice])] {
+        var groups: [(providerKey: String, title: String, models: [ComposerModelChoice])] = []
+        for choice in models {
+            if let index = groups.firstIndex(where: { $0.providerKey == choice.providerKey }) {
+                groups[index].models.append(choice)
+            } else {
+                groups.append((choice.providerKey, choice.providerName.isEmpty ? choice.providerKey : choice.providerName, [choice]))
+            }
+        }
+        return groups
     }
 
     @ViewBuilder private var effortPage: some View {
