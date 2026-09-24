@@ -314,6 +314,25 @@ tasks:
     commit: 0b8ec51
     note: "根因：agentred 会话清单只对非调用方发起的会话填 peer_fingerprint（agentre internal/daemon/handlers/session_catchup.go:167），手机发起的会话回来是空 origin，RelayMachineSessions 按本机指纹找不到行。两个假对端原先回显本机指纹，已改成与真实一致。RED：Hosted phoneStartedTurnEndedInBackground exit 65「stop button gone 超时」、MachineSessionAdapterTests exit 65、UI testMainlineEnglishLight :182 exit 65。GREEN：AgentreHostedTests 两次 34/34 exit 0；AgentreRelayTests 85、AgentreComposerTests 83 exit 0；AgentreUITests 分两批 exit 0 全过。约 90 秒空闲：是 scratch 驱动 testBackground 与 settle() 各睡一次 DRIVE_WAIT（Drive.swift:10,64），不是 App。阻塞关注：机器详情清单仍保留空 origin，领域层把空 origin 当作「机器上发起」（键回落到机器指纹），真实 agentred 下手机发起的会话在机器详情里大概会显示为未保存、再存一次可能落重复行；任务 19 的修复只对旧假对端成立。另：主线 :203 撤销本机后偶发两次 POST /v1/oauth/token/refresh，HEAD 未改动时同样出现。"
 
+  - id: 29
+    goal: "真实 agentred 的会话清单对调用方自己发起的会话留空 peer_fingerprint（agentre internal/daemon/handlers/session_catchup.go:167），手机发起的会话在机器详情里要认作手机自己的：显示为已保存、不再出「保存到手机」、再保存不落重复行；其他设备发起的仍按其指纹、机器上发起的仍按机器指纹。先让两个假对端（任务 28 已改成空 origin）下的机器详情 / 保存用例对现状失败，再修领域层与存储对空 origin 的认法。"
+    deps: [28]
+    files: [agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Sources/AgentreDomain/Session/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
+    model: mid
+    interfaces: "RelayMachineSessions 已持有本机指纹（0b8ec51）"
+    status: todo
+    commit: null
+    note: null
+  - id: 30
+    goal: "主线 UI 测试稳定：撤销本机后 App 直接在本地退出登录，不再因 401 先打两次 POST /v1/oauth/token/refresh（主线 :203 偶发失败）；每个主线流程开跑前清掉上一流程失败时留在钥匙串里的登录态，一个流程失败不再连带下一个。先复现 :203 的失败，再修。"
+    deps: [29]
+    files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreDomain/Core/, agentre-ios/Sources/AgentreDomain/Ports/, agentre-ios/Sources/AgentreREST/, agentre-ios/Sources/AgentreUI/Me/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/UITests/]
+    model: mid
+    interfaces: null
+    status: todo
+    commit: null
+    note: null
+
 review:
   status: pending
   axis: none
