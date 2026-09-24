@@ -300,9 +300,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreApp/ComposerSources.swift, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: mid
     interfaces: "ComposerPanel 以 choice.modelKey 渲染（Sources/AgentreUI/Composer/ComposerPanel.swift:68、:106-110）；模型来自 GET /v1/engine/snapshot（Sources/AgentreApp/ComposerSources.swift）"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: b12c8c1
+    note: "RED：composer 与宿主 12 处断言（模型页显示键而非名）；GREEN：Composer 83、宿主 34 过。按宿主 modelDisplayName（name → modelId）与 options.tsx（按供应商分组、副标 modelId）、resolveTargetLabel（供应商 · 模型）。"
 
   - id: 28
     goal: "一轮在应用处于后台时结束，回到真实 agentred 前台后停止钮消失、可直接发下一句（任务 19 在宿主测试里成立、在 dev 上不成立：回合 23:28:24 结束，23:32:15 仍显示 Stop）。先查清差异：真实 agentred 在回前台后的 attach / pull / sessionList 实际给出什么（生命周期字段、边界帧、summary 刷新是否发生），据此把宿主 FakeRelay 与 UITests 的 FakeAgentred 改成与真实同形，使现有用例在新形状下对现状失败，再修；并查明回前台后 App 约 90 秒才空闲的原因（若与本缺陷同源一并修，否则如实报告）。可读 dev 上 agentred 日志与 agentre 源码作证据，不改它们。"
@@ -310,7 +310,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/UITests/]
     model: strong
     interfaces: "任务 19 的 ComposerModel.reconcile(lifecycle:) 与 ConversationSync 摘要刷新；证据 e2e/scratch/…/evidence-3/64–68 与 report-3.md 的时间线"
-    status: todo
+    status: doing
     commit: null
     note: null
 
