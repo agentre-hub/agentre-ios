@@ -16,7 +16,7 @@ struct TranscriptRowView<Card: View>: View {
         case .agentHeader:
             AgentSignature(name: agentName)
         case .text(let text, _):
-            AgentText(text: text)
+            AgentText(segment: TextSegment(text: text, first: true, last: true))
         case .thinking(let text):
             Text(verbatim: text)
                 .font(.subheadline.italic())
@@ -92,21 +92,35 @@ private struct AgentSignature: View {
 }
 
 /// agent 的正文：全宽、无气泡。行内 Markdown 按原样解析，解析不了就逐字呈现。
-private struct AgentText: View {
-    let text: String
+/// 极长的正文切成几格（`TranscriptCells`）逐格呈现：上下留白只加在整段两端，格子之间补回两行之间本有的
+/// 行距，读起来仍是一整段。按段落比较：一片增量只让最末那一格重排，前面的格子不重算。
+struct AgentText: View, Equatable {
+    let segment: TextSegment
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Group {
-            if let attributed = try? AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            if let attributed = try? AttributedString(markdown: segment.text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
                 Text(attributed)
             } else {
-                Text(verbatim: text)
+                Text(verbatim: segment.text)
             }
         }
         .font(.body)
         .foregroundStyle(.token(.textPrimary))
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
+        .padding(.top, segment.first ? 4 : lineGap)
+        .padding(.bottom, segment.last ? 4 : 0)
     }
+
+    /// 同一段文字里上一行与下一行之间的行距（按像素向下取整，与文字排版的取整一致）；分在两格里时它不在任何一格之内。
+    private var lineGap: CGFloat {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(typeSize))
+        let leading = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).leading
+        return (leading * displayScale).rounded(.down) / displayScale
+    }
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.segment == rhs.segment }
 }

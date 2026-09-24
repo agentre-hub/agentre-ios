@@ -23,15 +23,23 @@ public struct TranscriptView<Card: View>: View {
 
     public var body: some View {
         ScrollViewReader { proxy in
+            let cells = TranscriptCells.build(model.rows)
             List {
-                ForEach(model.rows) { row in
-                    TranscriptRowView(row: row, agentName: agentName, model: model, card: card)
+                ForEach(cells) { cell in
+                    Group {
+                        switch cell.content {
+                        case .row(let row):
+                            TranscriptRowView(row: row, agentName: agentName, model: model, card: card)
+                        case .text(let segment):
+                            AgentText(segment: segment).equatable()
+                        }
+                    }
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .id(row.id)
+                        .id(cell.id)
                         .onAppear {
-                            if row.id == model.rows.first?.id { Task { await model.loadOlder() } }
+                            if cell.id == cells.first?.id { Task { await model.loadOlder() } }
                         }
                 }
             }
@@ -111,7 +119,7 @@ private final class Pin {
     var pending = false
 
     func toLatest(_ rows: [TranscriptRow], _ proxy: ScrollViewProxy) {
-        guard let last = rows.last else { return }
+        guard let last = TranscriptCells.build(Array(rows.suffix(1))).last else { return }
         pending = true
         proxy.scrollTo(last.id, anchor: .bottom)
     }

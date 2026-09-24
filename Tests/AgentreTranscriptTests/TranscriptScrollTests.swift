@@ -184,20 +184,117 @@ struct TranscriptScrollTests {
         #expect(!host.isAtBottom(scrollView), "\(host.describe(scrollView))")
     }
 
+    @Test("打开一条最后几条回复极长（上万 pt 一行）的对话：落在真正的最新一行上，并如实在跟随")
+    func openingOnHugeRepliesLandsOnLastRow() async throws {
+        var seq: Int64 = 0
+        func next() -> Int64 { seq += 1; return seq }
+        var frames = (1...20).map { _ in stored(decoder, next(), .userMessage("第 \(seq) 句")) }
+        for (ask, reply) in [("写一篇 Rust 长文", rustEssay), ("只回两个字：好的", "好的"), ("写一篇操作系统长文", operatingSystemsEssay), ("只回两个字：好的", "好的")] {
+            frames += [
+                stored(decoder, next(), .userMessage(ask)),
+                stored(decoder, next(), .turnStarted),
+                stored(decoder, next(), .textDelta(reply)),
+                stored(decoder, next(), .turnDone(TurnDone(durationMs: 1_000))),
+            ]
+        }
+        let model = TranscriptModel(
+            conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"),
+            store: FakeStore(frames), relay: FakeRelay(), decoder: decoder
+        )
+        let host = ScrollHost(TranscriptView(model: model, agentName: "Claude Code"), size: iPhone17)
+        try await host.settle { !model.rows.isEmpty }
+        try await host.settle { host.scrollView() != nil }
+        let scrollView = try #require(host.scrollView(), "转录底下没有 UIScrollView：\(host.describeScrollViews())")
+        try await host.settle("打开后不在最新一行：following=\(model.follow.isFollowing) \(host.describe(scrollView)) \(host.describeCells(scrollView))") {
+            host.isShowingLastRow(scrollView, model: model)
+        }
+        try await host.frames(15)
+        #expect(host.isShowingLastRow(scrollView, model: model), "\(host.describe(scrollView)) \(host.describeCells(scrollView))")
+        #expect(model.follow.isFollowing)
+        #expect(model.follow.unseen == 0)
+        #expect(await host.element(labelled: text("transcript.jumpToLatest")) == nil)
+    }
+
+    @Test("跟随中一篇上万字的回复逐片流完、落定，后面再来一问一答：一路跟随，最终停在真正的最新一行")
+    func followingHugeStreamingReplyEndsOnLastRow() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40, size: iPhone17)
+        var seq: Int64 = 40
+        func next() -> Int64 { seq += 1; return seq }
+        var frames = [liveFrame(decoder, next(), .userMessage("写一篇操作系统长文")), liveFrame(decoder, next(), .turnStarted)]
+        frames += pieces(of: operatingSystemsEssay, size: 120).map { liveFrame(decoder, nil, .textDelta($0), preview: true) }
+        frames += [
+            liveFrame(decoder, next(), .textDelta(operatingSystemsEssay)),
+            liveFrame(decoder, next(), .turnDone(TurnDone(durationMs: 180_000))),
+            liveFrame(decoder, next(), .userMessage("只回两个字：好的")),
+            liveFrame(decoder, next(), .turnStarted),
+            liveFrame(decoder, next(), .textDelta("好的")),
+            liveFrame(decoder, next(), .turnDone(TurnDone(durationMs: 1_000))),
+        ]
+        for (index, frame) in frames.enumerated() {
+            model.merge(live: [frame])
+            try await host.frames(1)
+            guard model.follow.isFollowing else {
+                Issue.record("第 \(index) 帧后停止了跟随，用户并没有滚动：\(host.describe(scrollView))")
+                return
+            }
+        }
+        try await host.settle("没有停在最新一行：\(host.describe(scrollView)) \(host.describeCells(scrollView))") { host.isShowingLastRow(scrollView, model: model) }
+        try await host.frames(15)
+        #expect(host.isShowingLastRow(scrollView, model: model), "\(host.describe(scrollView)) \(host.describeCells(scrollView))")
+        #expect(model.follow.isFollowing)
+        #expect(model.follow.unseen == 0)
+        #expect(await host.element(labelled: text("transcript.jumpToLatest")) == nil)
+    }
+
+    @Test("流式回复越写越长，每一片增量落到屏上的代价不随之变大：上万字的回复不会让转录落后于机器")
+    func streamingDeltaCostDoesNotGrowWithReply() async throws {
+        let (model, host, _) = try await openAtBottom(rows: 40, size: iPhone17)
+        model.merge(live: [liveFrame(decoder, 41, .userMessage("写一篇操作系统长文")), liveFrame(decoder, 42, .turnStarted)])
+        let essay = Array(operatingSystemsEssay)
+        var written = 0
+        /// 回复写到 `length` 字后，再逐片追加 20 小片、每片都落到屏上，所花的时间。
+        func costOfDeltas(after length: Int) async throws -> Duration {
+            model.merge(live: [liveFrame(decoder, nil, .textDelta(String(essay[written..<length])), preview: true)])
+            written = length
+            try await host.frames(5)
+            let clock = ContinuousClock()
+            let started = clock.now
+            for _ in 0..<20 {
+                model.merge(live: [liveFrame(decoder, nil, .textDelta(String(essay[written..<written + 6])), preview: true)])
+                written += 6
+                host.controller.view.layoutIfNeeded()
+            }
+            return clock.now - started
+        }
+        let short = try await costOfDeltas(after: 1_000)
+        let long = try await costOfDeltas(after: 15_000)
+        // 修前实测：1000 字时 20 片约 0.55 秒，15000 字时约 8.5 秒（15 倍）。
+        #expect(long < short * 3, "回复 1000 字时 20 片花 \(short)，15000 字时花 \(long)")
+    }
+
     /// 打开 `rows` 句的转录，等它在底部、在跟随。
-    private func openAtBottom(rows count: Int) async throws -> (TranscriptModel, ScrollHost, UIScrollView) {
+    private func openAtBottom(rows count: Int, size: CGSize = CGSize(width: 390, height: 844)) async throws -> (TranscriptModel, ScrollHost, UIScrollView) {
         let frames = (1...count).map { stored(decoder, Int64($0), .userMessage("第 \($0) 句")) }
         let model = TranscriptModel(
             conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"),
             store: FakeStore(frames), relay: FakeRelay(), decoder: decoder
         )
-        let host = ScrollHost(TranscriptView(model: model, agentName: "Claude Code"))
+        let host = ScrollHost(TranscriptView(model: model, agentName: "Claude Code"), size: size)
         try await host.settle { model.rows.count == count }
         try await host.settle { host.scrollView() != nil }
         let scrollView = try #require(host.scrollView(), "转录底下没有 UIScrollView：\(host.describeScrollViews())")
         try await host.settle { host.isAtBottom(scrollView) }
         #expect(model.follow.isFollowing)
         return (model, host, scrollView)
+    }
+
+    /// iPhone 17 的逻辑尺寸。
+    let iPhone17 = CGSize(width: 402, height: 874)
+
+    /// 把一段文字切成一片片流式增量。
+    func pieces(of text: String, size: Int) -> [String] {
+        let characters = Array(text)
+        return stride(from: 0, to: characters.count, by: size).map { String(characters[$0..<min($0 + size, characters.count)]) }
     }
 
     func text(_ key: String) -> String {
@@ -211,9 +308,9 @@ fileprivate final class ScrollHost {
     let window: UIWindow
     let controller: UIViewController
 
-    init(_ view: some View) {
+    init(_ view: some View, size: CGSize = CGSize(width: 390, height: 844)) {
         controller = UIHostingController(rootView: view)
-        window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window = UIWindow(frame: CGRect(origin: .zero, size: size))
         window.rootViewController = controller
         window.makeKeyAndVisible()
     }
@@ -256,17 +353,31 @@ fileprivate final class ScrollHost {
         }
     }
 
-    /// 最新一行的格子整个落在可见区内。
+    /// 最新一行的（最末一个）格子整个落在可见区内。
     func isShowingLastRow(_ scrollView: UIScrollView, model: TranscriptModel) -> Bool {
         guard let collection = scrollView as? UICollectionView else { return isAtBottom(scrollView) }
         let sections = collection.numberOfSections
         guard sections > 0 else { return false }
         let items = collection.numberOfItems(inSection: sections - 1)
-        guard items == model.rows.count, items > 0,
+        guard items == TranscriptCells.build(model.rows).count, items > 0,
               let cell = collection.cellForItem(at: IndexPath(item: items - 1, section: sections - 1)) else { return false }
         let visibleTop = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
         let visibleBottom = scrollView.contentOffset.y + scrollView.bounds.height - scrollView.adjustedContentInset.bottom
         return cell.frame.minY >= visibleTop - 1 && cell.frame.maxY <= visibleBottom + 1
+    }
+
+    /// 各个格子的位置（只列高过一屏的，以及最末两格）。
+    func describeCells(_ scrollView: UIScrollView) -> String {
+        guard let collection = scrollView as? UICollectionView, collection.numberOfSections > 0 else { return "" }
+        let section = collection.numberOfSections - 1
+        let count = collection.numberOfItems(inSection: section)
+        return (0..<count).compactMap { item -> String? in
+            let path = IndexPath(item: item, section: section)
+            guard let frame = collection.layoutAttributesForItem(at: path)?.frame else { return nil }
+            guard frame.height > scrollView.bounds.height || item >= count - 2 else { return nil }
+            let live = collection.cellForItem(at: path) != nil ? "显示中" : "未显示"
+            return "#\(item) y=\(Int(frame.minY))…\(Int(frame.maxY)) h=\(Int(frame.height)) \(live)"
+        }.joined(separator: "; ")
     }
 
     func describe(_ scrollView: UIScrollView) -> String {
