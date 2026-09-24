@@ -184,6 +184,10 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 /// 控制面照搬 agentred：会话只在一轮跑着时登记在内存表里（runtime.run 登记、一轮收场即摘掉），
 /// 不在表里时 runtime.setPermissionMode 回「没有进行中的一轮」
 /// （agentre/internal/daemon/handlers/runtime.go:1454-1462、:1682-1689，码 rpcerror.CodeRuntimeNoActiveTurn）。
+///
+/// 会话清单照搬 agentred 的发起端回显：只标在**别的对端**发起的会话上，调用方自己发起的那几条
+/// peer_fingerprint 为空（agentre/internal/daemon/handlers/session_catchup.go:167 `row.PeerFingerprint != peer`）。
+/// 调用方是中继按访问令牌认出的那台设备，不在任何请求字段里，所以由 `caller` 给出。
 final class FakeMachine: @unchecked Sendable {
     struct Session {
         var conversationID: String
@@ -197,6 +201,8 @@ final class FakeMachine: @unchecked Sendable {
     }
 
     let fingerprint: String
+    /// 此刻连着中继的那台设备（手机）的指纹。
+    private let caller: @Sendable () -> String
     private let lock = NSLock()
     private var sessions: [Session] = []
     private var frames: [String: [(seq: Int64, notification: Proto)]] = [:]
@@ -205,8 +211,9 @@ final class FakeMachine: @unchecked Sendable {
     /// 每条会话的插话信箱：runtime.steer 放进去，runtime.drainPending 整个取走（agentred 的 steer mailbox）。
     private var mailboxes: [String: [(queuedID: String, text: String)]] = [:]
 
-    init(fingerprint: String) {
+    init(fingerprint: String, caller: @escaping @Sendable () -> String = { "" }) {
         self.fingerprint = fingerprint
+        self.caller = caller
     }
 
     func add(_ session: Session, frames: [Proto]) {
@@ -280,11 +287,12 @@ final class FakeMachine: @unchecked Sendable {
     private func sessionAnswer(_ call: FakeRelay.Call) -> Proto {
         switch call.method {
         case WireMethod.sessionList:
+            let caller = caller()
             return Proto { r in
                 for session in sessions {
                     r.message(1, Proto { s in
                         s.string(1, session.conversationID)
-                        s.string(2, session.peerFingerprint)
+                        s.string(2, session.peerFingerprint == caller ? "" : session.peerFingerprint)
                         s.string(4, session.title)
                         s.string(7, session.cwd)
                         s.string(9, session.backendType)

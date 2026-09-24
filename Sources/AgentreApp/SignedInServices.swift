@@ -115,7 +115,7 @@ final class SignedInServices {
         let source = RelaySourceDevice(
             fingerprint: (try? dependencies.credentials.deviceFingerprint().value) ?? "", name: dependencies.deviceName
         )
-        machineSessions = RelayMachineSessions(connection: connection)
+        machineSessions = RelayMachineSessions(connection: connection, caller: source.fingerprint)
         transfer = RewindingTransfer(inner: machineSessions, store: store)
         approvals = RelayApprovalAnswering(connection: connection, carrier: carrier)
         let roster = MachineRosterClient(transport: environment.transport, server: server)
@@ -142,7 +142,7 @@ final class SignedInServices {
         self.failures = failures
         let recovered = RecoveredFollows()
         sync = ConversationSync(
-            connection: connection, store: store,
+            connection: connection, store: store, sessions: machineSessions,
             onFailure: { key, fact in
                 await failures.set(fact, for: key)
                 if fact == nil { await recovered.notify(key) }

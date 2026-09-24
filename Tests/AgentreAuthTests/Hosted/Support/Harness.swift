@@ -19,7 +19,11 @@ final class Harness {
     let servers = MemoryServerAddressStore(ServerAddress(string: Harness.serverURL)!)
 
     init(machine fingerprint: String = "machine-a", machineName: String = "mac-studio", kind: String = "agentred") throws {
-        machine = FakeMachine(fingerprint: fingerprint)
+        // 中继按访问令牌认出的调用方就是这台 App 的设备指纹（钥匙串里那一个）。
+        let service = service
+        machine = FakeMachine(fingerprint: fingerprint, caller: {
+            (try? KeychainCredentialStore(service: service).deviceFingerprint().value) ?? ""
+        })
         relay = FakeRelay([machine])
         directory = try TemporaryDirectory()
         server.route("GET /v1/devices", """

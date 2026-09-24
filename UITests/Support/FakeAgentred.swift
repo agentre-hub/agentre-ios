@@ -12,6 +12,8 @@ import SwiftProtobuf
 ///   这一轮自己陆续产出（runtime.go:578-590）。一轮收场先落带号的 done（runtime_transcript.go 的 finish），
 ///   再发不带号、补拉不回来的 run_result_done。
 /// - 实时帧只推给 attach 过（或发起了这一轮）的通道；断开的通道收不到，回来后按游标 pull。
+/// - 会话清单只把发起端标在**别的对端**发起的会话上，调用方自己发起的那几条 peer_fingerprint 为空
+///   （session_catchup.go:167 `row.PeerFingerprint != peer`）；手机新建的对话回到手机面前时就是空的。
 ///
 /// 一切调用都在服务端的 `queue` 上。
 final class FakeAgentred: @unchecked Sendable {
@@ -100,7 +102,7 @@ final class FakeAgentred: @unchecked Sendable {
     func answer(_ method: Agentre_Wire_RpcMethod, _ payload: Data, from peer: RelayPeer) -> Reply {
         do {
             switch method {
-            case .sessionList: return .result(list(try .init(serializedBytes: payload)))
+            case .sessionList: return .result(list(try .init(serializedBytes: payload), from: peer))
             case .sessionCounts: return .result(counts())
             case .sessionAttach: return attach(try .init(serializedBytes: payload), from: peer)
             case .sessionPull: return pull(try .init(serializedBytes: payload))
@@ -119,7 +121,7 @@ final class FakeAgentred: @unchecked Sendable {
         }
     }
 
-    private func list(_ request: Agentre_Wire_SessionListRequest) -> Agentre_Wire_SessionListResponse {
+    private func list(_ request: Agentre_Wire_SessionListRequest, from peer: RelayPeer) -> Agentre_Wire_SessionListResponse {
         let keyword = request.keyword.lowercased()
         let matching = sessions.values.map(\.summary)
             .filter { request.conversationIds.isEmpty || request.conversationIds.contains($0.conversationID) }
@@ -129,7 +131,11 @@ final class FakeAgentred: @unchecked Sendable {
         let limit = request.limit > 0 ? Int(request.limit) : 50
         let page = Array(matching.dropFirst(offset).prefix(limit))
         var response = Agentre_Wire_SessionListResponse()
-        response.sessions = page
+        response.sessions = page.map { summary in
+            var shown = summary
+            if shown.peerFingerprint == peer.fingerprint { shown.peerFingerprint = "" }
+            return shown
+        }
         response.hasMore_p = offset + page.count < matching.count
         response.cursor = response.hasMore_p ? String(offset + page.count) : ""
         response.total = Int64(matching.count)

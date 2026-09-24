@@ -21,16 +21,17 @@ actor ConversationSync {
     private var stopped = false
 
     /// - Parameters:
+    ///   - sessions: 问机器清单的那一个适配器（它认得本机指纹：清单对本机自己发起的会话不回显发起端）。
     ///   - onFailure: 一条会话跟随不上（机器不在线、版本不等、通道被关……）时的事实；接上后以 nil 清掉。
     ///   - onLifecycle: 每次 attach 后按机器清单刷新到的那条会话此刻的生命周期。
     init(
-        connection: RelayConnection, store: LocalConversationStore,
+        connection: RelayConnection, store: LocalConversationStore, sessions: RelayMachineSessions,
         onFailure: @escaping @Sendable (ConversationKey, FailureFact?) async -> Void,
         onLifecycle: @escaping @Sendable (ConversationKey, String) async -> Void
     ) {
         self.connection = connection
         self.store = store
-        sessions = RelayMachineSessions(connection: connection)
+        self.sessions = sessions
         self.onFailure = onFailure
         self.onLifecycle = onLifecycle
     }

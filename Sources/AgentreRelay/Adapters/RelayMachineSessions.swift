@@ -6,9 +6,12 @@ import Foundation
 /// attach + pull。一律走 `machine:<指纹>`，以 conversation_id 指明对话。
 public actor RelayMachineSessions: MachineSessionSource, MachineSessionTransfer {
     private let connection: RelayConnection
+    /// 本机（调用方）的设备指纹。
+    private let caller: String
 
-    public init(connection: RelayConnection) {
+    public init(connection: RelayConnection, caller: String) {
         self.connection = connection
+        self.caller = caller
     }
 
     // MARK: MachineSessionSource
@@ -30,13 +33,26 @@ public actor RelayMachineSessions: MachineSessionSource, MachineSessionTransfer 
     }
 
     /// 点名问这台机器要一条会话此刻的摘要（清单按 conversation_ids 收窄）；它已不在那台机器上时为 nil。
+    ///
+    /// agentred 只把发起端标在别的对端发起的会话上，调用方自己发起的那行 peer_fingerprint 为空
+    /// （agentre/internal/daemon/handlers/session_catchup.go 的 List：`row.PeerFingerprint != peer`）。
+    /// 手机新建的对话以本机为发起端落库，所以空发起端的那行也是本机键下的这一条；交回时补上本机指纹，
+    /// 让它按原键刷新。
     public func session(_ key: ConversationKey, on machineFingerprint: String) async throws -> MachineSession? {
         var request = Agentre_Wire_SessionListRequest()
         request.conversationIds = [key.conversationID]
         let response: Agentre_Wire_SessionListResponse = try await connection.call(machine: machineFingerprint, .sessionList, request)
-        return response.sessions.first { summary in
-            ConversationKey(conversationID: summary.conversationID, peerFingerprint: summary.peerFingerprint, via: machineFingerprint) == key
-        }.map(MachineSession.init)
+        let rows = response.sessions.filter { $0.conversationID == key.conversationID }
+        if let echoed = rows.first(where: {
+            ConversationKey(conversationID: $0.conversationID, peerFingerprint: $0.peerFingerprint, via: machineFingerprint) == key
+        }) {
+            return MachineSession(echoed)
+        }
+        guard !caller.isEmpty, key.machineFingerprint == caller,
+              var own = rows.first(where: { $0.peerFingerprint.isEmpty })
+        else { return nil }
+        own.peerFingerprint = caller
+        return MachineSession(own)
     }
 
     // MARK: MachineSessionTransfer
