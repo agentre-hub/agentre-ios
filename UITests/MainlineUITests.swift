@@ -4,7 +4,8 @@ import XCTest
 /// App 经启动参数指向它。
 ///
 /// 登录（设备流）→ 「我」里切外观 → 机器 → 机器详情保存到手机 → 消息列表 → 新建对话并发出 → 审批 Allow Once
-/// → 两轮之间切权限模式后再发一句 → 挂起回前台、打开着的对话屏续上 → 撤销本机回到登录屏。
+/// → 两轮之间切权限模式后再发一句 → 这一轮在跑时排一句、收场后它接续成下一轮 → 挂起回前台、打开着的对话屏续上
+/// → 撤销本机回到登录屏。
 /// 简体中文 × 英文、浅色 × 深色四种组合各跑一遍；每步断言屏上可见的结果并留截图（xcresult 附件）。
 @MainActor
 final class MainlineUITests: XCTestCase {
@@ -25,6 +26,8 @@ final class MainlineUITests: XCTestCase {
     private static let firstReply = "There are two entries: README.md and src."
     private static let secondMessage = "Check the build again"
     private static let secondReply = "The build is green now."
+    private static let queuedMessage = "Reply with just OK"
+    private static let queuedReply = "OK"
 
     private func mainline(language: String, locale: String, appearance: Appearance) throws {
         continueAfterFailure = false
@@ -39,6 +42,7 @@ final class MainlineUITests: XCTestCase {
             )
             box.plan(
                 .askPermission(command: Self.command, output: Self.commandOutput, reply: Self.firstReply),
+                .hold,
                 .hold
             )
         }
@@ -138,6 +142,26 @@ final class MainlineUITests: XCTestCase {
         XCTAssertTrue(server.read { _ in box.permissionModeCalls.isEmpty }, "switching between turns called runtime.setPermissionMode")
         screen.shot("15 second message")
 
+        // 这一轮在跑时再发一句：进队列（插话）。这一轮正常收场时它整轮没被取走（纯文字轮没有工具边界），
+        // 收场后取回、接续成下一轮发出，不落成「未发送」。
+        screen.type(Self.queuedMessage, into: screen.input(copy("Composer", "composer.message")), "composer field while the turn runs")
+        screen.tap(screen.button(copy("Composer", "composer.send")), "queue a message")
+        screen.expect(screen.text(String(format: copy("Composer", "composer.queued %lld"), 1)), "one message queued")
+        screen.expect("the queued message went to runtime.steer") {
+            server.read { _ in box.steers.map(\.text) == [Self.queuedMessage] }
+        }
+        screen.shot("15a queued")
+        server.perform { _ in box.completeHeldTurn(reply: Self.secondReply) }
+        screen.expectOnScreen(screen.text(Self.secondReply), "the reply of the turn the message was queued behind")
+        screen.expect("the leftover queued message opened the next turn") {
+            server.read { _ in box.runs.count == 3 && box.runs.last?.userText == Self.queuedMessage }
+        }
+        screen.expectOnScreen(screen.text(Self.queuedMessage), "the queued message in the transcript")
+        XCTAssertFalse(
+            screen.text(String(format: copy("Composer", "composer.dropped %lld"), 1)).exists, "the queued message was reported as not sent"
+        )
+        screen.shot("15b queued message sent")
+
         // 挂起回前台：进了后台之后服务端判死通往机器的通道（空载荷帧）、连接也断了，这一轮在机器上跑完，
         // 帧只落在机器上、一帧也没推过来；回到前台后打开着的对话屏续上，刚发的那句仍在屏上。
         // 模拟器上 App 进后台后未必马上被系统挂起，所以断连由伪服务端做，不等挂起。
@@ -149,12 +173,12 @@ final class MainlineUITests: XCTestCase {
         server.perform { server in
             server.relay.closeChannels(to: box)
             server.relay.dropAll()
-            box.completeHeldTurn(reply: Self.secondReply)
+            box.completeHeldTurn(reply: Self.queuedReply)
         }
         screen.shot("16 in background")
         app.activate()
-        screen.expectOnScreen(screen.text(Self.secondReply), "the reply produced while in the background, on the open conversation")
-        screen.expectOnScreen(screen.text(Self.secondMessage), "the just-sent message after returning to the foreground")
+        screen.expectOnScreen(screen.text(Self.queuedReply), "the reply produced while in the background, on the open conversation")
+        screen.expectOnScreen(screen.text(Self.queuedMessage), "the just-sent message after returning to the foreground")
         // 那一轮在后台期间收场，收场帧一帧也没推过来：输入区照机器此刻的会话状态回到不在运行。
         screen.expectGone(screen.button(copy("Composer", "composer.stop")), "stop button once the turn that ended in the background")
         XCTAssertGreaterThan(server.read { $0.relay.upgrades }, upgradesBefore, "the relay was not redialled")

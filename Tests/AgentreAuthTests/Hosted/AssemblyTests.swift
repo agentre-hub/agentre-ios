@@ -352,6 +352,45 @@ struct AssemblyTests {
         #expect(await services.conversationModel(for: key) === screen)
     }
 
+    @Test("手机开的这一轮正常收场、插话整轮没被取走：收场后取回，接续成下一轮发出，不落成「未发送」")
+    func leftoverSteerAfterOwnTurnContinues() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", title: "Live"), frames: [])
+        let environment = try harness.environment()
+        let key = try await environment.store.save(MachineSession(conversationID: "conv-1", title: "Live"), via: "machine-a")
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let screen = try #require(await services.conversationModel(for: key))
+        let attached = Task { await screen.transcript.start() }
+        defer { attached.cancel() }
+        _ = try await eventually("transcript attached") {
+            harness.relay.calls(WireMethod.sessionAttach).count >= 1 ? true : nil
+        }
+        try await Task.sleep(for: .milliseconds(200))
+
+        screen.composer.edit(text: "write a long essay", cursor: 18)
+        await screen.composer.send()
+        harness.relay.notify("machine:machine-a", WireNotification.turnStarted("conv-1"))
+        _ = try await eventually("turn running") { screen.composer.isTurnRunning ? true : nil }
+        screen.composer.edit(text: "只回两个字：好的", cursor: 8)
+        await screen.composer.send()
+        #expect(screen.composer.queue.items.map(\.text) == ["只回两个字：好的"])
+
+        // agentred 的收场次序：先把这一轮从会话表里摘掉，再发 run_result_done。
+        harness.machine.finishTurn("conv-1")
+        harness.relay.notify("machine:machine-a", WireNotification.turnDone("conv-1"))
+
+        let runs = { harness.relay.calls(WireMethod.runtimeRun).map { $0.payload.string(11) } }
+        _ = try await eventually("turn settled") {
+            runs().count == 2 || !screen.composer.queue.dropped.isEmpty ? true : nil
+        }
+        #expect(screen.composer.queue.dropped.isEmpty)
+        #expect(runs() == ["write a long essay", "只回两个字：好的"])
+        #expect(screen.composer.queue.items.isEmpty)
+    }
+
     @Test("执行端在一轮里报了新的档位（比如退出了计划模式）：用户这次没选过时，下一轮带的是它；用户选过的档不被报来的档顶掉")
     func reportedPermissionModeFollowsTheTranscript() async throws {
         let harness = try Harness()

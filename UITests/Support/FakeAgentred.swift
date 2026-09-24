@@ -7,6 +7,10 @@ import SwiftProtobuf
 /// 行为照搬已核实的 agentred，而不是「什么都接」——凡与真实对端不同的地方都是一条会被盖住的缺陷：
 /// - 会话只在一轮跑着时登记在内存表里：runtime.run 登记，一轮收场即摘掉；不在表里时
 ///   runtime.setPermissionMode 回「没有进行中的一轮」（-32010，agentre/internal/daemon/handlers/runtime.go:1454-1462、:1682-1689）。
+/// - 插话与取回解的是**这条通道**的会话表（resolveSessionCapability → resolveSession，runtime.go:1349-1363、:1682-1689）：
+///   session.attach 放一行占位（AdoptForPeer，runtime.go:243-254），本通道开的一轮顶掉它，收场时先把那一行摘掉、
+///   再发 run_result_done（runtime.go:940-941）；表里没有时回 -32010。插话还要那一轮在跑（claudecode 的 Steer），
+///   进了信箱的整轮没被取走就留到 runtime.drainPending 取。通道断了表就没了。
 /// - runtime.run 带上的 permission_mode 原样记下可查（RuntimeRunRequest 字段 16）。
 /// - runtime.run 先发不带号的 turn_started，再落用户那一帧（带号），然后才回应答；此后的事件由
 ///   这一轮自己陆续产出（runtime.go:578-590）。一轮收场先落带号的 done（runtime_transcript.go 的 finish），
@@ -45,7 +49,12 @@ final class FakeAgentred: @unchecked Sendable {
     var queue: DispatchQueue!
 
     private var sessions: [String: Session] = [:]
-    private var activeTurns: Set<String> = []
+    /// 一轮在跑的会话 → 开这一轮的那条通道（它的会话表里的属主行）。
+    private var turnOwners: [String: RelayPeer] = [:]
+    /// 每条通道 attach 时认下的会话（会话表里的占位行）。
+    private var adopted: [RelayPeer: Set<String>] = [:]
+    /// 每条会话的插话信箱（agentred 的 SteerInbox）。
+    private var mailboxes: [String: [Agentre_Wire_ConsumedSteer]] = [:]
     private var subscribers: [String: Set<RelayPeer>] = [:]
     private var pendingPermissions: [String: (requestID: String, callID: String, output: String, reply: String)] = [:]
     private var heldTurns: [String] = []
@@ -54,6 +63,7 @@ final class FakeAgentred: @unchecked Sendable {
     private(set) var runs: [Agentre_Wire_RuntimeRunRequest] = []
     private(set) var permissionModeCalls: [Agentre_Wire_RuntimeSetPermissionModeRequest] = []
     private(set) var permissionReplies: [Agentre_Wire_RuntimeSubmitToolPermissionRequest] = []
+    private(set) var steers: [Agentre_Wire_RuntimeSteerRequest] = []
     private(set) var unhandledMethods: [String] = []
 
     init(fingerprint: String = FakeAgentred.boxFingerprint, name: String = FakeAgentred.boxName, deviceID: Int64 = 10) {
@@ -97,6 +107,8 @@ final class FakeAgentred: @unchecked Sendable {
 
     func forget(_ peer: RelayPeer) {
         for key in subscribers.keys { subscribers[key]?.remove(peer) }
+        adopted[peer] = nil
+        turnOwners = turnOwners.filter { $0.value !== peer }
     }
 
     func answer(_ method: Agentre_Wire_RpcMethod, _ payload: Data, from peer: RelayPeer) -> Reply {
@@ -110,7 +122,8 @@ final class FakeAgentred: @unchecked Sendable {
             case .runtimeRun: return run(try .init(serializedBytes: payload), from: peer)
             case .runtimeSubmitToolPermission: return submitPermission(try .init(serializedBytes: payload))
             case .runtimeSetPermissionMode: return setPermissionMode(try .init(serializedBytes: payload))
-            case .runtimeDrainPending: return .result(Agentre_Wire_RuntimeDrainPendingResponse())
+            case .runtimeSteer: return steer(try .init(serializedBytes: payload), from: peer)
+            case .runtimeDrainPending: return drainPending(try .init(serializedBytes: payload), from: peer)
             case .skillsCommands: return .result(Agentre_Wire_SkillCommandsResponse())
             default:
                 unhandledMethods.append("\(method)")
@@ -156,6 +169,7 @@ final class FakeAgentred: @unchecked Sendable {
             return .error(-32014, "runtime: session not found")
         }
         subscribers[request.conversationID, default: []].insert(peer)
+        adopted[peer, default: []].insert(request.conversationID)
         var response = Agentre_Wire_SessionAttachResponse()
         response.conversationID = request.conversationID
         response.backendType = session.summary.backendType
@@ -208,7 +222,8 @@ final class FakeAgentred: @unchecked Sendable {
             summary.backendType = request.backend.type
             sessions[id] = Session(summary: summary)
         }
-        activeTurns.insert(id)
+        turnOwners[id] = peer
+        adopted[peer]?.remove(id)
         sessions[id]?.summary.lifecycleState = "running"
         subscribers[id, default: []].insert(peer)
         var started = Agentre_Wire_RpcNotification()
@@ -272,11 +287,41 @@ final class FakeAgentred: @unchecked Sendable {
 
     private func setPermissionMode(_ request: Agentre_Wire_RuntimeSetPermissionModeRequest) -> Reply {
         permissionModeCalls.append(request)
-        guard activeTurns.contains(request.conversationID) else {
+        guard turnOwners[request.conversationID] != nil else {
             return .error(-32010, "agentruntime: no active turn for session")
         }
         record(request.conversationID, .permissionModeChanged(.with { $0.mode = request.mode }))
         return .result(Agentre_Wire_Empty())
+    }
+
+    private func steer(_ request: Agentre_Wire_RuntimeSteerRequest, from peer: RelayPeer) -> Reply {
+        steers.append(request)
+        let id = request.conversationID
+        guard resolves(id, on: peer), turnOwners[id] != nil else {
+            return .error(-32010, "agentruntime: no active turn for session")
+        }
+        mailboxes[id, default: []].append(.with {
+            $0.queuedID = request.queuedID
+            $0.text = request.text
+        })
+        var response = Agentre_Wire_RuntimeSteerResponse()
+        response.queuedID = request.queuedID
+        response.cancellable = true
+        return .result(response)
+    }
+
+    private func drainPending(_ request: Agentre_Wire_RuntimeDrainPendingRequest, from peer: RelayPeer) -> Reply {
+        guard resolves(request.conversationID, on: peer) else {
+            return .error(-32010, "agentruntime: no active turn for session")
+        }
+        var response = Agentre_Wire_RuntimeDrainPendingResponse()
+        response.steers = mailboxes.removeValue(forKey: request.conversationID) ?? []
+        return .result(response)
+    }
+
+    /// 这条通道的会话表里有这一行（resolveSession）。
+    private func resolves(_ conversationID: String, on peer: RelayPeer) -> Bool {
+        turnOwners[conversationID] === peer || adopted[peer]?.contains(conversationID) == true
     }
 
     // MARK: 帧
@@ -318,7 +363,7 @@ final class FakeAgentred: @unchecked Sendable {
         done.durationMs = 1_800
         var notification = Agentre_Wire_RpcNotification()
         notification.runResultDone = done
-        activeTurns.remove(conversationID)
+        turnOwners[conversationID] = nil
         sessions[conversationID]?.summary.lifecycleState = "idle"
         sessions[conversationID]?.summary.waitingForInput = false
         broadcast(conversationID, notification)

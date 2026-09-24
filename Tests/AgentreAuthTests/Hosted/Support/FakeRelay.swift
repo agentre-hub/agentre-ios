@@ -30,6 +30,7 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
             return sockets
         }
         for socket in open { socket.close() }
+        forgetConnections(in: machines)
     }
 
     /// 连接断了（应用在后台被挂起、换了网）：已有的连接断开，网络仍在，重拨照常拨得通。
@@ -39,6 +40,14 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
             return sockets
         }
         for socket in open { socket.close() }
+        forgetConnections(in: machines)
+    }
+
+    private var machines: [FakeMachine] { lock.withLock { Array(machinesByTarget.values) } }
+
+    /// agentred 的会话表是按连接的：连接断了，那边认下的会话随之作废，重连后要重新 attach。
+    private func forgetConnections(in machines: [FakeMachine]) {
+        for machine in machines { machine.connectionLost() }
     }
 
     var calls: [Call] { lock.withLock { recorded } }
@@ -80,6 +89,7 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
     func closeChannels(_ target: String) {
         let open = lock.withLock { sockets }
         for socket in open { socket.push(Data(), toChannelsDeclaring: target) }
+        forgetConnections(in: lock.withLock { machinesByTarget[target].map { [$0] } ?? [] })
     }
 
     /// 一次请求的应答：结果，或 RpcError（码 + 原文）。
@@ -184,6 +194,9 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 /// 控制面照搬 agentred：会话只在一轮跑着时登记在内存表里（runtime.run 登记、一轮收场即摘掉），
 /// 不在表里时 runtime.setPermissionMode 回「没有进行中的一轮」
 /// （agentre/internal/daemon/handlers/runtime.go:1454-1462、:1682-1689，码 rpcerror.CodeRuntimeNoActiveTurn）。
+/// 插话与取回解的是这条连接的会话表（resolveSessionCapability → resolveSession，runtime.go:1349-1363、:1682-1689）：
+/// session.attach 放一行占位（AdoptForPeer，runtime.go:243-254），手机自己开的一轮顶掉它、收场时连同摘掉
+/// （fanout 先 unregister 再发 run_result_done，runtime.go:940-941）；表里没有时回同一个码。连接断了表就空了。
 ///
 /// 会话清单照搬 agentred 的发起端回显：只标在**别的对端**发起的会话上，调用方自己发起的那几条
 /// peer_fingerprint 为空（agentre/internal/daemon/handlers/session_catchup.go:167 `row.PeerFingerprint != peer`）。
@@ -208,8 +221,10 @@ final class FakeMachine: @unchecked Sendable {
     private let lock = NSLock()
     private var sessions: [Session] = []
     private var frames: [String: [(seq: Int64, notification: Proto)]] = [:]
-    /// 此刻有一轮在跑的会话（agentred 的 RuntimeHandlers.sessions）。
+    /// 此刻有一轮在跑的会话（agentred 的 RuntimeHandlers.sessions 里这一轮的属主行）。
     private var activeTurns: Set<String> = []
+    /// 这条连接 attach 时认下的会话（RuntimeHandlers.sessions 里的占位行）。
+    private var adopted: Set<String> = []
     /// 每条会话的插话信箱：runtime.steer 放进去，runtime.drainPending 整个取走（agentred 的 steer mailbox）。
     private var mailboxes: [String: [(queuedID: String, text: String)]] = [:]
 
@@ -242,6 +257,14 @@ final class FakeMachine: @unchecked Sendable {
         _ = lock.withLock { activeTurns.remove(conversationID) }
     }
 
+    /// 手机的连接断了：agentred 为那条连接建的会话表随之作废。
+    func connectionLost() {
+        lock.withLock {
+            activeTurns = []
+            adopted = []
+        }
+    }
+
     /// 会话的发起端：没给的算机器自己发起的。
     private func origin(of session: Session) -> String {
         session.peerFingerprint.isEmpty ? fingerprint : session.peerFingerprint
@@ -266,15 +289,25 @@ final class FakeMachine: @unchecked Sendable {
             case WireMethod.runtimeRun:
                 let id = call.payload.string(3)
                 activeTurns.insert(id)
+                adopted.remove(id)
                 if let index = sessions.firstIndex(where: { $0.conversationID == id }) { sessions[index].lifecycleState = "running" }
                 return .result(Proto { $0.string(1, id) })
+            case WireMethod.sessionAttach:
+                adopted.insert(call.payload.string(1))
+                return .result(sessionAnswer(call))
             case WireMethod.runtimeSteer:
+                guard resolves(call.payload.string(1)) else {
+                    return .error(code: -32010, message: "agentruntime: no active turn for session")
+                }
                 mailboxes[call.payload.string(1), default: []].append((call.payload.string(3), call.payload.string(4)))
                 return .result(Proto { r in
                     r.string(1, call.payload.string(3))
                     r.bool(2, true)
                 })
             case WireMethod.runtimeDrainPending:
+                guard resolves(call.payload.string(1)) else {
+                    return .error(code: -32010, message: "agentruntime: no active turn for session")
+                }
                 let steers = mailboxes.removeValue(forKey: call.payload.string(1)) ?? []
                 return .result(Proto { r in
                     for steer in steers {
@@ -288,6 +321,11 @@ final class FakeMachine: @unchecked Sendable {
                 return .result(sessionAnswer(call))
             }
         }
+    }
+
+    /// 这条连接的会话表里有这一行（resolveSession）；调用方持锁。
+    private func resolves(_ conversationID: String) -> Bool {
+        activeTurns.contains(conversationID) || adopted.contains(conversationID)
     }
 
     /// 会话取材与其余方法的应答；调用方持锁。

@@ -99,9 +99,17 @@ public struct RelayComposer: ComposerRelay {
 
     /// 只问 agentred：桌面端不注册这个方法，且它托管的会话由它自己在轮末取走并接续，去问就是抢。
     /// 种类还不知道时同样不问。
+    ///
+    /// 先 attach 再问：agentred 在发出收场帧之前就把这一轮从这条连接的会话表里摘掉了，此后的控制 RPC 一律回
+    /// 「没有进行中的一轮」（agentre/internal/daemon/handlers/runtime.go:940-941、:1682-1689）；attach 在表里放回一行
+    /// 占位（AdoptForPeer，runtime.go:243-254），信箱才问得到（它按 CLI 会话存，跨轮仍在）。
     public func drainPending(_ key: ConversationKey, peerFingerprint: String) async throws -> [ComposerConsumedSteer]? {
         let machine = try await carrier(key)
         guard await machineKind(machine) == "agentred" else { return nil }
+        var attach = Agentre_Wire_SessionAttachRequest()
+        attach.conversationID = key.conversationID
+        attach.peerFingerprint = peerFingerprint
+        let _: Agentre_Wire_SessionAttachResponse = try await connection.call(machine: machine, .sessionAttach, attach)
         var request = Agentre_Wire_RuntimeDrainPendingRequest()
         request.conversationID = key.conversationID
         request.peerFingerprint = peerFingerprint

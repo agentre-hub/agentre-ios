@@ -94,16 +94,38 @@ private func answer<Request: SwiftProtobuf.Message>(
         #expect(body.queuedID == "host-7")
     }
 
-    @Test("取回：承载机是 agentred 时问 runtimeDrainPending，交回取走的几条")
+    @Test("取回：承载机是 agentred 时先 attach 认下会话（它在轮末已从会话表里摘掉），应答之后才问 runtimeDrainPending，交回取走的几条")
     func drainsOnAgentred() async throws {
         let harness = await Harness.started()
         async let drained = composer(harness).drainPending(key, peerFingerprint: "peer-1")
+        let (socket, id) = try await harness.machineChannel("carrier-fp")
+        let attach = try await socket.nextRequest(on: id, method: .sessionAttach)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(socket.requests(on: id, method: .runtimeDrainPending).isEmpty, "drain asked before the attach was answered")
+        socket.respond(id, to: attach, with: Agentre_Wire_SessionAttachResponse())
+        let attachBody = try attach.body(Agentre_Wire_SessionAttachRequest.self)
+        #expect(attachBody.conversationID == "conv-1")
+        #expect(attachBody.peerFingerprint == "peer-1")
         var response = Agentre_Wire_RuntimeDrainPendingResponse()
         response.steers = [Agentre_Wire_ConsumedSteer.with { $0.queuedID = "host-7"; $0.text = "later" }]
-        let body = try await answer(harness, .runtimeDrainPending, as: Agentre_Wire_RuntimeDrainPendingRequest.self, with: response)
+        let body = try await answer(
+            harness, .runtimeDrainPending, as: Agentre_Wire_RuntimeDrainPendingRequest.self, with: response, on: (socket, id)
+        )
         #expect(try await drained == [ComposerConsumedSteer(queuedID: "host-7", text: "later")])
         #expect(body.conversationID == "conv-1")
         #expect(body.peerFingerprint == "peer-1")
+    }
+
+    @Test("取回：attach 被拒（这条会话的那一轮随上一个 agentred 进程消亡了）时照实报错，不再问信箱")
+    func drainFailsWhenAttachRejected() async throws {
+        let harness = await Harness.started()
+        let adapter = composer(harness)
+        let drained = Task { try await adapter.drainPending(key, peerFingerprint: "peer-1") }
+        let (socket, id) = try await harness.machineChannel("carrier-fp")
+        let attach = try await socket.nextRequest(on: id, method: .sessionAttach)
+        socket.fail(id, to: attach, code: -32010, message: "agentruntime: no active turn for session")
+        await #expect(throws: (any Error).self) { try await drained.value }
+        #expect(socket.requests(on: id, method: .runtimeDrainPending).isEmpty)
     }
 
     @Test("取回：承载机是桌面端或种类还不知道时不问（桌面端自己在轮末接续），交回 nil", arguments: ["desktop", nil] as [String?])
@@ -212,7 +234,8 @@ private func answer<Request: SwiftProtobuf.Message>(
             (.runtimeAbort, { try await $0.abort(key, peerFingerprint: "") }),
             (.runtimeSteer, { _ = try await $0.steer(key, peerFingerprint: "", queuedID: "q", text: "x") }),
             (.runtimeCancelSteer, { _ = try await $0.cancelSteer(key, peerFingerprint: "", queuedID: "q") }),
-            (.runtimeDrainPending, { _ = try await $0.drainPending(key, peerFingerprint: "") }),
+            // 取回的第一问是 attach（见 drainsOnAgentred）：它失败就到此为止。
+            (.sessionAttach, { _ = try await $0.drainPending(key, peerFingerprint: "") }),
             (.runtimeSetPermissionMode, { try await $0.setPermissionMode(key, peerFingerprint: "", mode: "plan") }),
             (.setModelTarget, { try await $0.setModelTarget(key, peerFingerprint: "", providerKey: "p", modelKey: "m") }),
             (.setSessionReasoningEffort, { try await $0.setReasoningEffort(key, peerFingerprint: "", effort: "high") }),
