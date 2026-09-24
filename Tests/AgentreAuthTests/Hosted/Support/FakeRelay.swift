@@ -197,6 +197,7 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 /// 插话与取回解的是这条连接的会话表（resolveSessionCapability → resolveSession，runtime.go:1349-1363、:1682-1689）：
 /// session.attach 放一行占位（AdoptForPeer，runtime.go:243-254），手机自己开的一轮顶掉它、收场时连同摘掉
 /// （fanout 先 unregister 再发 run_result_done，runtime.go:940-941）；表里没有时回同一个码。连接断了表就空了。
+/// 插话还要机器上那一轮在跑（claudecode 的 Steer 认 mainThreadBusy，谁开的都算），这里以会话行的生命周期为准。
 ///
 /// 会话清单照搬 agentred 的发起端回显：只标在**别的对端**发起的会话上，调用方自己发起的那几条
 /// peer_fingerprint 为空（agentre/internal/daemon/handlers/session_catchup.go:167 `row.PeerFingerprint != peer`）。
@@ -296,7 +297,7 @@ final class FakeMachine: @unchecked Sendable {
                 adopted.insert(call.payload.string(1))
                 return .result(sessionAnswer(call))
             case WireMethod.runtimeSteer:
-                guard resolves(call.payload.string(1)) else {
+                guard resolves(call.payload.string(1)), isRunning(call.payload.string(1)) else {
                     return .error(code: -32010, message: "agentruntime: no active turn for session")
                 }
                 mailboxes[call.payload.string(1), default: []].append((call.payload.string(3), call.payload.string(4)))
@@ -326,6 +327,11 @@ final class FakeMachine: @unchecked Sendable {
     /// 这条连接的会话表里有这一行（resolveSession）；调用方持锁。
     private func resolves(_ conversationID: String) -> Bool {
         activeTurns.contains(conversationID) || adopted.contains(conversationID)
+    }
+
+    /// 机器上这条会话有一轮在跑（不论哪个对端开的）；调用方持锁。
+    private func isRunning(_ conversationID: String) -> Bool {
+        sessions.first { $0.conversationID == conversationID }?.lifecycleState == "running"
     }
 
     /// 会话取材与其余方法的应答；调用方持锁。

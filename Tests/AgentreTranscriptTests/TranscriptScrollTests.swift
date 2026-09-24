@@ -166,6 +166,24 @@ struct TranscriptScrollTests {
         #expect(await host.element(labelled: jumpLabel) == nil, "屏上出现了「\(jumpLabel)」")
     }
 
+    @Test("跟随中手指往上拖、第一步恰好碰上流式回复又长了一截：跟随照停，拖动不被贴底一帧帧拽回")
+    func draggingUpWhileStreamingStopsFollowing() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40)
+        host.beginDragging(scrollView)
+        // 手指刚动的那一帧回复长了一截：内容变了，这一步不算滚动。
+        model.merge(live: [liveFrame(decoder, 41, .userMessage("第 41 句"))])
+        scrollView.setContentOffset(CGPoint(x: 0, y: scrollView.contentOffset.y - 8), animated: false)
+        try await host.frames(1)
+        // 手指接着往上拖，每帧挪一截（拖动是在当前偏移上累加的）。
+        for _ in 0..<20 {
+            scrollView.setContentOffset(CGPoint(x: 0, y: scrollView.contentOffset.y - 20), animated: false)
+            try await host.frames(1)
+        }
+        host.endDragging(scrollView)
+        try await host.settle("拖动上滚后仍在跟随：\(host.describe(scrollView))") { !model.follow.isFollowing }
+        #expect(!host.isAtBottom(scrollView), "\(host.describe(scrollView))")
+    }
+
     /// 打开 `rows` 句的转录，等它在底部、在跟随。
     private func openAtBottom(rows count: Int) async throws -> (TranscriptModel, ScrollHost, UIScrollView) {
         let frames = (1...count).map { stored(decoder, Int64($0), .userMessage("第 \($0) 句")) }
@@ -216,6 +234,18 @@ fileprivate final class ScrollHost {
     /// 底部让出一段（与键盘同形：安全区收窄，列表可见高度随之变小）；0 即收起。
     func shrinkViewport(by height: CGFloat) {
         controller.additionalSafeAreaInsets.bottom = height
+    }
+
+    /// 手指按上列表开始拖（滚动视图代理收到的与真实拖动同一个开头；偏移仍由测试拨动）。
+    func beginDragging(_ scrollView: UIScrollView) {
+        scrollView.delegate?.scrollViewWillBeginDragging?(scrollView)
+    }
+
+    /// 手指抬起，不带惯性。
+    func endDragging(_ scrollView: UIScrollView) {
+        var target = scrollView.contentOffset
+        scrollView.delegate?.scrollViewWillEndDragging?(scrollView, withVelocity: .zero, targetContentOffset: &target)
+        scrollView.delegate?.scrollViewDidEndDragging?(scrollView, willDecelerate: false)
     }
 
     /// 让出若干帧，不带条件。

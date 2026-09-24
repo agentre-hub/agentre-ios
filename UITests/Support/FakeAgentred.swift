@@ -297,7 +297,7 @@ final class FakeAgentred: @unchecked Sendable {
     private func steer(_ request: Agentre_Wire_RuntimeSteerRequest, from peer: RelayPeer) -> Reply {
         steers.append(request)
         let id = request.conversationID
-        guard resolves(id, on: peer), turnOwners[id] != nil else {
+        guard resolves(id, on: peer), sessions[id]?.summary.lifecycleState == "running" else {
             return .error(-32010, "agentruntime: no active turn for session")
         }
         mailboxes[id, default: []].append(.with {

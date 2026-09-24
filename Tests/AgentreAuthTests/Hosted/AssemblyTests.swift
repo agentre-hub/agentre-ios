@@ -332,6 +332,7 @@ struct AssemblyTests {
         }
         try await Task.sleep(for: .milliseconds(200))
 
+        harness.machine.setLifecycle("conv-1", "running")
         harness.relay.notify("machine:machine-a", WireNotification.turnStarted("conv-1"))
         _ = try await eventually("turn running") { screen.composer.isTurnRunning ? true : nil }
 
