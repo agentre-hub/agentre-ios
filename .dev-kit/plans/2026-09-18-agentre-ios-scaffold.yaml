@@ -348,9 +348,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Tests/AgentreTranscriptTests/]
     model: mid
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 1c5c15e
+    note: "根因：流式回复落定时预览行被存储行替换（新 ID），视图自己的贴底 scrollTo(last.id, .bottom) 按新行估算位置落到上方约 3900pt，内容高度不变，滚动处理器把这次自身引起的上移当作用户上滚。一次性到达大量行的变体修前即通过。修：贴底把下一步几何标为自身所致，若落在底部之外且仍在跟随就再贴一次；已在底部不贴；用户开始拖动即清除标记；去掉每次行变化都贴底。RED：TranscriptScrollTests/followingSurvivesSettledStreamingReply() exit 65「第 63 帧后停止了跟随」，修后 exit 0。GREEN：TranscriptScrollTests 6/6 exit 0（含上滚即停并记数、键盘弹起时上滚也停）；AgentreTranscriptTests 132 exit 0；AgentreApprovalTests 42 exit 0。关注：拖动开始清标记（onScrollPhaseChange）未被这些用例覆盖，需真机/UI 验证；未跑 UI 与宿主测试。"
 
 review:
   status: pending
