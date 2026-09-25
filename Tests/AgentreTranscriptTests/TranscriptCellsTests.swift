@@ -39,9 +39,9 @@ struct TranscriptCellsTests {
         }
     }
 
-    @Test("回复往后长时，除最末一格外的格子原样不动（一片增量只重排最末那一格）")
-    func growingTextKeepsEarlierCells() {
-        let text = Array(operatingSystemsEssay)
+    @Test("回复往后长时，除最末一格外的格子原样不动（一片增量只重排最末那一格）", arguments: [operatingSystemsEssay, codeReply])
+    func growingTextKeepsEarlierCells(_ reply: String) {
+        let text = Array(reply)
         var previous: [TranscriptCell] = []
         for length in stride(from: 500, through: text.count, by: 377) {
             let cells = TranscriptCells.build([TranscriptRow(id: "t", content: .text(String(text[0..<length]), streaming: true))])
@@ -49,6 +49,18 @@ struct TranscriptCellsTests {
             #expect(Array(cells.prefix(settled.count)) == Array(settled), "写到 \(length) 字时前面的格子变了")
             previous = cells
         }
+    }
+
+    @Test("代码块里的空行不是切口：行内 Markdown 的代码可以跨空行，逐格排出来拼回去与整段排版相同")
+    func blankLinesInsideCodeAreNotCutPoints() {
+        let segments = TranscriptCells.build([TranscriptRow(id: "t", content: .text(codeReply, streaming: false))]).compactMap(\.segment)
+        #expect(segments.count > 1)
+        var stacked = AttributedString()
+        for (index, segment) in segments.enumerated() {
+            if index > 0 { stacked += AttributedString("\n") }
+            stacked += AgentText.rendered(segment.text)
+        }
+        #expect(stacked == AgentText.rendered(codeReply), "切口：\(segments.dropLast().map { String($0.text.suffix(24)) })")
     }
 
     @Test("没有空行的一整段不切（行内 Markdown 可以跨单个换行）")
@@ -81,3 +93,10 @@ struct TranscriptCellsTests {
         #expect(abs(stacked - whole) <= CGFloat(segments.count - 1) / 3, "整段 \(whole)pt，逐格叠起来 \(stacked)pt（\(segments.count) 格）")
     }
 }
+
+/// 说明文字紧接着带空行的代码块（第一个够长的空行落在代码里），其后还有转义的反引号、行内代码与第二个代码块。
+private let codeReply: String = {
+    let prose = String(repeating: "这是一段普通的说明文字，", count: 90)
+    let code = "```swift\nlet a = 1\n\nlet b = a * 2 * c\n```"
+    return [prose + "\n" + code, "转义的 \\` 不开代码，`x` 才是行内代码，*强调*照常。", code, prose, prose, "结尾。"].joined(separator: "\n\n")
+}()

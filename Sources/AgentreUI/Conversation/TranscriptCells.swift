@@ -7,14 +7,15 @@ import AgentreDomain
 struct TranscriptCell: Identifiable, Equatable {
     enum Content: Equatable {
         case row(TranscriptRow)
-        case text(TextSegment)
+        /// 正文切出来的一段，以及它所在的那一行。
+        case text(TextSegment, row: String)
     }
 
     let id: String
     let content: Content
 
     var segment: TextSegment? {
-        if case .text(let segment) = content { segment } else { nil }
+        if case .text(let segment, _) = content { segment } else { nil }
     }
 }
 
@@ -42,24 +43,45 @@ enum TranscriptCells {
             for (index, piece) in pieces.enumerated() {
                 cells.append(TranscriptCell(
                     id: index == 0 ? row.id : "\(row.id)#\(index)",
-                    content: .text(TextSegment(text: piece, first: index == 0, last: index == pieces.count - 1))
+                    content: .text(TextSegment(text: piece, first: index == 0, last: index == pieces.count - 1), row: row.id)
                 ))
             }
         }
         return cells
     }
 
+    /// `row` 那一行的整段正文。
+    static func reply(_ row: String, in rows: [TranscriptRow]) -> String? {
+        guard case .text(let text, _) = rows.first(where: { $0.id == row })?.content else { return nil }
+        return text
+    }
+
     /// 从头往后切：切口只取决于它之前的文字，所以正文往后长时，除最末一段外各段原样不动。
+    ///
+    /// 行内 Markdown 的代码可以跨空行（围栏代码块也按它解析成一段代码），切在里面会把两半都排坏；
+    /// 所以代码没闭合时的空行不算切口。代码按反引号串配对：开头的串要等到一样长的串才闭合，代码外的反斜杠转义下一个字符。
     static func split(_ text: String) -> [String] {
         let bytes = text.utf8
         guard bytes.count > segmentBytes else { return [text] }
         var pieces: [String] = []
         var start = bytes.startIndex
         var index = bytes.startIndex
+        /// 未闭合的代码开头那串反引号的长度；0 表示不在代码里。
+        var openTicks = 0
         while index < bytes.endIndex {
-            let next = bytes.index(after: index)
-            if bytes[index] == 0x0A, next < bytes.endIndex, bytes[next] == 0x0A,
-               bytes.distance(from: start, to: index) >= segmentBytes {
+            let byte = bytes[index]
+            var next = bytes.index(after: index)
+            if byte == UInt8(ascii: "`") {
+                var run = 1
+                while next < bytes.endIndex, bytes[next] == UInt8(ascii: "`") {
+                    run += 1
+                    next = bytes.index(after: next)
+                }
+                if openTicks == 0 { openTicks = run } else if openTicks == run { openTicks = 0 }
+            } else if byte == UInt8(ascii: "\\"), openTicks == 0, next < bytes.endIndex {
+                next = bytes.index(after: next)
+            } else if byte == 0x0A, openTicks == 0, next < bytes.endIndex, bytes[next] == 0x0A,
+                      bytes.distance(from: start, to: index) >= segmentBytes {
                 pieces.append(String(text[start..<index]))
                 start = next
             }

@@ -30,8 +30,11 @@ public struct TranscriptView<Card: View>: View {
                         switch cell.content {
                         case .row(let row):
                             TranscriptRowView(row: row, agentName: agentName, model: model, card: card)
-                        case .text(let segment):
-                            AgentText(segment: segment).equatable()
+                        case .text(let segment, let row):
+                            AgentText(segment: segment, copyReply: segment.first && segment.last ? nil : {
+                                TranscriptCells.reply(row, in: model.rows)
+                            })
+                            .equatable()
                         }
                     }
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))

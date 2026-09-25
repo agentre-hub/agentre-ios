@@ -253,23 +253,64 @@ struct TranscriptScrollTests {
         let essay = Array(operatingSystemsEssay)
         var written = 0
         /// 回复写到 `length` 字后，再逐片追加 20 小片、每片都落到屏上，所花的时间。
+        /// 连量三轮取最短的：机器被别的活占满时，某一轮被抢走的时间不算进代价。
         func costOfDeltas(after length: Int) async throws -> Duration {
             model.merge(live: [liveFrame(decoder, nil, .textDelta(String(essay[written..<length])), preview: true)])
             written = length
-            try await host.frames(5)
-            let clock = ContinuousClock()
-            let started = clock.now
-            for _ in 0..<20 {
-                model.merge(live: [liveFrame(decoder, nil, .textDelta(String(essay[written..<written + 6])), preview: true)])
-                written += 6
-                host.controller.view.layoutIfNeeded()
+            var fastest = Duration.seconds(3_600)
+            for _ in 0..<3 {
+                try await host.frames(5)
+                let clock = ContinuousClock()
+                let started = clock.now
+                for _ in 0..<20 {
+                    model.merge(live: [liveFrame(decoder, nil, .textDelta(String(essay[written..<written + 6])), preview: true)])
+                    written += 6
+                    host.controller.view.layoutIfNeeded()
+                }
+                fastest = min(fastest, clock.now - started)
             }
-            return clock.now - started
+            return fastest
         }
         let short = try await costOfDeltas(after: 1_000)
         let long = try await costOfDeltas(after: 15_000)
         // 修前实测：1000 字时 20 片约 0.55 秒，15000 字时约 8.5 秒（15 倍）。
-        #expect(long < short * 3, "回复 1000 字时 20 片花 \(short)，15000 字时花 \(long)")
+        #expect(long < short * 3, "回复 1000 字时 20 片最快花 \(short)，15000 字时最快花 \(long)")
+    }
+
+    @Test("切成几格的长回复，在任一格上拷贝得到的都是整条回复，不是看不出边界的一截")
+    func copyingASplitReplyCopiesTheWholeReply() async throws {
+        let frames = [
+            stored(decoder, 1, .userMessage("写一篇操作系统长文")),
+            stored(decoder, 2, .turnStarted),
+            stored(decoder, 3, .textDelta(operatingSystemsEssay)),
+            stored(decoder, 4, .turnDone(TurnDone(durationMs: 1_000))),
+        ]
+        let model = TranscriptModel(
+            conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"),
+            store: FakeStore(frames), relay: FakeRelay(), decoder: decoder
+        )
+        let host = ScrollHost(TranscriptView(model: model, agentName: "Claude Code"), size: iPhone17)
+        try await host.settle { !model.rows.isEmpty }
+        let segments = TranscriptCells.build(model.rows).compactMap(\.segment)
+        #expect(segments.count > 1)
+        let last = String(AgentText.rendered(try #require(segments.last).text).characters)
+        try await host.settle { await host.element(labelled: last) != nil }
+        let element = try #require(await host.element(labelled: last))
+        let copy = (element.accessibilityCustomActions ?? []).filter { $0.name == text("transcript.copyReply") }
+        #expect(copy.count == 1, "末格的动作：\((element.accessibilityCustomActions ?? []).map(\.name))")
+        let action = try #require(copy.first)
+        let pasteboard = try #require(UIPasteboard(name: UIPasteboard.Name("transcript-copy-test"), create: true))
+        AgentText.pasteboard = pasteboard
+        defer {
+            AgentText.pasteboard = .general
+            UIPasteboard.remove(withName: pasteboard.name)
+        }
+        if let handler = action.actionHandler {
+            #expect(handler(action))
+        } else {
+            _ = (action.target as? NSObject)?.perform(action.selector, with: action)
+        }
+        #expect(pasteboard.string == operatingSystemsEssay)
     }
 
     /// 打开 `rows` 句的转录，等它在底部、在跟随。

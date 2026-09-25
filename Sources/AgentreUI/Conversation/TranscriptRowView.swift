@@ -96,23 +96,28 @@ private struct AgentSignature: View {
 /// 行距，读起来仍是一整段。按段落比较：一片增量只让最末那一格重排，前面的格子不重算。
 struct AgentText: View, Equatable {
     let segment: TextSegment
+    /// 正文切成了几格时读出整段正文：长按任一格拷贝的是整条回复，而不是看不出边界的一截。
+    /// 拷贝时才读，不参与比较。
+    var copyReply: (() -> String?)?
+    /// 拷贝写进的剪贴板（测试换成进程内的具名剪贴板：测试进程读不了系统剪贴板）。
+    @MainActor static var pasteboard = UIPasteboard.general
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        Group {
-            if let attributed = try? AttributedString(markdown: segment.text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
-                Text(attributed)
-            } else {
-                Text(verbatim: segment.text)
-            }
-        }
-        .font(.body)
-        .foregroundStyle(.token(.textPrimary))
-        .textSelection(.enabled)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, segment.first ? 4 : lineGap)
-        .padding(.bottom, segment.last ? 4 : 0)
+        Text(Self.rendered(segment.text))
+            .font(.body)
+            .foregroundStyle(.token(.textPrimary))
+            .modifier(ReplyCopy(copyReply: copyReply))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, segment.first ? 4 : lineGap)
+            .padding(.bottom, segment.last ? 4 : 0)
+    }
+
+    /// 行内 Markdown 按原样解析，解析不了就逐字呈现。
+    static func rendered(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
     }
 
     /// 同一段文字里上一行与下一行之间的行距（按像素向下取整，与文字排版的取整一致）；分在两格里时它不在任何一格之内。
@@ -123,4 +128,24 @@ struct AgentText: View, Equatable {
     }
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.segment == rhs.segment }
+}
+
+/// 整段在一格里：选中文字即整条回复。切成了几格：长按（及读屏的动作）拷贝整条回复。
+private struct ReplyCopy: ViewModifier {
+    let copyReply: (() -> String?)?
+
+    func body(content: Content) -> some View {
+        if let copyReply {
+            let copy = { if let reply = copyReply() { AgentText.pasteboard.string = reply } }
+            content
+                .contextMenu {
+                    Button(action: copy) {
+                        Label { Text("transcript.copyReply", tableName: "Conversation", bundle: .module) } icon: { Image(systemName: "doc.on.doc") }
+                    }
+                }
+                .accessibilityAction(named: Text("transcript.copyReply", tableName: "Conversation", bundle: .module), copy)
+        } else {
+            content.textSelection(.enabled)
+        }
+    }
 }
