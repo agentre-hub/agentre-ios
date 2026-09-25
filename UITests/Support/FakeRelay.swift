@@ -139,6 +139,8 @@ final class RelayPeer: Hashable {
     private let accepts: (String) -> Bool
     private(set) var authenticated = false
     private(set) var isClosed = false
+    /// 往手机那一路堵住了：此后发给它的一切（应答、实时帧）都到不了。
+    private var stalled = false
 
     fileprivate init(client: RelayClient, channelID: String, machine: FakeAgentred, accepts: @escaping (String) -> Bool) {
         self.client = client
@@ -200,8 +202,12 @@ final class RelayPeer: Hashable {
         send(frame)
     }
 
+    func stall() {
+        stalled = true
+    }
+
     private func send(_ frame: Agentre_Wire_RpcFrame) {
-        guard !isClosed, let bytes = try? frame.serializedData() else { return }
+        guard !isClosed, !stalled, let bytes = try? frame.serializedData() else { return }
         client.send(channelID, bytes)
     }
 

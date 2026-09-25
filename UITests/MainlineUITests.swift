@@ -5,7 +5,7 @@ import XCTest
 ///
 /// 登录（设备流）→ 「我」里切外观 → 机器 → 机器详情保存到手机 → 消息列表 → 新建对话并发出 → 审批 Allow Once
 /// → 两轮之间切权限模式后再发一句 → 这一轮在跑时排一句、收场后它接续成下一轮 → 挂起回前台、打开着的对话屏续上
-/// → 撤销本机回到登录屏。
+/// → 发出后应答没到就进后台、回前台后如实显示机器受理了的那一轮 → 撤销本机回到登录屏。
 /// 简体中文 × 英文、浅色 × 深色四种组合各跑一遍；每步断言屏上可见的结果并留截图（xcresult 附件）。
 @MainActor
 final class MainlineUITests: XCTestCase {
@@ -28,6 +28,8 @@ final class MainlineUITests: XCTestCase {
     private static let secondReply = "The build is green now."
     private static let queuedMessage = "Reply with just OK"
     private static let queuedReply = "OK"
+    private static let stalledMessage = "Write it in Kotlin"
+    private static let stalledReply = "Here it is in Kotlin."
 
     private func mainline(language: String, locale: String, appearance: Appearance) throws {
         continueAfterFailure = false
@@ -184,6 +186,36 @@ final class MainlineUITests: XCTestCase {
         XCTAssertGreaterThan(server.read { $0.relay.upgrades }, upgradesBefore, "the relay was not redialled")
         screen.expectAppearance(dark: dark, "conversation after returning to the foreground")
         screen.shot("17 foreground resumed")
+
+        // 发出后应答没到就进了后台（report-7 11f）：机器受理并开跑，往手机那一路此后什么都没到；进后台后连接断了，
+        // 这一轮在机器上跑完。回到前台：这句话与回复都在屏上，不说「消息没有发出」、不把原文放回输入框，也不再发一遍。
+        server.perform { _ in box.stallNextRun() }
+        screen.type(Self.stalledMessage, into: screen.input(copy("Composer", "composer.message")), "composer field")
+        screen.tap(screen.button(copy("Composer", "composer.send")), "send a message whose answer never arrives")
+        screen.expect("the machine took the stalled turn") {
+            server.read { _ in box.runs.count == 4 && box.runs.last?.userText == Self.stalledMessage }
+        }
+        XCUIDevice.shared.press(.home)
+        screen.expect("the app left the foreground") {
+            [.runningBackground, .runningBackgroundSuspended].contains(app.state)
+        }
+        server.perform { server in
+            server.relay.dropAll()
+            box.completeHeldTurn(reply: Self.stalledReply)
+        }
+        app.activate()
+        screen.expectOnScreen(screen.text(Self.stalledReply), "the reply of the turn whose answer was lost")
+        screen.expectOnScreen(screen.text(Self.stalledMessage), "the message whose answer was lost, in the transcript")
+        XCTAssertFalse(
+            screen.text(copy("Composer", "composer.sendFailed")).waitForExistence(timeout: 3), "the accepted message was reported as not sent"
+        )
+        XCTAssertFalse(
+            app.textViews.matching(NSPredicate(format: "value == %@", Self.stalledMessage)).firstMatch.exists,
+            "the accepted message was put back into the input"
+        )
+        screen.expectGone(screen.button(copy("Composer", "composer.stop")), "stop button once the stalled turn ended")
+        XCTAssertEqual(server.read { _ in box.runs.count }, 4, "the accepted message was sent again")
+        screen.shot("17a lost answer resumed")
 
         // 撤销本机 → 回到登录屏。先退回消息列表：键盘随对话屏收起，标签栏才露出来。
         screen.tap(app.navigationBars.buttons["BackButton"], "back to the message list")

@@ -16,6 +16,9 @@ import SwiftProtobuf
 ///   这一轮自己陆续产出（runtime.go:578-590）。一轮收场先落带号的 done（runtime_transcript.go 的 finish），
 ///   再发不带号、补拉不回来的 run_result_done。
 /// - 实时帧只推给 attach 过（或发起了这一轮）的通道；断开的通道收不到，回来后按游标 pull。
+/// - 应答丢了，这一轮照样在机器上：`stallNextRun` 让下一轮照常受理、开跑，而往手机那一路此后什么都到不了
+///   （开轮帧、用户那一帧、应答都没到；report-7 11f：agentred 01:40:50 已开跑，手机两秒后仍无 Stop，随即进了后台），
+///   直到那条连接断掉。
 /// - 会话清单只把发起端标在**别的对端**发起的会话上，调用方自己发起的那几条 peer_fingerprint 为空
 ///   （session_catchup.go:167 `row.PeerFingerprint != peer`）；手机新建的对话回到手机面前时就是空的。
 ///
@@ -59,6 +62,7 @@ final class FakeAgentred: @unchecked Sendable {
     private var pendingPermissions: [String: (requestID: String, callID: String, output: String, reply: String)] = [:]
     private var heldTurns: [String] = []
     private var planQueue: [TurnPlan] = []
+    private var stallsNextRun = false
 
     private(set) var runs: [Agentre_Wire_RuntimeRunRequest] = []
     private(set) var permissionModeCalls: [Agentre_Wire_RuntimeSetPermissionModeRequest] = []
@@ -93,6 +97,11 @@ final class FakeAgentred: @unchecked Sendable {
 
     func plan(_ plans: TurnPlan...) {
         planQueue.append(contentsOf: plans)
+    }
+
+    /// 下一轮 runtime.run 照常受理，但发起它的那条通道从此收不到任何东西（连应答在内），直到连接断开。
+    func stallNextRun() {
+        stallsNextRun = true
     }
 
     /// 被 `.hold` 住的那一轮收场：回一句话、落一帧收场。
@@ -210,6 +219,10 @@ final class FakeAgentred: @unchecked Sendable {
             return .error(-32014, "runtime: session not found")
         }
         runs.append(request)
+        if stallsNextRun {
+            stallsNextRun = false
+            peer.stall()
+        }
         if sessions[id] == nil {
             var summary = Agentre_Wire_SessionSummary()
             summary.conversationID = id

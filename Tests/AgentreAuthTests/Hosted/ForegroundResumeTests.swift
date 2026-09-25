@@ -220,6 +220,92 @@ struct ForegroundResumeTests {
         #expect(harness.relay.calls(WireMethod.runtimeDrainPending).isEmpty)
     }
 
+    // MARK: 发出后应答没到就进了后台
+
+    /// 打开着的对话屏，上一轮（m2）已正常收场：此刻发出的一句开新一轮。
+    private func idleConversation(_ harness: Harness) async throws -> (AppEnvironment, SignedInServices, ConversationScreenModel, Task<Void, Never>) {
+        let opened = try await openConversation(harness)
+        let screen = opened.2
+        harness.relay.notify("machine:machine-a", WireNotification.turnDone("conv-1"))
+        screen.composer.edit(text: "probe", cursor: 5)
+        _ = try await eventually("previous turn settled") { !screen.composer.isTurnRunning && screen.composer.canSend ? true : nil }
+        screen.composer.edit(text: "", cursor: 0)
+        return opened
+    }
+
+    /// 回前台时机器上那一轮的状态。
+    enum TurnAtReturn: String, CaseIterable, CustomTestStringConvertible {
+        case ended, running
+        var testDescription: String { rawValue }
+    }
+
+    @Test(
+        "发出后应答没到就进后台、机器已受理并开跑：回前台后不说没发出、不把原文放回输入框，停止钮按机器此刻的状态",
+        arguments: Suspension.allCases, TurnAtReturn.allCases
+    )
+    func acceptedSendWhoseAnswerWasLost(_ suspension: Suspension, _ atReturn: TurnAtReturn) async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let (environment, services, screen, open) = try await idleConversation(harness)
+        defer {
+            open.cancel()
+            Task { await environment.tearDown() }
+        }
+        // report-7 11f：agentred 已开跑，手机那一路此后什么都没到——没有应答，也没有开轮帧（点发送 2 秒后仍无 Stop）。
+        harness.relay.lose(next: WireMethod.runtimeRun, .answer)
+        screen.composer.edit(text: "write kotlin", cursor: 12)
+        let sending = Task { await screen.composer.send() }
+        _ = try await eventually("machine took the turn") { runTexts(harness) == ["write kotlin"] ? true : nil }
+        #expect(!screen.composer.canStop)
+
+        try await suspend(suspension, harness, services, screen.conversation.key) {
+            guard atReturn == .ended else { return }
+            harness.machine.append("conv-1", [WireNotification.textDelta("conv-1", seq: 0, "fun main() {}")])
+            harness.machine.setLifecycle("conv-1", "idle")
+            harness.machine.finishTurn("conv-1")
+        }
+        await services.resume()
+        await sending.value
+
+        #expect(screen.composer.failure == nil, "reported as not sent although the machine ran it")
+        #expect(screen.composer.text.isEmpty, "the sent text was put back into the input")
+        _ = try await eventually("sent message on screen") { userTexts(screen).last == "write kotlin" ? true : nil }
+        switch atReturn {
+        case .ended:
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(!screen.composer.canStop)
+        case .running:
+            _ = try await eventually("stop button for the turn still running") { screen.composer.canStop ? true : nil }
+        }
+        #expect(runTexts(harness) == ["write kotlin"], "sent twice")
+    }
+
+    @Test("发出的请求没到机器连接就断了：回前台后如实说没发出，原文回到输入框", arguments: Suspension.allCases)
+    func unacceptedSendIsReportedNotSent(_ suspension: Suspension) async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        let (environment, services, screen, open) = try await idleConversation(harness)
+        defer {
+            open.cancel()
+            Task { await environment.tearDown() }
+        }
+        harness.relay.lose(next: WireMethod.runtimeRun, .request)
+        screen.composer.edit(text: "write kotlin", cursor: 12)
+        let sending = Task { await screen.composer.send() }
+        try await Task.sleep(for: .milliseconds(300))
+
+        try await suspend(suspension, harness, services, screen.conversation.key)
+        await services.resume()
+        await sending.value
+
+        #expect(screen.composer.failure == .send)
+        #expect(screen.composer.text == "write kotlin")
+        #expect(!screen.composer.canStop)
+        #expect(runTexts(harness).isEmpty)
+    }
+
     @Test("手机新建的对话（发起端 = 本机）这一轮在后台期间收场：回前台后停止钮消失，本地库仍只有这一行", arguments: Suspension.allCases)
     func phoneStartedTurnEndedInBackground(_ suspension: Suspension) async throws {
         let harness = try Harness()

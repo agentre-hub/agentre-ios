@@ -142,6 +142,47 @@ struct ComposerModelTests {
         #expect(model.failure == .send)
     }
 
+    @Test("开新一轮被机器拒了（或问机器也没有这句）：如实说没发出，字还回输入框")
+    func runFails() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("run")
+        let model = composer(relay: relay)
+        model.text = "写个 Kotlin"
+        await model.send()
+        #expect(model.failure == .send)
+        #expect(model.text == "写个 Kotlin")
+        #expect(!model.isTurnRunning)
+    }
+
+    @Test("应答丢了、问机器才知道它受理了且这一轮还在跑：不说没发出、不还字，就是运行中（可停）")
+    func confirmedRunningTurn() async throws {
+        let relay = FakeComposerRelay()
+        await relay.set(runReceipt: .confirmed(lifecycle: "running"))
+        let model = composer(relay: relay)
+        model.text = "写个 Kotlin"
+        await model.send()
+        #expect(model.failure == nil)
+        #expect(model.text.isEmpty)
+        #expect(model.canStop)
+    }
+
+    @Test("应答丢了、问机器才知道它受理了且这一轮已经收场：不说没发出、不还字，不在运行，下一句直接开新一轮")
+    func confirmedEndedTurn() async throws {
+        let relay = FakeComposerRelay()
+        await relay.set(runReceipt: .confirmed(lifecycle: "idle"))
+        let model = composer(relay: relay)
+        model.text = "写个 Kotlin"
+        await model.send()
+        #expect(model.failure == nil)
+        #expect(model.text.isEmpty)
+        #expect(!model.canStop)
+        await relay.set(runReceipt: .acknowledged)
+        model.text = "再来一个"
+        #expect(model.canSend)
+        await model.send()
+        #expect(await relay.calls == [.run("写个 Kotlin", compact: false), .run("再来一个", compact: false)])
+    }
+
     @Test("空白消息不发")
     func blankNotSent() async throws {
         let relay = FakeComposerRelay()

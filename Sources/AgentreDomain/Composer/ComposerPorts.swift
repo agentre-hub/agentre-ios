@@ -22,6 +22,15 @@ public struct ComposerConsumedSteer: Sendable, Equatable {
     }
 }
 
+/// 机器受理了这一轮（runtime.run）的凭据。
+public enum ComposerRunReceipt: Sendable, Equatable {
+    /// 应答到了：这一轮刚开起来，此后的起止由转录里的回合事件说话。
+    case acknowledged
+    /// 应答没到（进后台被挂起、断线、到期），回头问机器才知道它受理了：附机器此刻报的会话生命周期
+    /// ——这一轮开场与收场的边界帧都可能随那条连接丢了，只有它说得出这一轮此刻在不在跑。
+    case confirmed(lifecycle: String)
+}
+
 /// 某台机器答回来的 Skill 目录中的一条（wire 的 SkillCommand：名字不带触发前缀）。
 public struct ComposerSkillSource: Sendable, Equatable {
     public var name: String
@@ -41,7 +50,8 @@ public protocol ComposerRelay: Sendable {
     /// 在这条对话上开新一轮。`compact` 为真时这一轮是一次上下文压缩（RuntimeRunRequest.compact）。
     /// `permissionMode` 是本机此刻生效的权限档位，随每一轮带过去（RuntimeRunRequest.permission_mode）；
     /// 空 = 不知道，由执行端按它的默认档跑。
-    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws
+    /// 应答没到时适配器回头问机器：机器确实受理了就交回 `.confirmed`；只有机器没受理（或问不到）才抛出。
+    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws -> ComposerRunReceipt
     /// 把运行中的这一轮停下来（runtimeAbort）。
     func abort(_ key: ConversationKey, peerFingerprint: String) async throws
     /// 一轮运行中插一句话。`queuedID` 是本端铸的号，执行端回显或换成它自己的。

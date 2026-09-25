@@ -18,6 +18,7 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
     private var reachable = true
     private var answeredVersion = RelayProtocol.version
     private var beforeAnswer: (@Sendable (UInt32) async -> Void)?
+    private var losses: [UInt32: Loss] = [:]
 
     init(_ machines: [FakeMachine] = []) {
         for machine in machines { machinesByTarget["machine:\(machine.fingerprint)"] = machine }
@@ -62,6 +63,24 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
         lock.withLock { beforeAnswer = hook }
     }
 
+    /// 一次请求在哪一段丢了。
+    enum Loss {
+        /// 请求没到机器（连接在它送达之前就断了）：机器什么都没做。
+        case request
+        /// 机器收下并照做了，此后往手机那一路什么都没到（应答与它前面的实时帧都没到）：真机上是手机进了后台
+        /// 被挂起、那条连接随后断掉（report-7 11f：agentred 01:40:50 已开跑，手机始终没拿到应答）。
+        case answer
+    }
+
+    /// 下一个 `method` 请求按 `loss` 丢掉；连接本身不动，由测试随后断开。
+    func lose(next method: UInt32, _ loss: Loss) {
+        lock.withLock { losses[method] = loss }
+    }
+
+    fileprivate func takeLoss(_ method: UInt32) -> Loss? {
+        lock.withLock { losses.removeValue(forKey: method) }
+    }
+
     fileprivate func runBeforeAnswer(_ method: UInt32) async {
         let hook = lock.withLock { beforeAnswer }
         await hook?(method)
@@ -98,7 +117,8 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
         case error(code: Int64, message: String)
     }
 
-    fileprivate func respond(target: String, method: UInt32, payload: Data) -> Reply {
+    /// 机器对一次请求的应答，连同它在应答之前推给这条会话订阅方的实时帧。
+    fileprivate func respond(target: String, method: UInt32, payload: Data) -> (reply: Reply, live: [Proto]) {
         let call = Call(target: target, method: method, payload: ProtoFields(payload))
         let machine = lock.withLock {
             recorded.append(call)
@@ -106,12 +126,12 @@ final class FakeRelay: RelaySocketDialing, @unchecked Sendable {
         }
         if method == WireMethod.authAccount {
             let version = lock.withLock { answeredVersion }
-            return .result(Proto { r in
+            return (.result(Proto { r in
                 r.bool(1, true)
                 r.string(3, version)
-            })
+            }), [])
         }
-        return machine?.answer(call) ?? .error(code: -32601, message: "not implemented")
+        return machine?.respond(call) ?? (.error(code: -32601, message: "not implemented"), [])
     }
 }
 
@@ -143,7 +163,11 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
         guard let request = rpc.message(2) else { return }
         let method = UInt32(request.varint(1))
         await relay.runBeforeAnswer(method)
-        let answer = relay.respond(target: target, method: method, payload: request.bytes(2) ?? Data())
+        let loss = relay.takeLoss(method)
+        if loss == .request { return }
+        let (answer, live) = relay.respond(target: target, method: method, payload: request.bytes(2) ?? Data())
+        if loss == .answer { return }
+        for notification in live { relay.notify(target, notification) }
         let response: Proto
         switch answer {
         case .result(let result):
@@ -199,6 +223,9 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 /// （fanout 先 unregister 再发 run_result_done，runtime.go:940-941）；表里没有时回同一个码。连接断了表就空了。
 /// 插话还要机器上那一轮在跑（claudecode 的 Steer 认 mainThreadBusy，谁开的都算），这里以会话行的生命周期为准。
 ///
+/// runtime.run 照搬 agentred 的次序（runtime.go:571-593）：会话行置 running、推不带号的 turn_started、落用户那一帧
+/// （带号，盖上来源设备，beginTranscript）并推出去，然后才回应答——应答丢了，这一轮照样在机器上。
+///
 /// 会话清单照搬 agentred 的发起端回显：只标在**别的对端**发起的会话上，调用方自己发起的那几条
 /// peer_fingerprint 为空（agentre/internal/daemon/handlers/session_catchup.go:167 `row.PeerFingerprint != peer`）。
 /// 调用方是中继按访问令牌认出的那台设备，不在任何请求字段里，所以由 `caller` 给出。
@@ -253,6 +280,11 @@ final class FakeMachine: @unchecked Sendable {
         }
     }
 
+    /// 后端把信箱里的插话取走了（它随后推 steer_consumed）：此后轮末再问信箱就是空的。
+    func consumeSteers(_ conversationID: String) {
+        _ = lock.withLock { mailboxes.removeValue(forKey: conversationID) }
+    }
+
     /// 这一轮收场：agentred 在 fanout 结束时把会话从内存表里摘掉。
     func finishTurn(_ conversationID: String) {
         _ = lock.withLock { activeTurns.remove(conversationID) }
@@ -276,6 +308,24 @@ final class FakeMachine: @unchecked Sendable {
         lock.withLock {
             guard let index = sessions.firstIndex(where: { $0.conversationID == conversationID }) else { return }
             sessions[index].lifecycleState = state
+        }
+    }
+
+    /// 应答，连同机器在应答之前推给订阅方的实时帧。
+    func respond(_ call: FakeRelay.Call) -> (FakeRelay.Reply, [Proto]) {
+        guard call.method == WireMethod.runtimeRun else { return (answer(call), []) }
+        let reply = answer(call)
+        let id = call.payload.string(3)
+        let text = call.payload.string(11)
+        guard !text.isEmpty else { return (reply, [WireNotification.turnStarted(id)]) }
+        return lock.withLock {
+            let seq = Int64((frames[id]?.count ?? 0) + 1)
+            let user = WireNotification.runtimeEvent(id, seq: seq, 13, Proto { u in
+                u.string(1, text)
+                u.string(2, call.payload.string(22))
+            })
+            frames[id, default: []].append((seq, user))
+            return (reply, [WireNotification.turnStarted(id), user])
         }
     }
 

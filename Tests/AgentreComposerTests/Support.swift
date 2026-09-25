@@ -67,8 +67,11 @@ actor FakeComposerRelay: ComposerRelay {
     var drained: [ComposerConsumedSteer]? = []
     var skills: [ComposerSkillSource] = []
     var failing: Set<String> = []
+    /// run 的收场：默认应答到了；`.confirmed` = 应答丢了、回头问机器才知道它受理了。
+    var runReceipt = ComposerRunReceipt.acknowledged
 
     func set(drained: [ComposerConsumedSteer]?) { self.drained = drained }
+    func set(runReceipt: ComposerRunReceipt) { self.runReceipt = runReceipt }
     func set(skills: [ComposerSkillSource]) { self.skills = skills }
     func fail(_ method: String) { failing.insert(method) }
     func succeed(_ method: String) { failing.remove(method) }
@@ -82,7 +85,7 @@ actor FakeComposerRelay: ComposerRelay {
         if failing.contains(method) { throw URLError(.notConnectedToInternet) }
     }
 
-    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws {
+    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws -> ComposerRunReceipt {
         calls.append(.run(text, compact: compact))
         runPermissionModes.append(permissionMode)
         if holdRun {
@@ -91,6 +94,7 @@ actor FakeComposerRelay: ComposerRelay {
         }
         try check("run")
         activeTurn = true
+        return runReceipt
     }
 
     func abort(_ key: ConversationKey, peerFingerprint: String) async throws {

@@ -44,7 +44,11 @@ public struct RelayComposer: ComposerRelay {
         self.skillGrants = skillGrants
     }
 
-    public func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws {
+    /// 应答没到（到期、连接断了、通道被关）不等于机器没受理：agentred 先置 running、推开轮帧、落下用户那一帧，
+    /// 然后才回应答（agentre/internal/daemon/handlers/runtime.go:571-593），这一轮也不随那次请求取消（:540-544）。
+    /// 手机发出后进了后台被挂起时，应答连同开轮帧就丢在那条连接上（report-7 11f）。此时回头问机器：发送前本机
+    /// 最新帧号之后有这句话，就是受理了。问不到或没有，才照原样抛出。
+    public func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws -> ComposerRunReceipt {
         let summary = await conversation(key)
         var request = Agentre_Wire_RuntimeRunRequest()
         request.conversationID = key.conversationID
@@ -65,7 +69,45 @@ public struct RelayComposer: ComposerRelay {
         request.permissionMode = permissionMode
         request.sourceDevice = source.fingerprint
         request.sourceDeviceName = source.name
-        let _: Agentre_Wire_RuntimeRunResponse = try await connection.call(machine: try await carrier(key), .runtimeRun, request)
+        let machine = try await carrier(key)
+        do {
+            let _: Agentre_Wire_RuntimeRunResponse = try await connection.call(machine: machine, .runtimeRun, request)
+            return .acknowledged
+        } catch let failure as RelayFailure where [.timedOut, .connectionLost, .machineUnreachable].contains(failure) && !compact {
+            let after = summary?.latestSeq ?? 0
+            guard let lifecycle = try? await acceptedLifecycle(key, peerFingerprint: peerFingerprint, on: machine, text: text, after: after) else {
+                throw failure
+            }
+            return .confirmed(lifecycle: lifecycle)
+        }
+    }
+
+    /// 机器上这条会话在 `after` 之后有一条本机发出、正文就是 `text` 的用户消息：交回机器此刻报的生命周期；没有为 nil。
+    /// 压缩那一轮没有用户消息可认，不走这里。
+    private func acceptedLifecycle(
+        _ key: ConversationKey, peerFingerprint: String, on machine: String, text: String, after: Int64
+    ) async throws -> String? {
+        var cursor = after
+        while true {
+            var pull = Agentre_Wire_SessionPullRequest()
+            pull.conversationID = key.conversationID
+            pull.peerFingerprint = peerFingerprint
+            pull.cursor = cursor
+            pull.limit = RelayProtocol.pullLimit
+            let page: Agentre_Wire_SessionPullResponse = try await connection.call(machine: machine, .sessionPull, pull)
+            let sent = page.notifications.contains { notification in
+                guard case .runtimeEvent(let event) = notification.payload.payload, case .userMessage(let message) = event.event else { return false }
+                return message.sourceDevice == source.fingerprint && message.text == text
+            }
+            if sent {
+                var list = Agentre_Wire_SessionListRequest()
+                list.conversationIds = [key.conversationID]
+                let sessions: Agentre_Wire_SessionListResponse = try await connection.call(machine: machine, .sessionList, list)
+                return sessions.sessions.first { $0.conversationID == key.conversationID }?.lifecycleState ?? ""
+            }
+            guard page.hasMore_p, page.cursor > cursor else { return nil }
+            cursor = page.cursor
+        }
     }
 
     /// 停下运行中的这一轮（对照控制台 SessionDetailHeader 的 abortTurn：带回发起端）。

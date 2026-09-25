@@ -34,7 +34,7 @@ struct AssemblyTests {
         try await services.approvals.submitToolPermission(ToolPermissionReply(
             conversation: key, peerFingerprint: "origin-desktop", requestID: "perm-1", disposition: .allowOnce
         ))
-        try await services.composerRelay.run(key, peerFingerprint: "origin-desktop", text: "hi", compact: false, permissionMode: "")
+        _ = try await services.composerRelay.run(key, peerFingerprint: "origin-desktop", text: "hi", compact: false, permissionMode: "")
 
         let approval = try #require(harness.relay.calls(WireMethod.runtimeSubmitToolPermission).first)
         #expect(approval.target == "machine:machine-a")
@@ -343,11 +343,14 @@ struct AssemblyTests {
         #expect(steer.payload.string(4) == "also check lint")
         let queued = try #require(screen.composer.queue.items.first)
 
+        // 后端从信箱里取走了这一条：轮末再问信箱是空的，不接续出新的一轮（伪机器的 runtime.run 会推开轮帧）。
+        harness.machine.consumeSteers("conv-1")
         harness.relay.notify("machine:machine-a", WireNotification.steerConsumed("conv-1", queuedID: queued.id, text: "also check lint"))
         _ = try await eventually("steer consumed") { screen.composer.queue.items.isEmpty ? true : nil }
 
         harness.relay.notify("machine:machine-a", WireNotification.turnDone("conv-1"))
         _ = try await eventually("turn ended") { screen.composer.isTurnRunning ? nil : true }
+        #expect(harness.relay.calls(WireMethod.runtimeRun).isEmpty)
         #expect(screen.composer.queue.dropped.isEmpty)
         // 同一条会话只有一份卡片状态与输入区。
         #expect(await services.conversationModel(for: key) === screen)
@@ -421,7 +424,11 @@ struct AssemblyTests {
         let run = try #require(harness.relay.calls(WireMethod.runtimeRun).first)
         #expect(run.payload.string(16) == "plan")
 
+        // 机器应答之前已推过开轮帧（伪机器照搬 agentred 的次序）：这一轮收场之后，再切的档才是两轮之间的切换。
+        harness.machine.setLifecycle("conv-1", "idle")
         harness.machine.finishTurn("conv-1")
+        harness.relay.notify("machine:machine-a", WireNotification.turnDone("conv-1"))
+        _ = try await eventually("turn ended") { composer.isTurnRunning ? nil : true }
         await composer.setPermissionMode("default")
         let again = harness.machine.append("conv-1", [WireNotification.permissionModeChanged("conv-1", seq: 0, "plan")])
         harness.relay.notify("machine:machine-a", WireNotification.permissionModeChanged("conv-1", seq: again[0], "plan"))

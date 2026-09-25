@@ -14,6 +14,7 @@ private let saved = SavedConversation(
 private func composer(
     _ harness: Harness,
     kind: String? = "agentred",
+    saved: SavedConversation = saved,
     grants: @escaping @Sendable (String, String, String) async throws -> [SkillGrant] = { _, _, _ in [] }
 ) -> RelayComposer {
     RelayComposer(
@@ -40,9 +41,9 @@ private func answer<Request: SwiftProtobuf.Message>(
     @Test("发送：runtimeRun 带 conversation_id、发起端、会话的工作目录 / 标题 / Agent / 后端、本机当前的权限档位与来源设备")
     func runSendsTurn() async throws {
         let harness = await Harness.started()
-        async let sent: Void = composer(harness).run(key, peerFingerprint: "peer-1", text: "go on", compact: false, permissionMode: "plan")
+        async let sent = composer(harness).run(key, peerFingerprint: "peer-1", text: "go on", compact: false, permissionMode: "plan")
         let body = try await answer(harness, .runtimeRun, as: Agentre_Wire_RuntimeRunRequest.self, with: Agentre_Wire_RuntimeRunResponse())
-        try await sent
+        #expect(try await sent == .acknowledged)
         #expect(body.conversationID == "conv-1")
         #expect(body.peerFingerprint == "peer-1")
         #expect(body.userText == "go on")
@@ -56,12 +57,86 @@ private func answer<Request: SwiftProtobuf.Message>(
         #expect(body.sourceDeviceName == "My iPhone")
     }
 
+    /// 开新一轮的应答到期未到：交回适配器接着发的那一次补拉请求。
+    private func runTimesOut(_ harness: Harness, text: String, saved: SavedConversation = saved) async throws
+        -> (Task<ComposerRunReceipt, any Error>, FakeSocket, String, Agentre_Wire_RpcFrame) {
+        let composer = composer(harness, saved: saved)
+        let sending = Task { try await composer.run(key, peerFingerprint: "peer-1", text: text, compact: false, permissionMode: "") }
+        let (socket, id) = try await harness.machineChannel("carrier-fp")
+        let run = try await socket.nextRequest(on: id, method: .runtimeRun)
+        try await FailureScenario.timeout.apply(harness, socket, id, run)
+        let pull = try await socket.nextRequest(on: id, method: .sessionPull)
+        return (sending, socket, id, pull)
+    }
+
+    private func pulled(_ frames: [(seq: Int64, text: String, source: String)]) -> Agentre_Wire_SessionPullResponse {
+        var response = Agentre_Wire_SessionPullResponse()
+        response.notifications = frames.map { frame in
+            var event = Agentre_Wire_RuntimeEventNotification()
+            event.conversationID = "conv-1"
+            event.seq = frame.seq
+            event.userMessage = .with {
+                $0.text = frame.text
+                $0.sourceDevice = frame.source
+            }
+            var durable = Agentre_Wire_DurableNotification()
+            durable.seq = frame.seq
+            durable.payload = .with { $0.runtimeEvent = event }
+            return durable
+        }
+        response.cursor = frames.last?.seq ?? 0
+        return response
+    }
+
+    @Test("开新一轮的应答没到、机器上发送前的帧号之后有本机发出的这句话：机器受理了，交回它此刻报的生命周期")
+    func runAnswerLostButAccepted() async throws {
+        let harness = await Harness.started()
+        var known = saved
+        known.latestSeq = 7
+        let (sending, socket, id, pull) = try await runTimesOut(harness, text: "write kotlin", saved: known)
+        let pullBody = try pull.body(Agentre_Wire_SessionPullRequest.self)
+        #expect(pullBody.conversationID == "conv-1")
+        #expect(pullBody.peerFingerprint == "peer-1")
+        #expect(pullBody.cursor == 7)
+        socket.respond(id, to: pull, with: pulled([(8, "write kotlin", "phone-fp")]))
+        var summary = Agentre_Wire_SessionSummary()
+        summary.conversationID = "conv-1"
+        summary.lifecycleState = "running"
+        var list = Agentre_Wire_SessionListResponse()
+        list.sessions = [summary]
+        let listed = try await answer(harness, .sessionList, as: Agentre_Wire_SessionListRequest.self, with: list, on: (socket, id))
+        #expect(listed.conversationIds == ["conv-1"])
+        #expect(try await sending.value == .confirmed(lifecycle: "running"))
+    }
+
+    @Test("开新一轮的应答没到、机器上没有本机发出的这句话（别处发的同一句不算）：照原样以到期收场", arguments: [
+        [(Int64(8), "write kotlin", "desk-fp")], [(Int64(8), "something else", "phone-fp")], [],
+    ])
+    func runAnswerLostAndNotAccepted(_ frames: [(Int64, String, String)]) async throws {
+        let harness = await Harness.started()
+        let (sending, socket, id, pull) = try await runTimesOut(harness, text: "write kotlin")
+        socket.respond(id, to: pull, with: pulled(frames.map { (seq: $0.0, text: $0.1, source: $0.2) }))
+        await #expect(throws: RelayFailure.timedOut) { try await sending.value }
+    }
+
+    @Test("开新一轮被机器拒了：不回头问，照原样以拒绝收场")
+    func runRefusedIsNotRechecked() async throws {
+        let harness = await Harness.started()
+        let composer = composer(harness)
+        let sending = Task { try await composer.run(key, peerFingerprint: "peer-1", text: "write kotlin", compact: false, permissionMode: "") }
+        let (socket, id) = try await harness.machineChannel("carrier-fp")
+        let run = try await socket.nextRequest(on: id, method: .runtimeRun)
+        try await FailureScenario.peerError.apply(harness, socket, id, run)
+        await #expect(throws: RelayFailure.refused) { try await sending.value }
+        #expect(socket.requests(on: id, method: .sessionPull).isEmpty)
+    }
+
     @Test("压缩：compact 为真且不带正文")
     func runCompacts() async throws {
         let harness = await Harness.started()
-        async let sent: Void = composer(harness).run(key, peerFingerprint: "peer-1", text: "/compact", compact: true, permissionMode: "")
+        async let sent = composer(harness).run(key, peerFingerprint: "peer-1", text: "/compact", compact: true, permissionMode: "")
         let body = try await answer(harness, .runtimeRun, as: Agentre_Wire_RuntimeRunRequest.self, with: Agentre_Wire_RuntimeRunResponse())
-        try await sent
+        _ = try await sent
         #expect(body.compact)
         #expect(body.userText.isEmpty)
         #expect(body.permissionMode.isEmpty)
@@ -230,7 +305,8 @@ private func answer<Request: SwiftProtobuf.Message>(
     func failuresAreDomainFacts(_ scenario: FailureScenario) async throws {
         typealias Call = @Sendable (RelayComposer) async throws -> Void
         let calls: [(Agentre_Wire_RpcMethod, Call)] = [
-            (.runtimeRun, { try await $0.run(key, peerFingerprint: "", text: "x", compact: false, permissionMode: "") }),
+            // 到期之后开新一轮还要回头问机器（见 runAnswerLost…）；这里只看压缩那一轮：它没有用户消息可认。
+            (.runtimeRun, { _ = try await $0.run(key, peerFingerprint: "", text: "/compact", compact: true, permissionMode: "") }),
             (.runtimeAbort, { try await $0.abort(key, peerFingerprint: "") }),
             (.runtimeSteer, { _ = try await $0.steer(key, peerFingerprint: "", queuedID: "q", text: "x") }),
             (.runtimeCancelSteer, { _ = try await $0.cancelSteer(key, peerFingerprint: "", queuedID: "q") }),

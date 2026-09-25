@@ -134,15 +134,29 @@ public final class ComposerModel {
                 restore(draft)
             }
         } else {
-            isStartingTurn = true
-            defer { isStartingTurn = false }
             // 不认 /compact 的 CLI 上把这一句转成压缩调用，否则模型会一本正经地回答「/compact」。
             let compact = trimmed == "/compact" && SlashCommands.isHostCompact(backendType: conversation.backendType)
+            isStartingTurn = true
+            let receipt: ComposerRunReceipt
             do {
-                try await relay.run(key, peerFingerprint: peer, text: body, compact: compact, permissionMode: permissionMode)
+                receipt = try await relay.run(key, peerFingerprint: peer, text: body, compact: compact, permissionMode: permissionMode)
             } catch {
+                isStartingTurn = false
                 restore(draft)
+                return
             }
+            isStartingTurn = false
+            if case .confirmed(let lifecycle) = receipt { await settleConfirmedTurn(lifecycle: lifecycle) }
+        }
+    }
+
+    /// 应答没到、回头问机器才知道它受理了的那一轮：开轮帧与收场帧都可能随那条连接丢了，
+    /// 按机器此刻报的生命周期落定——还在跑就是运行中（可停），已不在跑就按那一次收场处置。
+    private func settleConfirmedTurn(lifecycle: String) async {
+        if lifecycle == SavedConversation.Lifecycle.running {
+            if !isTurnRunning { turnStarted() }
+        } else {
+            await reconcile(lifecycle: lifecycle)
         }
     }
 
@@ -196,7 +210,10 @@ public final class ComposerModel {
         let next = drained.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n")
         guard !next.isEmpty else { return }
         do {
-            try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: permissionMode)
+            if case .confirmed(let lifecycle) = try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: permissionMode),
+               lifecycle == SavedConversation.Lifecycle.running {
+                turnStarted()
+            }
         } catch {
             restore(ComposerMentions.draft(fromBody: next))
         }
