@@ -378,9 +378,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 18a64c9
+    note: "根因：agentred 在应答 runtime.run 之前已受理并开跑（runtime.go:571 标运行、:578 发 turn-started、:593 才应答；请求被取消轮次照跑 :540-544；dev 日志 session started 01:40:50.928、01:41:13 结束）；手机进后台后连接断开（server 17:41:47 relay client disconnected i/o timeout），RelayChannel.connectionLost 以 .disconnected 失败待决 run，ComposerModel.send 把任何 run 错误都当未发出并回填。Stop 迟：Stop 靠 turn-started 帧，与应答同路，二者都没到（16-send 发送钮 Disabled）。修：应答丢失时按发送前游标向机器查这台设备发出的用户消息，按机器报的生命周期落定。RED：AgentreHostedTests/ForegroundResumeTests exit 65（4 个已受理用例 failure 非空、原文回填）；UI testMainlineEnglishLight 旧实现 exit 65 :209。GREEN：ForegroundResumeTests exit 0（掉线/关通道 × 已结束/仍运行；run 恰一次）；unacceptedSendIsReportedNotSent 过；Composer 86、Relay 90、Hosted 40 exit 0；UI 两批 exit 0（主线新增 17a）。假对端按真实顺序：turn-started → 带来源设备的编号用户帧 → 应答。关注：查询时连不上机器仍报未发出并回填；/compact 无用户消息可查沿旧行为；本地游标落后且此前发过同文时可能误认已受理。"
 
 review:
   status: pending
