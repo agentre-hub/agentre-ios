@@ -112,6 +112,71 @@ struct TranscriptModelTests {
         await attach.value
     }
 
+    @Test("预览尾巴：逐片接在最后一条助手消息上；更新的持久帧与不带号的边界取代它，补回的更早帧、重复帧不取代，帧号回退时一并丢掉")
+    func previewTailFollowsTheTimelineRules() async throws {
+        let (model, _, _) = model(local: [stored(decoder, 1, .userMessage("写")), stored(decoder, 5, .turnStarted)])
+        await model.load()
+        func live() -> (text: String, thinking: String) { (model.document.liveText, model.document.liveThinking) }
+        model.merge(live: [liveFrame(decoder, nil, .thinkingDelta("想"), preview: true), liveFrame(decoder, nil, .textDelta("第一"), preview: true)])
+        model.merge(live: [liveFrame(decoder, nil, .toolCall(readUse("x")), preview: true), liveFrame(decoder, nil, .textDelta("句"), preview: true)])
+        #expect(live() == ("第一句", "想"))
+        #expect(model.rows.contains { $0.content == .text("第一句", streaming: true) })
+        model.merge(live: [liveFrame(decoder, 3, .userMessage("更早的"))])
+        model.merge(live: [liveFrame(decoder, 5, .turnStarted)])
+        #expect(live() == ("第一句", "想"))
+        model.merge(live: [liveFrame(decoder, 6, .textDelta("第一句"))])
+        #expect(live() == ("", ""))
+        model.merge(live: [liveFrame(decoder, nil, .textDelta("第二"), preview: true)])
+        #expect(live() == ("第二", ""))
+        model.merge(live: [liveFrame(decoder, nil, .turnDone(TurnDone()))])
+        #expect(live() == ("", ""))
+        model.merge(live: [liveFrame(decoder, nil, .textDelta("第三"), preview: true)])
+        model.merge(live: [LiveTranscriptFrame(seq: nil, createtime: nil, payload: Data(), rewoundTo: 0)])
+        #expect(live() == ("", ""))
+        #expect(model.document.messages.isEmpty)
+    }
+
+    @Test("真实形状的长回复（一万多片、每片一两个字的预览帧）：写到末尾时每一片合进转录的代价仍远小于片与片的间隔，转录不会越流越落后")
+    func previewDeltaCostDoesNotGrowWithReply() async throws {
+        let (model, _, _) = model(local: [stored(decoder, 1, .userMessage("写一篇操作系统长文")), stored(decoder, 2, .turnStarted)])
+        await model.load()
+        let deltas = realisticReply(operatingSystemsEssay).map { liveFrame(decoder, nil, $0, preview: true) }
+        var next = 0
+        /// 合到第 `count` 片为止，再逐片合 200 片所花的时间；连量三轮取最短的，机器被别的活占满时不算进代价。
+        func costOfDeltas(after count: Int) -> Duration {
+            while next < count { model.merge(live: [deltas[next]]); next += 1 }
+            var fastest = Duration.seconds(3_600)
+            for _ in 0..<3 {
+                let clock = ContinuousClock()
+                let started = clock.now
+                for _ in 0..<200 { model.merge(live: [deltas[next]]); next += 1 }
+                fastest = min(fastest, clock.now - started)
+            }
+            return fastest
+        }
+        let short = costOfDeltas(after: 300)
+        let long = costOfDeltas(after: deltas.count - 600)
+        #expect(model.document.liveText.count > 15_000)
+        // 正文越长，拷贝它的那一点代价免不了；要守的是它远小于片与片之间的间隔（真实约 52 片/秒，200 片约 4 秒）。
+        // 修前实测：第 300 片后 200 片 0.05 秒，第 11623 片后 1.4 秒（每片 7 毫秒，随回复线性变大）。
+        #expect(long < .milliseconds(200), "\(deltas.count) 片的回复：第 300 片后 200 片最快花 \(short)，第 \(deltas.count - 600) 片后花 \(long)")
+    }
+
+    @Test("实时流一下涌来几十帧：屏上并着交，不丢帧；上滚着时每一条新行照样记进「回到最新」")
+    func burstOfLiveFramesIsCoalescedWithoutLosingRows() async throws {
+        let (model, _, relay) = model(local: frames(1...60))
+        await model.load()
+        model.userScrolledAway()
+        let attach = Task { await model.attach() }
+        for seq in Int64(61)...90 { await relay.push(liveFrame(decoder, seq, .userMessage("m\(seq)"))) }
+        await relay.push(liveFrame(decoder, nil, .textDelta("尾"), preview: true))
+        try await eventually("burst shown") { userTexts(model).count == 90 && model.document.liveText == "尾" }
+        #expect(userTexts(model) == (1...90).map { "m\($0)" })
+        #expect(model.follow.unseen == 31)
+        await relay.finish()
+        await attach.value
+    }
+
     @Test("看不到的时候（后台、断线）收场的一轮：收场帧补拉不回来，机器报的会话已不在运行即让转录落定；报在运行不动")
     func reconcileEndsTheUnseenTurn() async throws {
         let spawn = use("sp", "Task", input: ["prompt": "go", "run_in_background": .bool(false)], canonical: Canonical(kind: "agent.spawn"))

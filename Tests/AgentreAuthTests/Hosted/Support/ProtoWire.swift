@@ -163,6 +163,25 @@ enum WireNotification {
         runtimeEvent(conversationID, seq: seq, 3, Proto { $0.string(1, text) })
     }
 
+    /// 预览帧（agentred 的 fanout 把一轮里的每个事件都这样推：不带号、preview = true、不落库）。
+    static func previewText(_ conversationID: String, _ text: String) -> Proto {
+        preview(conversationID, 3, text)
+    }
+
+    static func previewThinking(_ conversationID: String, _ text: String) -> Proto {
+        preview(conversationID, 4, text)
+    }
+
+    private static func preview(_ conversationID: String, _ field: Int, _ text: String) -> Proto {
+        Proto { n in
+            n.message(1, Proto { e in
+                e.string(1, conversationID)
+                e.message(field, Proto { $0.string(1, text) })
+                e.bool(30, true)
+            })
+        }
+    }
+
     static func permissionRequest(_ conversationID: String, seq: Int64, requestID: String, tool: String, input: String) -> Proto {
         runtimeEvent(conversationID, seq: seq, 19, Proto { r in
             r.string(1, requestID)

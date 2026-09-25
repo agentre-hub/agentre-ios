@@ -81,6 +81,20 @@ func liveFrame(_ decoder: FakeDecoder, _ seq: Int64?, _ event: TranscriptEvent, 
     LiveTranscriptFrame(seq: seq, createtime: nil, payload: decoder.payload(event, preview: preview))
 }
 
+/// 按真实 agentred 的形状把一篇回复切成预览增量：dev 上一篇 17949 字的回复是 795 片思考、11077 片正文
+/// （平均每片一两个字，fanout 日志的 eventKinds）。先思考，再正文一片一两个字交替。
+func realisticReply(_ text: String, thinkingDeltas: Int = 795) -> [TranscriptEvent] {
+    var events = (0..<thinkingDeltas).map { _ in TranscriptEvent.thinkingDelta("想") }
+    let characters = Array(text)
+    var index = 0
+    while index < characters.count {
+        let size = events.count.isMultiple(of: 2) ? 1 : 2
+        events.append(.textDelta(String(characters[index..<min(index + size, characters.count)])))
+        index += size
+    }
+    return events
+}
+
 let machine = "machine-1"
 let conversationKey = ConversationKey(machineFingerprint: machine, conversationID: "conv-1")
 
