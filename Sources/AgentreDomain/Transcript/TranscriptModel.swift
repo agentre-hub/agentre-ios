@@ -311,12 +311,9 @@ public struct DecodedNotification: Sendable, Equatable {
 public struct TimelineEntry: Sendable, Equatable {
     public var anchor: String
     public var event: TranscriptEvent
-    /// 预览帧：归约成还在流的尾巴，不进消息块。
-    public var preview: Bool
 
-    public init(anchor: String, event: TranscriptEvent, preview: Bool = false) {
+    public init(anchor: String, event: TranscriptEvent) {
         self.anchor = anchor
         self.event = event
-        self.preview = preview
     }
 }

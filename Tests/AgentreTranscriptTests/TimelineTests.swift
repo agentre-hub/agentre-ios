@@ -41,26 +41,37 @@ struct TimelineTests {
         #expect(texts(timeline) == ["d", "e", "done", "f"])
     }
 
-    @Test("预览帧是过场：留在末尾，下一条持久帧一到就被它取代")
+    @Test("预览帧是过场：正文与思考接成末尾的尾巴，别的预览帧不改变转录；下一条持久帧一到就被它取代")
     func previewsAreTransient() {
         var timeline = TranscriptTimeline()
         timeline.insert(seq: 1, event: .userMessage("a"))
+        timeline.insert(seq: nil, event: .thinkingDelta("想"), preview: true)
         timeline.insert(seq: nil, event: .textDelta("Hel"), preview: true)
+        let toolPreviewChanged = timeline.insert(seq: nil, event: .toolCall(readUse("x")), preview: true)
+        #expect(!toolPreviewChanged)
         timeline.insert(seq: nil, event: .textDelta("lo"), preview: true)
-        #expect(texts(timeline) == ["a", "ΔHel", "Δlo"])
+        #expect(texts(timeline) == ["a"])
+        #expect((timeline.liveText, timeline.liveThinking) == ("Hello", "想"))
         timeline.insert(seq: 2, event: .textDelta("Hello"))
         #expect(texts(timeline) == ["a", "ΔHello"])
+        #expect((timeline.liveText, timeline.liveThinking) == ("", ""))
+        timeline.insert(seq: nil, event: .textDelta("Bye"), preview: true)
+        timeline.insert(seq: nil, event: .turnDone(TurnDone()))
+        #expect(timeline.liveText.isEmpty)
     }
 
-    @Test("向前补进来的更早帧不取代预览尾巴：翻到顶时回复还在流，已流出的字不被抹掉")
+    @Test("向前补进来的更早帧与重复帧不取代预览尾巴：翻到顶时回复还在流，已流出的字不被抹掉")
     func backfillKeepsPreviews() {
         var timeline = TranscriptTimeline()
         timeline.insert(seq: 10, event: .userMessage("j"))
         timeline.insert(seq: nil, event: .textDelta("Hel"), preview: true)
         timeline.insert(seq: 9, event: .userMessage("i"))
-        #expect(texts(timeline) == ["i", "j", "ΔHel"])
+        timeline.insert(seq: 10, event: .userMessage("j"))
+        #expect(texts(timeline) == ["i", "j"])
+        #expect(timeline.liveText == "Hel")
         timeline.insert(seq: 11, event: .textDelta("Hello"))
         #expect(texts(timeline) == ["i", "j", "ΔHello"])
+        #expect(timeline.liveText.isEmpty)
     }
 }
 

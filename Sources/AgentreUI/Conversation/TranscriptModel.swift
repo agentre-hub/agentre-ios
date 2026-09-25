@@ -22,10 +22,6 @@ public final class TranscriptModel {
     @ObservationIgnored private let decoder: any TranscriptPayloadDecoding
     @ObservationIgnored private let pageSize: Int
     @ObservationIgnored private var timeline = TranscriptTimeline()
-    /// 预览尾巴（还在流的正文与思考）。不放进合流：一篇长回复有上万片预览，每片都要把它们
-    /// 从头归约一遍，一片的代价随回复变长，转录便越流越落后于机器。取代规则与合流的预览帧相同。
-    @ObservationIgnored private var liveText = ""
-    @ObservationIgnored private var liveThinking = ""
     /// 实时流合进来了、还没交给屏的变化。一篇长回复一秒几十片，每片都交一次，屏就每片重排一次，
     /// 排不过来的片越积越多，转录便落后于机器；所以接流时最多每 `liveInterval` 交一次。
     @ObservationIgnored private var liveDirty = false
@@ -88,6 +84,8 @@ public final class TranscriptModel {
     /// Subagent 一并收掉），与输入区的 `reconcile` 同一口径。这一次收场总排在转录最末（随后补拉回来的
     /// 那一轮的帧仍归那一轮），下一轮开始即作废。
     public func reconcile(lifecycle: String) {
+        // 按已合进来的实时帧判断：还没到交屏点的那几帧（比如刚开的一轮）先交出去。
+        if liveDirty { rebuild(countingNewRows: true) }
         guard document.running, lifecycle != SavedConversation.Lifecycle.running else { return }
         endedUnseen = true
         rebuild(countingNewRows: false)
@@ -145,7 +143,6 @@ public final class TranscriptModel {
     private func absorb(_ frame: LiveTranscriptFrame) -> Bool {
         guard frame.rewoundTo == nil else {
             timeline = TranscriptTimeline()
-            clearPreview()
             machineOldestSeq = nil
             hasOlder = false
             return true
@@ -250,25 +247,7 @@ public final class TranscriptModel {
         guard let decoded = decoder.decode(payload) else { return false }
         // 新的一轮开始（不是向前补回来的旧帧）：那一次按清单的收场作废。
         if case .turnStarted = decoded.event, !decoded.preview, seq.map({ $0 > (timeline.latestSeq ?? 0) }) ?? true { endedUnseen = false }
-        if decoded.preview {
-            // 归约只从预览帧里取正文与思考两种增量，其余的预览帧不改变转录。
-            switch decoded.event {
-            case .textDelta(let text): liveText += text
-            case .thinkingDelta(let text): liveThinking += text
-            default: return false
-            }
-            return true
-        }
-        // 比已知最新更新的持久帧、不带号的帧取代预览尾巴；向前补进来的更早帧与重复帧不取代。
-        let supersedes = seq.map { $0 > (timeline.latestSeq ?? 0) } ?? true
-        guard timeline.insert(seq: seq, event: decoded.event) else { return false }
-        if supersedes { clearPreview() }
-        return true
-    }
-
-    private func clearPreview() {
-        liveText = ""
-        liveThinking = ""
+        return timeline.insert(seq: seq, event: decoded.event, preview: decoded.preview)
     }
 
     /// 把转录交给屏。还没交出去的实时变化先按新行交出（它们要记进「回到最新」的条数），
@@ -281,8 +260,8 @@ public final class TranscriptModel {
         var entries = timeline.entries
         if endedUnseen { entries.append(TimelineEntry(anchor: "reconciled", event: .turnDone(TurnDone()))) }
         var document = TranscriptReducer.reduce(entries, initiallyRunning: conversation.lifecycleState == SavedConversation.Lifecycle.running)
-        document.liveText = liveText
-        document.liveThinking = liveThinking
+        document.liveText = timeline.liveText
+        document.liveThinking = timeline.liveThinking
         self.document = document
         let previous = countingNewRows ? Set(rows.map(\.id)) : []
         rows = TranscriptRows.build(document, disclosure: disclosure, cwd: conversation.cwd)

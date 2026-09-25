@@ -198,6 +198,25 @@ struct TranscriptModelTests {
         await attach.value
     }
 
+    @Test("一轮刚开始、还没到交屏的点，机器就报它已不在运行：按实时流已合进来的转录判断，这一轮照样落定")
+    func reconcileSeesLiveFramesNotYetShown() async throws {
+        let relay = HandOffRelay()
+        let conversation = SavedConversation(key: conversationKey, peerFingerprint: "peer-1", lifecycleState: "idle")
+        let model = TranscriptModel(conversation: conversation, store: FakeStore(frames(1...60)), relay: relay, decoder: decoder)
+        await model.load()
+        let attach = Task { await model.attach() }
+        // 第一帧当场交屏；紧接着的开轮帧落在同一个交屏间隔里，合进来了、还没交出去。
+        await relay.handOff(liveFrame(decoder, 61, .userMessage("跑一下测试")))
+        await relay.handOff(liveFrame(decoder, 62, .turnStarted))
+        await relay.handOff(liveFrame(decoder, nil, .toolCall(readUse("x")), preview: true))
+
+        model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        try await Task.sleep(for: TranscriptModel.liveInterval * 2)
+        #expect(!model.document.running)
+        relay.finish()
+        await attach.value
+    }
+
     @Test("机器上这条会话的帧号重新起算了（会话删了、会话号被复用）：转录丢掉旧编号下的内容，重拉回来的同号帧不被当成重复")
     func rewindReplacesTheTranscript() async throws {
         let (model, _, relay) = model(local: frames(1...3))
@@ -391,6 +410,29 @@ final class MainActorRelay: TranscriptRelay {
     func append(_ more: [TranscriptFrame]) { machineFrames += more }
 
     func finish() { liveContinuation?.finish() }
+}
+
+/// 伪中继，实时流不留缓冲：一帧只在转录正等着下一帧时才送得进去，所以 `handOff` 返回时上一帧已经合完。
+@MainActor
+final class HandOffRelay: TranscriptRelay {
+    private let stream: AsyncStream<LiveTranscriptFrame>
+    private let feed: AsyncStream<LiveTranscriptFrame>.Continuation
+
+    init() {
+        (stream, feed) = AsyncStream<LiveTranscriptFrame>.makeStream(bufferingPolicy: .bufferingNewest(0))
+    }
+
+    func pull(_ key: ConversationKey, peerFingerprint: String, cursor: Int64, limit: Int) -> TranscriptPage {
+        TranscriptPage(frames: [], cursor: cursor, hasMore: false, oldestSeq: 0)
+    }
+
+    func attach(_ key: ConversationKey, peerFingerprint: String, after: Int64) -> AsyncStream<LiveTranscriptFrame> { stream }
+
+    func handOff(_ frame: LiveTranscriptFrame) async {
+        while case .dropped = feed.yield(frame) { await Task.yield() }
+    }
+
+    func finish() { feed.finish() }
 }
 
 struct FailingRelay: TranscriptRelay {

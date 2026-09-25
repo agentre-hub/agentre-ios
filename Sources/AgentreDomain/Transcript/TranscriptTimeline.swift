@@ -4,13 +4,17 @@ import Foundation
 ///
 /// - 带号帧按 seq 排序，同号只留先到的那份（机器是权威，同号即同一帧）；
 /// - 不带号的实时帧（轮次边界）排在它到达时已知的最大帧号之后；
-/// - 预览帧是过场：挂在末尾，下一条更新的持久帧一到就被取代（向前补的更早帧不算）。
+/// - 预览帧是过场：只取正文与思考两种增量，接成挂在末尾的尾巴，下一条更新的持久帧一到就被取代
+///   （向前补的更早帧不算）。尾巴不进 `entries`：一篇长回复有上万片预览，每次都从头归约一遍，
+///   一片的代价便随回复变长。
 public struct TranscriptTimeline: Sendable {
     private var numbered: [Int64: TranscriptEvent] = [:]
     private var sortedSeqs: [Int64] = []
     private var unnumbered: [(after: Int64, order: Int, event: TranscriptEvent)] = []
-    private var previews: [TranscriptEvent] = []
     private var nextOrder = 0
+    /// 预览尾巴：还在流的正文与思考。
+    public private(set) var liveText = ""
+    public private(set) var liveThinking = ""
 
     public init() {}
 
@@ -18,7 +22,11 @@ public struct TranscriptTimeline: Sendable {
     @discardableResult
     public mutating func insert(seq: Int64?, event: TranscriptEvent, preview: Bool = false) -> Bool {
         if preview {
-            previews.append(event)
+            switch event {
+            case .textDelta(let text): liveText += text
+            case .thinkingDelta(let text): liveThinking += text
+            default: return false
+            }
             return true
         }
         if let seq {
@@ -28,13 +36,18 @@ public struct TranscriptTimeline: Sendable {
             numbered[seq] = event
             let index = sortedSeqs.partitioningIndex { $0 >= seq }
             sortedSeqs.insert(seq, at: index)
-            if supersedes { previews.removeAll() }
+            if supersedes { clearPreview() }
         } else {
             unnumbered.append((latestSeq ?? 0, nextOrder, event))
             nextOrder += 1
-            previews.removeAll()
+            clearPreview()
         }
         return true
+    }
+
+    private mutating func clearPreview() {
+        liveText = ""
+        liveThinking = ""
     }
 
     public var oldestSeq: Int64? { sortedSeqs.first }
@@ -44,7 +57,7 @@ public struct TranscriptTimeline: Sendable {
 
     public var entries: [TimelineEntry] {
         var result: [TimelineEntry] = []
-        result.reserveCapacity(sortedSeqs.count + unnumbered.count + previews.count)
+        result.reserveCapacity(sortedSeqs.count + unnumbered.count)
         let loose = unnumbered.sorted { ($0.after, $0.order) < ($1.after, $1.order) }
         var next = 0
         for seq in sortedSeqs {
@@ -56,9 +69,6 @@ public struct TranscriptTimeline: Sendable {
         }
         for item in loose[next...] {
             result.append(TimelineEntry(anchor: "u\(item.after).\(item.order)", event: item.event))
-        }
-        for (index, event) in previews.enumerated() {
-            result.append(TimelineEntry(anchor: "p\(index)", event: event, preview: true))
         }
         return result
     }

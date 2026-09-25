@@ -21,10 +21,6 @@ public enum TranscriptReducer {
         var turn: Int?
 
         mutating func apply(_ entry: TimelineEntry) {
-            if entry.preview {
-                applyPreview(entry.event)
-                return
-            }
             switch entry.event {
             case .userMessage(let text):
                 pushUser(text, id: entry.anchor)
@@ -85,14 +81,6 @@ public enum TranscriptReducer {
                 open = nil
             case .ignored:
                 break
-            }
-        }
-
-        mutating func applyPreview(_ event: TranscriptEvent) {
-            switch event {
-            case .textDelta(let text): document.liveText += text
-            case .thinkingDelta(let text): document.liveThinking += text
-            default: break
             }
         }
 
