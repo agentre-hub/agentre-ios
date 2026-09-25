@@ -368,9 +368,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreApp/, agentre-ios/Sources/AgentreRelay/, agentre-ios/Sources/AgentreStore/, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 9119a65
+    note: "定位（dev 日志：该轮 11077 条文本 + 795 条思考预览帧，每帧 1–2 字，212s）：中继→RelayTranscript 每帧 10–20µs 平坦；本地库 record 预览帧 1.4µs 平坦；TranscriptModel 每个预览帧追加进时间线并整体重算，每增量 0.25ms(第300)→7.1ms(第11623) 线性增长；修后宿主真实窗口下视图每帧一次重排约 18ms 仍落后。修：预览文本按同样替换规则单独保存在模型里；实时帧最多每 100ms 合并交给屏幕一次，静默后首帧与流结束时立即交付。RED：TranscriptModelTests/previewDeltaCostDoesNotGrowWithReply exit 65（200 增量 0.05s→1.42s）；AgentreHostedTests/LongReplyTests exit 65（12223 帧 10 倍速，停喂 60s 后仅显示 5964/15711 字）。GREEN：两者 exit 0（LongReplyTests 26.7s，停喂后 5s 内全文）；AgentreTranscriptTests 146、AgentreHostedTests 38、Relay 87、Store 21、Approval 42、Composer 83、AgentreUITests 6 均 exit 0（负载 3–7）。补预览替换规则与合并不丢行的用例；宿主假对端新增 preview=true 帧构造。"
 
 review:
   status: pending
