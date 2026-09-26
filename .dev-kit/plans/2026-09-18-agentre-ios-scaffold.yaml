@@ -400,7 +400,7 @@ tasks:
     interfaces: null
     status: doing
     commit: null
-    note: "首派 stuck：本机假服务端约 60 次发后即进后台、64 种排序、24 种滞后贴底、96 条随机序列均未复现；代码上唯一关跟随处 TranscriptView.swift:81 userScrolledAway；未证实假设：滞后的 scrollTo 落在旧底部、pin.pending 已被别的几何步用掉。用户选择（原话选项）：「去 dev 抓现场，授权四项（推荐）」——主会话在 dev 上用带日志构建重跑 report-8 流程抓现场后再派一次。"
+    note: "首派 stuck：本机假服务端约 60 次发后即进后台、64 种排序、24 种滞后贴底、96 条随机序列均未复现；代码上唯一关跟随处 TranscriptView.swift:81 userScrolledAway；未证实假设：滞后的 scrollTo 落在旧底部、pin.pending 已被别的几何步用掉。用户选择（原话选项）：「去 dev 抓现场，授权四项（推荐）」——主会话在 dev 上用带日志构建重跑 report-8 流程抓现场后再派一次。 抓现场（evidence-9/t37.log，第 3 次发后即进后台）：回前台键盘弹回使 visibleHeight 574.7→328.7 的同一几何步里，思考行收起后内容缩 38pt、越界回弹使偏移上移 1.6pt（2350.3→2348.7，内容不变），belowViewport 212>32，于是走进 TranscriptView.swift:81 userScrolledAway 关掉跟随。devices#13 已撤销回 status 2，一次性会话已删复核为 0。"
 
 review:
   status: pending
