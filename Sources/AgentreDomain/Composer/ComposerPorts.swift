@@ -28,7 +28,8 @@ public enum ComposerRunReceipt: Sendable, Equatable {
     case acknowledged
     /// 应答没到（进后台被挂起、断线、到期），回头问机器才知道它受理了：附机器此刻报的会话生命周期
     /// ——这一轮开场与收场的边界帧都可能随那条连接丢了，只有它说得出这一轮此刻在不在跑。
-    case confirmed(lifecycle: String)
+    /// 认出了这句话、生命周期却没问到时为 nil：受理是确定的，运行态仍由转录与此后的对齐说话。
+    case confirmed(lifecycle: String?)
 }
 
 /// 某台机器答回来的 Skill 目录中的一条（wire 的 SkillCommand：名字不带触发前缀）。

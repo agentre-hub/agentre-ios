@@ -152,7 +152,8 @@ public final class ComposerModel {
 
     /// 应答没到、回头问机器才知道它受理了的那一轮：开轮帧与收场帧都可能随那条连接丢了，
     /// 按机器此刻报的生命周期落定——还在跑就是运行中（可停），已不在跑就按那一次收场处置。
-    private func settleConfirmedTurn(lifecycle: String) async {
+    private func settleConfirmedTurn(lifecycle: String?) async {
+        guard let lifecycle else { return }
         if lifecycle == SavedConversation.Lifecycle.running {
             if !isTurnRunning { turnStarted() }
         } else {
@@ -209,14 +210,16 @@ public final class ComposerModel {
         queue.endTurn()
         let next = drained.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n")
         guard !next.isEmpty else { return }
+        let receipt: ComposerRunReceipt
         do {
-            if case .confirmed(let lifecycle) = try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: permissionMode),
-               lifecycle == SavedConversation.Lifecycle.running {
-                turnStarted()
-            }
+            receipt = try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: permissionMode)
         } catch {
             restore(ComposerMentions.draft(fromBody: next))
+            return
         }
+        // 与发送同一处落定：接续那一轮的开轮帧可能已递到、收场帧随连接丢了，只有机器报的生命周期说得出来。
+        isStartingTurn = false
+        if case .confirmed(let lifecycle) = receipt { await settleConfirmedTurn(lifecycle: lifecycle) }
     }
 
     /// 重新接上承载机后，机器此刻报的会话生命周期。以为在跑、机器却说不在跑了：这一轮在看不到的时候

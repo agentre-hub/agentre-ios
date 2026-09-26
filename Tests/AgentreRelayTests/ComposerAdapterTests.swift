@@ -109,6 +109,35 @@ private func answer<Request: SwiftProtobuf.Message>(
         #expect(try await sending.value == .confirmed(lifecycle: "running"))
     }
 
+    @Test("开新一轮的应答没到、机器上找到了本机发出的这句话，问生命周期却没问成：仍是受理了（生命周期不明），不报没发出")
+    func runAnswerLostAcceptedButLifecycleUnknown() async throws {
+        let harness = await Harness.started()
+        let (sending, socket, id, pull) = try await runTimesOut(harness, text: "write kotlin")
+        socket.respond(id, to: pull, with: pulled([(8, "write kotlin", "phone-fp")]))
+        let list = try await socket.nextRequest(on: id, method: .sessionList)
+        try await FailureScenario.peerError.apply(harness, socket, id, list)
+        #expect(try await sending.value == .confirmed(lifecycle: nil))
+    }
+
+    @Test("开新一轮的应答没到、这句话分在第二页：按 has_more 续拉，从上一页的游标接着问")
+    func runAnswerLostAcceptedOnSecondPage() async throws {
+        let harness = await Harness.started()
+        let (sending, socket, id, pull) = try await runTimesOut(harness, text: "write kotlin")
+        var first = pulled([(1, "earlier", "phone-fp")])
+        first.hasMore_p = true
+        socket.respond(id, to: pull, with: first)
+        let next = try await socket.nextRequest(on: id, method: .sessionPull)
+        #expect(try next.body(Agentre_Wire_SessionPullRequest.self).cursor == 1)
+        socket.respond(id, to: next, with: pulled([(2, "write kotlin", "phone-fp")]))
+        var summary = Agentre_Wire_SessionSummary()
+        summary.conversationID = "conv-1"
+        summary.lifecycleState = "idle"
+        var list = Agentre_Wire_SessionListResponse()
+        list.sessions = [summary]
+        _ = try await answer(harness, .sessionList, as: Agentre_Wire_SessionListRequest.self, with: list, on: (socket, id))
+        #expect(try await sending.value == .confirmed(lifecycle: "idle"))
+    }
+
     @Test("开新一轮的应答没到、机器上没有本机发出的这句话（别处发的同一句不算）：照原样以到期收场", arguments: [
         [(Int64(8), "write kotlin", "desk-fp")], [(Int64(8), "something else", "phone-fp")], [],
     ])

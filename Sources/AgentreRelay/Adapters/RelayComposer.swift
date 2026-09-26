@@ -75,18 +75,19 @@ public struct RelayComposer: ComposerRelay {
             return .acknowledged
         } catch let failure as RelayFailure where [.timedOut, .connectionLost, .machineUnreachable].contains(failure) && !compact {
             let after = summary?.latestSeq ?? 0
-            guard let lifecycle = try? await acceptedLifecycle(key, peerFingerprint: peerFingerprint, on: machine, text: text, after: after) else {
+            guard let receipt = try? await accepted(key, peerFingerprint: peerFingerprint, on: machine, text: text, after: after) else {
                 throw failure
             }
-            return .confirmed(lifecycle: lifecycle)
+            return receipt
         }
     }
 
-    /// 机器上这条会话在 `after` 之后有一条本机发出、正文就是 `text` 的用户消息：交回机器此刻报的生命周期；没有为 nil。
+    /// 机器上这条会话在 `after` 之后有一条本机发出、正文就是 `text` 的用户消息：受理了，附机器此刻报的生命周期
+    /// （认出之后生命周期没问到，受理仍是确定的：生命周期为 nil）；没有为 nil。
     /// 压缩那一轮没有用户消息可认，不走这里。
-    private func acceptedLifecycle(
+    private func accepted(
         _ key: ConversationKey, peerFingerprint: String, on machine: String, text: String, after: Int64
-    ) async throws -> String? {
+    ) async throws -> ComposerRunReceipt? {
         var cursor = after
         while true {
             var pull = Agentre_Wire_SessionPullRequest()
@@ -102,8 +103,8 @@ public struct RelayComposer: ComposerRelay {
             if sent {
                 var list = Agentre_Wire_SessionListRequest()
                 list.conversationIds = [key.conversationID]
-                let sessions: Agentre_Wire_SessionListResponse = try await connection.call(machine: machine, .sessionList, list)
-                return sessions.sessions.first { $0.conversationID == key.conversationID }?.lifecycleState ?? ""
+                let sessions: Agentre_Wire_SessionListResponse? = try? await connection.call(machine: machine, .sessionList, list)
+                return .confirmed(lifecycle: sessions?.sessions.first { $0.conversationID == key.conversationID }?.lifecycleState)
             }
             guard page.hasMore_p, page.cursor > cursor else { return nil }
             cursor = page.cursor

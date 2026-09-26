@@ -183,6 +183,41 @@ struct ComposerModelTests {
         #expect(await relay.calls == [.run("写个 Kotlin", compact: false), .run("再来一个", compact: false)])
     }
 
+    @Test("应答丢了、机器受理了但问不出它此刻在不在跑：不说没发出、不还字，运行态照转录说的不动")
+    func confirmedTurnOfUnknownLifecycle() async throws {
+        let relay = FakeComposerRelay()
+        await relay.set(runReceipt: .confirmed(lifecycle: nil))
+        let model = composer(relay: relay)
+        model.text = "写个 Kotlin"
+        await model.send()
+        #expect(model.failure == nil)
+        #expect(model.text.isEmpty)
+        #expect(!model.canStop)
+    }
+
+    @Test("轮末接续那一轮应答丢了：开轮帧已递到、收场帧随连接丢了，机器说已收场——按那一次收场落定，不停在运行中")
+    func continuationConfirmedEnded() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-local-1", text: "a")])
+        await relay.set(runReceipt: .confirmed(lifecycle: SavedConversation.Lifecycle.idle))
+        await relay.holdNextRun()
+        let ending = Task { await model.turnEnded(normally: true) }
+        await relay.waitForHeldRun()
+        // 接续那一轮的开轮帧先于应答递到；此后连接断了，重连后的清单对齐赶上开新一轮在飞，不作数。
+        model.turnStarted()
+        await model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
+        await relay.set(drained: [])
+        await relay.releaseRun()
+        await ending.value
+        #expect(!model.isTurnRunning)
+        #expect(!model.canStop)
+        #expect(model.failure == nil)
+    }
+
     @Test("空白消息不发")
     func blankNotSent() async throws {
         let relay = FakeComposerRelay()
