@@ -64,6 +64,28 @@ struct TranscriptScrollTests {
         #expect(host.isShowingLastRow(scrollView, model: model))
     }
 
+    @Test("跟随中列表下面的输入区被键盘顶起（列表本身变矮，内容与偏移都不变）：仍贴在最新一行")
+    func followingSurvivesComposerPushedUp() async throws {
+        let (model, host, scrollView) = try await openAtBottom(rows: 40, composer: true)
+
+        // 回前台：后台期间行已到齐、贴好了底；键盘这时才弹回来，把输入区顶上去，列表从底边矮下去一截。
+        host.shrinkViewport(by: 246)
+        try await host.settle("列表变矮后没有贴底：\(host.describe(scrollView))") { host.isShowingLastRow(scrollView, model: model) }
+        #expect(model.follow.isFollowing)
+
+        // 键盘收起再弹出：仍贴着底。
+        host.shrinkViewport(by: 0)
+        try await host.settle { host.isAtBottom(scrollView) }
+        host.shrinkViewport(by: 246)
+        try await host.settle("再次变矮后没有贴底：\(host.describe(scrollView))") { host.isShowingLastRow(scrollView, model: model) }
+        try await host.frames(5)
+        #expect(model.follow.isFollowing)
+
+        // 补贴底没有留下记号认领用户随后的上滚。
+        scrollView.setContentOffset(CGPoint(x: 0, y: scrollView.contentOffset.y - 200), animated: false)
+        try await host.settle("上滚后仍在跟随：\(host.describe(scrollView))") { !model.follow.isFollowing }
+    }
+
     @Test("跟随中行变化与可见高度缩小同时到来，最新一行仍可见")
     func followingSurvivesRowsAndShrinkTogether() async throws {
         let (model, host, scrollView) = try await openAtBottom(rows: 40)
@@ -314,13 +336,17 @@ struct TranscriptScrollTests {
     }
 
     /// 打开 `rows` 句的转录，等它在底部、在跟随。
-    private func openAtBottom(rows count: Int, size: CGSize = CGSize(width: 390, height: 844)) async throws -> (TranscriptModel, ScrollHost, UIScrollView) {
+    /// `composer`：列表下面垫一块输入区（对话屏的样子），键盘让出的底部由它让，列表本身变矮。
+    private func openAtBottom(rows count: Int, size: CGSize = CGSize(width: 390, height: 844), composer: Bool = false) async throws -> (TranscriptModel, ScrollHost, UIScrollView) {
         let frames = (1...count).map { stored(decoder, Int64($0), .userMessage("第 \($0) 句")) }
         let model = TranscriptModel(
             conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"),
             store: FakeStore(frames), relay: FakeRelay(), decoder: decoder
         )
-        let host = ScrollHost(TranscriptView(model: model, agentName: "Claude Code"), size: size)
+        let transcript = TranscriptView(model: model, agentName: "Claude Code")
+        let host = composer
+            ? ScrollHost(VStack(spacing: 0) { transcript; Color.gray.frame(height: 96) }, size: size)
+            : ScrollHost(transcript, size: size)
         try await host.settle { model.rows.count == count }
         try await host.settle { host.scrollView() != nil }
         let scrollView = try #require(host.scrollView(), "转录底下没有 UIScrollView：\(host.describeScrollViews())")

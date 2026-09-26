@@ -64,6 +64,7 @@ public struct TranscriptView<Card: View>: View {
                 // 落定成入库的那一行）时位置还是估计值，会落在几屏之上——还在跟随就照实际位置再贴一次。
                 let pinned = pin.pending
                 pin.pending = false
+                pin.seen = new
                 // 跟随中布局变了（新行、键盘弹回、回前台、行高落定）：重新贴到最新一行。
                 // 已经分毫不差地贴着底就不再贴：这一贴挪不动视口，记号便等不到它的那一步，会把用户随后的上滚认领走。
                 if model.follow.isFollowing, new.contentHeight > 0, new.belowViewport >= 1,
@@ -78,6 +79,16 @@ public struct TranscriptView<Card: View>: View {
                     if !model.follow.isFollowing { model.reachedBottom() }
                 } else if new.offset < old.offset, model.follow.isFollowing {
                     model.userScrolledAway()
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                // 列表自己从底边矮下去（下面的输入区被弹回的键盘顶起）：内容与偏移都没动，滚动几何不报这一步，
+                // 视口底边却升到了最新一行之上。等这一次布局落定再看：滚动几何仍没见到这个高度，就按它上一次
+                // 报的位置补算，还在跟随、底下又确有内容就贴回去（落定前贴，滚动视图还按旧高度算，贴了也不动）。
+                Task { @MainActor in
+                    guard model.follow.isFollowing, let seen = pin.seen, seen.contentHeight > 0,
+                          abs(seen.visibleHeight - height) >= 1, seen.belowViewport + seen.visibleHeight - height >= 1 else { return }
+                    pin.toLatest(model.rows, proxy)
                 }
             }
             .onScrollPhaseChange { _, phase in
@@ -120,6 +131,8 @@ fileprivate struct ScrollPosition: Equatable {
 @MainActor
 private final class Pin {
     var pending = false
+    /// 滚动几何最近一次报的位置。
+    fileprivate var seen: ScrollPosition?
 
     func toLatest(_ rows: [TranscriptRow], _ proxy: ScrollViewProxy) {
         guard let last = TranscriptCells.build(Array(rows.suffix(1))).last else { return }
