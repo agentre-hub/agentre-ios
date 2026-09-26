@@ -388,9 +388,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: ce0ff79
+    note: "根因：回前台键盘弹回顶起输入区，列表只从底边变矮、contentSize 与 offset 不变，onScrollGeometryChange 不触发，跟随不重新贴底；只在后台期间所有行都已布局完时出现。复现：临时压力版 17a（26 次进出后台，zh-Hans）第 20、10 次失败，失败时最后一次几何 vis=574.7/below=0、scene active 后无几何事件而列表实高 444.7。RED：TranscriptScrollTests/followingSurvivesComposerPushedUp() exit 65「列表变矮后没有贴底：offset=1457 bounds=498 content=2201」。修：列表自身高度 onGeometryChange，布局落定后按上次 below 补算，仍跟随且下方有内容就贴最新行。GREEN：同测 exit 0（覆盖缩、涨、再缩、之后上滑仍停止跟随）；压力版 26/26 exit 0；中文主线 14/14（浅 7 深 7）；AgentreTranscriptTests 148/148、AgentreHostedTests 40、AgentreApprovalTests 42 exit 0；AgentreUITests 整个 target 两遍各 6/6 exit 0。压力测试与日志为临时，未提交。"
 
 review:
   status: pending
