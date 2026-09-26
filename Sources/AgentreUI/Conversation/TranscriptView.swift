@@ -128,10 +128,11 @@ struct ScrollPosition: Equatable {
     /// 只认内容不变时视口自己的移动：内容增减（含首次布局、补进历史）带动的偏移不算滚动。
     /// 首次布局时内容还是空的，安全区内边距会把偏移挪一下，那不是滚动。
     /// 可见高度变了（键盘、底部内边距）的那一步也不算：底边一挪，below 跟着跳，同一步里哪怕偏移只动了
-    /// 一两点（系统回弹）也会被读成离开了底部。越过底部后往回收的那几步是系统的回弹，也不算。
+    /// 一两点（系统回弹）也会被读成离开了底部。越过底部后往回收、仍落在底部的那几步是系统的回弹，也不算；
+    /// 回弹停在底部，不会越过它往上走——一步收到底部之上的是手指在拖，照样算。
     func isScroll(from old: ScrollPosition) -> Bool {
         contentHeight > 0 && abs(contentHeight - old.contentHeight) < 1 && abs(visibleHeight - old.visibleHeight) < 1
-            && abs(offset - old.offset) > 1 && !(old.belowViewport < -1 && offset < old.offset)
+            && abs(offset - old.offset) > 1 && !(old.belowViewport < -1 && offset < old.offset && atBottom)
     }
 }
 

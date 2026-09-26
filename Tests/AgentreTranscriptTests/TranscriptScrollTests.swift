@@ -389,6 +389,15 @@ struct ScrollAttributionTests {
         #expect(!new.isScroll(from: old))
     }
 
+    @Test("从越界区一步拖到底部之上：是滚动——系统回弹停在底部，不会越过它往上走")
+    func dragOutOfOverscrollPastBottomIsAScroll() {
+        // 手指在越界区按下往下拖，一步就越过底部来到 55pt 之上并停住：若算作回弹，跟随不停，下一次贴底把用户拽回去。
+        let old = ScrollPosition(offset: 2320.0, contentHeight: 3005.7, visibleHeight: 574.7, belowViewport: -5.0)
+        let new = ScrollPosition(offset: 2260.0, contentHeight: 3005.7, visibleHeight: 574.7, belowViewport: 55.0)
+        #expect(new.isScroll(from: old))
+        #expect(!new.atBottom)
+    }
+
     @Test("内容与可见高度都没变时往上挪：是滚动，从底部起步（贴底时 below 可能是 -0.1）也算")
     func userDragIsAScroll() {
         let bottom = ScrollPosition(offset: 2561.0, contentHeight: 3005.7, visibleHeight: 328.7, belowViewport: -0.1)
