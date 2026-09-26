@@ -369,6 +369,44 @@ struct TranscriptScrollTests {
     }
 }
 
+/// 哪一步几何算用户在滚：只有用户上滑才停止跟随，布局与系统自己的移动都不算。
+@Suite("滚动几何的归属")
+struct ScrollAttributionTests {
+    @Test("可见高度变小（键盘弹回）与越界回弹的一小步同一步报来：不是滚动")
+    func viewportShrinkWithBounceBackIsNotAScroll() {
+        // dev 现场（report-9，evidence-9/t37.log 22:27:40.300）：回前台，补回的行比预览矮了 38pt，视口越过底部；
+        // 系统回弹把偏移往上收的同时键盘弹回。这一步被当成了用户上滑，跟随就此停止。
+        let old = ScrollPosition(offset: 2350.3, contentHeight: 3005.7, visibleHeight: 574.7, belowViewport: -35.3)
+        let new = ScrollPosition(offset: 2348.7, contentHeight: 3005.7, visibleHeight: 328.7, belowViewport: 212.3)
+        #expect(!new.isScroll(from: old))
+    }
+
+    @Test("越过底部后系统的回弹（偏移往上收、仍在越界区内）：不是滚动")
+    func bounceBackIsNotAScroll() {
+        // 同一现场 22:27:40.270 的那一步。
+        let old = ScrollPosition(offset: 2352.0, contentHeight: 3005.7, visibleHeight: 574.7, belowViewport: -37.0)
+        let new = ScrollPosition(offset: 2350.3, contentHeight: 3005.7, visibleHeight: 574.7, belowViewport: -35.3)
+        #expect(!new.isScroll(from: old))
+    }
+
+    @Test("内容与可见高度都没变时往上挪：是滚动，从底部起步（贴底时 below 可能是 -0.1）也算")
+    func userDragIsAScroll() {
+        let bottom = ScrollPosition(offset: 2561.0, contentHeight: 3005.7, visibleHeight: 328.7, belowViewport: -0.1)
+        let up = ScrollPosition(offset: 2541.0, contentHeight: 3005.7, visibleHeight: 328.7, belowViewport: 19.9)
+        #expect(up.isScroll(from: bottom))
+        let further = ScrollPosition(offset: 2361.0, contentHeight: 3005.7, visibleHeight: 328.7, belowViewport: 199.9)
+        #expect(further.isScroll(from: up))
+        #expect(!further.atBottom)
+    }
+
+    @Test("内容增减带动的偏移不是滚动")
+    func contentChangeIsNotAScroll() {
+        let old = ScrollPosition(offset: 2249.0, contentHeight: 2939.7, visibleHeight: 574.7, belowViewport: 0)
+        let new = ScrollPosition(offset: 2200.0, contentHeight: 3043.7, visibleHeight: 574.7, belowViewport: 153)
+        #expect(!new.isScroll(from: old))
+    }
+}
+
 /// 托管一屏并能拿到它的 UIKit 层级。
 @MainActor
 fileprivate final class ScrollHost {

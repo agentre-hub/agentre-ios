@@ -71,10 +71,8 @@ public struct TranscriptView<Card: View>: View {
                    pinned || abs(new.visibleHeight - old.visibleHeight) >= 1 || abs(new.contentHeight - old.contentHeight) >= 1 {
                     pin.toLatest(model.rows, proxy)
                 }
-                // 只认内容不变时视口自己的移动：内容增减（含首次布局、补进历史）带动的偏移不算滚动。
                 // 移到底部即恢复跟随；离开底部只认往上走——跟随的滚动只往下走。
-                // 首次布局时内容还是空的，安全区内边距会把偏移挪一下，那不是滚动。
-                guard !pinned, new.contentHeight > 0, abs(new.contentHeight - old.contentHeight) < 1, abs(new.offset - old.offset) > 1 else { return }
+                guard !pinned, new.isScroll(from: old) else { return }
                 if new.atBottom {
                     if !model.follow.isFollowing { model.reachedBottom() }
                 } else if new.offset < old.offset, model.follow.isFollowing {
@@ -117,7 +115,7 @@ extension TranscriptView where Card == EmptyView {
 }
 
 /// 视口相对内容的位置。
-fileprivate struct ScrollPosition: Equatable {
+struct ScrollPosition: Equatable {
     var offset: CGFloat
     var contentHeight: CGFloat
     /// 扣掉上下内边距后的可见高度。
@@ -125,6 +123,16 @@ fileprivate struct ScrollPosition: Equatable {
     /// 可见区底边之下还有多少内容；贴底时为 0（越界回弹时为负）。
     var belowViewport: CGFloat
     var atBottom: Bool { belowViewport <= 32 }
+
+    /// 从 `old` 到这里是视口自己的移动（滚动），而不是布局带动的偏移。
+    /// 只认内容不变时视口自己的移动：内容增减（含首次布局、补进历史）带动的偏移不算滚动。
+    /// 首次布局时内容还是空的，安全区内边距会把偏移挪一下，那不是滚动。
+    /// 可见高度变了（键盘、底部内边距）的那一步也不算：底边一挪，below 跟着跳，同一步里哪怕偏移只动了
+    /// 一两点（系统回弹）也会被读成离开了底部。越过底部后往回收的那几步是系统的回弹，也不算。
+    func isScroll(from old: ScrollPosition) -> Bool {
+        contentHeight > 0 && abs(contentHeight - old.contentHeight) < 1 && abs(visibleHeight - old.visibleHeight) < 1
+            && abs(offset - old.offset) > 1 && !(old.belowViewport < -1 && offset < old.offset)
+    }
 }
 
 /// 视图自己发起的贴底；它挪出来的下一步视口移动不算用户滚动。引用类型：记号变化不必重画转录。
