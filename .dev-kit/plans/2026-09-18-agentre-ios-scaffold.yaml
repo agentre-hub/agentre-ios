@@ -398,9 +398,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Conversation/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreTranscriptTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: "首派 stuck：本机假服务端约 60 次发后即进后台、64 种排序、24 种滞后贴底、96 条随机序列均未复现；代码上唯一关跟随处 TranscriptView.swift:81 userScrolledAway；未证实假设：滞后的 scrollTo 落在旧底部、pin.pending 已被别的几何步用掉。用户选择（原话选项）：「去 dev 抓现场，授权四项（推荐）」——主会话在 dev 上用带日志构建重跑 report-8 流程抓现场后再派一次。 抓现场（evidence-9/t37.log，第 3 次发后即进后台）：回前台键盘弹回使 visibleHeight 574.7→328.7 的同一几何步里，思考行收起后内容缩 38pt、越界回弹使偏移上移 1.6pt（2350.3→2348.7，内容不变），belowViewport 212>32，于是走进 TranscriptView.swift:81 userScrolledAway 关掉跟随。devices#13 已撤销回 status 2，一次性会话已删复核为 0。"
+    status: done
+    commit: 0e1dd3d
+    note: "首派 stuck：本机假服务端约 60 次发后即进后台、64 种排序、24 种滞后贴底、96 条随机序列均未复现；代码上唯一关跟随处 TranscriptView.swift:81 userScrolledAway；未证实假设：滞后的 scrollTo 落在旧底部、pin.pending 已被别的几何步用掉。用户选择（原话选项）：「去 dev 抓现场，授权四项（推荐）」——主会话在 dev 上用带日志构建重跑 report-8 流程抓现场后再派一次。 抓现场（evidence-9/t37.log，第 3 次发后即进后台）：回前台键盘弹回使 visibleHeight 574.7→328.7 的同一几何步里，思考行收起后内容缩 38pt、越界回弹使偏移上移 1.6pt（2350.3→2348.7，内容不变），belowViewport 212>32，于是走进 TranscriptView.swift:81 userScrolledAway 关掉跟随。devices#13 已撤销回 status 2，一次性会话已删复核为 0。 重派后完成（complete with concerns）：判用户滚动改为 ScrollPosition.isScroll(from:)，另要求可见高度不变（1pt 内），并不认越过底部（old below<−1）后往上收的回弹。RED：AgentreTranscriptTests/ScrollAttributionTests exit 65，dev 那一步（off 2350.3→2348.7、vis 574.7→328.7、below −35.3→212.3）与 40.270 回弹步都被判成滚动；修后 exit 0。GREEN：归因与滚动 16 测 exit 0、-test-iterations 20 共 20/20；AgentreTranscriptTests 152、AgentreApprovalTests 42、AgentreHostedTests 40 exit 0；中文主线浅深各 5 次 10/10；UI target 两遍各 6/6。关切：RED 用 dev 几何数值重放同一判定而非窗口级复现（测试窗口里程序滚动单独成一步，拼不出同一步）；未在真实 dev 上复跑；键盘动画中或越界回弹中的真实拖动，要等这几步过去才算停跟随。"
 
 review:
   status: pending
