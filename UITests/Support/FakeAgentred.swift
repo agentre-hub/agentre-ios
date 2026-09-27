@@ -12,6 +12,9 @@ import SwiftProtobuf
 ///   再发 run_result_done（runtime.go:940-941）；表里没有时回 -32010。插话还要那一轮在跑（claudecode 的 Steer），
 ///   进了信箱的整轮没被取走就留到 runtime.drainPending 取。通道断了表就没了。
 /// - runtime.run 带上的 permission_mode 原样记下可查（RuntimeRunRequest 字段 16）。
+/// - 执行进程照搬 claudecode 的进程池：会话没有活着的进程时 runtime.run 按它带的档起一个（空 = 起手默认档）；进程还在
+///   （闲置 15 分钟内，与通道无关）时原样复用，run 带来的新档不生效，只有这一轮登记着时的 runtime.setPermissionMode
+///   才改它（agentre/internal/pkg/agentruntime/runtimes/claudecode/runtime.go:620-626、:342-357；report-11 实测）。
 /// - runtime.run 先发不带号的 turn_started，再落用户那一帧（带号），然后才回应答；此后的事件由
 ///   这一轮自己陆续产出（runtime.go:578-590）。一轮收场先落带号的 done（runtime_transcript.go 的 finish），
 ///   再发不带号、补拉不回来的 run_result_done。
@@ -58,6 +61,8 @@ final class FakeAgentred: @unchecked Sendable {
     private var adopted: [RelayPeer: Set<String>] = [:]
     /// 每条会话的插话信箱（agentred 的 SteerInbox）。
     private var mailboxes: [String: [Agentre_Wire_ConsumedSteer]] = [:]
+    /// 每条会话活着的执行进程此刻实际按哪一档跑；没有 = 进程不在。
+    private var executorModes: [String: String] = [:]
     private var subscribers: [String: Set<RelayPeer>] = [:]
     private var pendingPermissions: [String: (requestID: String, callID: String, output: String, reply: String)] = [:]
     private var heldTurns: [String] = []
@@ -110,6 +115,11 @@ final class FakeAgentred: @unchecked Sendable {
         let conversationID = heldTurns.removeFirst()
         record(conversationID, .textDelta(Self.text(reply)))
         finishTurn(conversationID)
+    }
+
+    /// 这条会话的执行进程此刻实际按哪一档跑；进程不在时为 nil。
+    func effectivePermissionMode(_ conversationID: String) -> String? {
+        executorModes[conversationID]
     }
 
     // MARK: 通道一侧
@@ -237,6 +247,9 @@ final class FakeAgentred: @unchecked Sendable {
         }
         turnOwners[id] = peer
         adopted[peer]?.remove(id)
+        if executorModes[id] == nil {
+            executorModes[id] = request.permissionMode.isEmpty ? capabilities().permissionMode.launchDefaultMode : request.permissionMode
+        }
         sessions[id]?.summary.lifecycleState = "running"
         subscribers[id, default: []].insert(peer)
         var started = Agentre_Wire_RpcNotification()
@@ -303,6 +316,7 @@ final class FakeAgentred: @unchecked Sendable {
         guard turnOwners[request.conversationID] != nil else {
             return .error(-32010, "agentruntime: no active turn for session")
         }
+        executorModes[request.conversationID] = request.mode
         record(request.conversationID, .permissionModeChanged(.with { $0.mode = request.mode }))
         return .result(Agentre_Wire_Empty())
     }

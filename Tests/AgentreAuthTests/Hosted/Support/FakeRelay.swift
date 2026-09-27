@@ -223,6 +223,10 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 /// （fanout 先 unregister 再发 run_result_done，runtime.go:940-941）；表里没有时回同一个码。连接断了表就空了。
 /// 插话还要机器上那一轮在跑（claudecode 的 Steer 认 mainThreadBusy，谁开的都算），这里以会话行的生命周期为准。
 ///
+/// 执行进程照搬 claudecode 的进程池：会话没有活着的进程时 runtime.run 按它带的档起一个；进程还在（闲置 15 分钟内，
+/// 与连接无关）时原样复用，run 带来的新档不生效，只有这一轮登记着时的 runtime.setPermissionMode 才改它
+/// （agentre/internal/pkg/agentruntime/runtimes/claudecode/runtime.go:620-626、:342-357；report-11 实测）。
+///
 /// runtime.run 照搬 agentred 的次序（runtime.go:571-593）：会话行置 running、推不带号的 turn_started、落用户那一帧
 /// （带号，盖上来源设备，beginTranscript）并推出去，然后才回应答——应答丢了，这一轮照样在机器上。
 ///
@@ -255,6 +259,8 @@ final class FakeMachine: @unchecked Sendable {
     private var adopted: Set<String> = []
     /// 每条会话的插话信箱：runtime.steer 放进去，runtime.drainPending 整个取走（agentred 的 steer mailbox）。
     private var mailboxes: [String: [(queuedID: String, text: String)]] = [:]
+    /// 每条会话活着的执行进程此刻实际按哪一档跑（claudecode 进程池里的那一个）；没有 = 进程不在。
+    private var executorModes: [String: String] = [:]
 
     init(fingerprint: String, caller: @escaping @Sendable () -> String = { "" }) {
         self.fingerprint = fingerprint
@@ -283,6 +289,16 @@ final class FakeMachine: @unchecked Sendable {
     /// 后端把信箱里的插话取走了（它随后推 steer_consumed）：此后轮末再问信箱就是空的。
     func consumeSteers(_ conversationID: String) {
         _ = lock.withLock { mailboxes.removeValue(forKey: conversationID) }
+    }
+
+    /// 池里已有一个按 `mode` 起的执行进程（别的端开的那一轮留下的）。
+    func launchExecutor(_ conversationID: String, mode: String) {
+        lock.withLock { executorModes[conversationID] = mode }
+    }
+
+    /// 这条会话的执行进程此刻实际按哪一档跑；进程不在时为 nil。
+    func effectivePermissionMode(_ conversationID: String) -> String? {
+        lock.withLock { executorModes[conversationID] }
     }
 
     /// 这一轮收场：agentred 在 fanout 结束时把会话从内存表里摘掉。
@@ -336,10 +352,15 @@ final class FakeMachine: @unchecked Sendable {
                 guard activeTurns.contains(call.payload.string(1)) else {
                     return .error(code: -32010, message: "agentruntime: no active turn for session")
                 }
+                executorModes[call.payload.string(1)] = call.payload.string(3)
                 return .result(Proto())
             case WireMethod.runtimeRun:
                 let id = call.payload.string(3)
                 activeTurns.insert(id)
+                if executorModes[id] == nil {
+                    let mode = call.payload.string(16)
+                    executorModes[id] = mode.isEmpty ? "default" : mode
+                }
                 adopted.remove(id)
                 if let index = sessions.firstIndex(where: { $0.conversationID == id }) { sessions[index].lifecycleState = "running" }
                 return .result(Proto { $0.string(1, id) })

@@ -41,6 +41,8 @@ let namedCatalog = [
 ///
 /// 控制面照搬 agentred：会话只在一轮跑着时登记（run 登记、`finishTurn()` 摘掉），不在时
 /// setPermissionMode 回「没有进行中的一轮」（agentre/internal/daemon/handlers/runtime.go:1454-1462、:1682-1689）。
+/// 执行进程照搬 claudecode 的进程池：没有活着的进程时 run 按它带的档起一个；进程还在（闲置 15 分钟内）时原样复用，
+/// run 带来的新档不生效，只有一轮登记着时的 setPermissionMode 才改它（claudecode/runtime.go:620-626、:342-357）。
 actor FakeComposerRelay: ComposerRelay {
     /// agentruntime.ErrNoActiveTurn 的替身。
     struct NoActiveTurn: Error {}
@@ -63,6 +65,8 @@ actor FakeComposerRelay: ComposerRelay {
     private(set) var runPermissionModes: [String] = []
     /// 执行端此刻登记着一轮在跑。
     private(set) var activeTurn = false
+    /// 这条会话的执行进程此刻实际按哪一档跑；nil = 没有活着的进程。
+    private(set) var executorMode: String?
     var steerHandle: (@Sendable (String) -> ComposerSteerHandle)? = { ComposerSteerHandle(queuedID: "exec-\($0)", cancellable: true) }
     var drained: [ComposerConsumedSteer]? = []
     var skills: [ComposerSkillSource] = []
@@ -80,6 +84,8 @@ actor FakeComposerRelay: ComposerRelay {
     func startTurn() { activeTurn = true }
     /// 这一轮收场：执行端把会话从内存表里摘掉。
     func finishTurn() { activeTurn = false }
+    /// 池里已有一个按 `mode` 起的执行进程（别的端开的、或 App 重启之前那一次）。
+    func launchExecutor(mode: String) { executorMode = mode }
 
     private func check(_ method: String) throws {
         if failing.contains(method) { throw URLError(.notConnectedToInternet) }
@@ -94,6 +100,7 @@ actor FakeComposerRelay: ComposerRelay {
         }
         try check("run")
         activeTurn = true
+        if executorMode == nil { executorMode = permissionMode.isEmpty ? "default" : permissionMode }
         return runReceipt
     }
 
@@ -159,6 +166,7 @@ actor FakeComposerRelay: ComposerRelay {
         calls.append(.permission(mode))
         try check("permission")
         guard activeTurn else { throw NoActiveTurn() }
+        executorMode = mode
     }
 
     func setModelTarget(_ key: ConversationKey, peerFingerprint: String, providerKey: String, modelKey: String) async throws {

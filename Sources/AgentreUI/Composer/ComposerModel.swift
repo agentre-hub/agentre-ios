@@ -146,7 +146,22 @@ public final class ComposerModel {
                 return
             }
             isStartingTurn = false
-            if case .confirmed(let lifecycle) = receipt { await settleConfirmedTurn(lifecycle: lifecycle) }
+            await settle(receipt)
+        }
+    }
+
+    /// 这一轮被机器受理之后。应答到了：补发一次当前档——agentred 复用上一轮还在池里的执行进程时不应用
+    /// runtime.run 带的档（claudecode/runtime.go:620-626，复用判据 launchIdentity 不含档位），此刻这一轮已登记、
+    /// runtime.setPermissionMode 落得到活着的 CLI 上（:342-357）。不论这次切没切过档都补：App 重启、别的端改过档
+    /// 之后池里的进程一样是旧档。补发没成（这一轮已收场、执行端不认权限模式……）不提示、不改变这次发送的结果。
+    /// 应答丢了、问机器才确认受理的那一轮不补发，按机器报的生命周期落定。
+    private func settle(_ receipt: ComposerRunReceipt) async {
+        switch receipt {
+        case .acknowledged:
+            guard !permissionMode.isEmpty else { return }
+            try? await relay.setPermissionMode(key, peerFingerprint: peer, mode: permissionMode)
+        case .confirmed(let lifecycle):
+            await settleConfirmedTurn(lifecycle: lifecycle)
         }
     }
 
@@ -217,9 +232,10 @@ public final class ComposerModel {
             restore(ComposerMentions.draft(fromBody: next))
             return
         }
-        // 与发送同一处落定：接续那一轮的开轮帧可能已递到、收场帧随连接丢了，只有机器报的生命周期说得出来。
+        // 与发送同一处落定：被接受就补发当前档；应答丢了时接续那一轮的开轮帧可能已递到、收场帧随连接丢了，
+        // 只有机器报的生命周期说得出来。
         isStartingTurn = false
-        if case .confirmed(let lifecycle) = receipt { await settleConfirmedTurn(lifecycle: lifecycle) }
+        await settle(receipt)
     }
 
     /// 重新接上承载机后，机器此刻报的会话生命周期。以为在跑、机器却说不在跑了：这一轮在看不到的时候
@@ -374,11 +390,12 @@ public final class ComposerModel {
     // MARK: 面板三项
 
     /// 权限档位随每一轮发送带过去（与控制台 useSessionSend、桌面端 usePermissionMode 同一口径）：
-    /// 两轮之间只改本机记下的当前档，下一轮随 runtime.run 生效——此时执行端已把会话收掉，去问它
-    /// 只会得到「没有进行中的一轮」。一轮正在跑时再额外让它即刻生效，那一次没改成才如实呈现。
+    /// 两轮之间只改本机记下的当前档，下一轮随 runtime.run 与它被接受后的补发生效——此时执行端已把会话收掉，
+    /// 去问它只会得到「没有进行中的一轮」。一轮正在跑时再额外让它即刻生效，那一次没改成才如实呈现。
+    /// 开新一轮的调用在飞时同两轮之间：被接受后的补发读的就是此刻的当前档，另发一次反倒会被在它之后到的补发盖掉。
     public func setPermissionMode(_ mode: String) async {
         guard var settings, settings.permissionMode != mode else { return }
-        guard isTurnRunning else {
+        guard isTurnRunning, !isStartingTurn else {
             failure = nil
             permissionModeChosen = true
             settings.permissionMode = mode

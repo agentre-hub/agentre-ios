@@ -566,7 +566,7 @@ struct ComposerModelTests {
 
         model.edit(text: "go on", cursor: 5)
         await model.send()
-        #expect(await relay.calls == [.run("go on", compact: false)])
+        #expect(await relay.calls == [.run("go on", compact: false), .permission("plan")])
         #expect(await relay.runPermissionModes == ["plan"])
 
         // 这一轮收场、执行端摘掉会话；两轮之间再切一次，下一轮与它轮末接续的那一轮都带新档。
@@ -586,13 +586,116 @@ struct ComposerModelTests {
         #expect(await relay.runPermissionModes == ["plan", "default", "default"])
     }
 
-    @Test("面板还没载入：发送照常，不带档位（执行端按默认档跑）")
+    @Test("面板还没载入：发送照常，不带档位（执行端按默认档跑），也没有档可补发")
     func permissionModeUnknown() async throws {
         let relay = FakeComposerRelay()
         let model = composer(relay: relay)
         model.edit(text: "go on", cursor: 5)
         await model.send()
         #expect(await relay.runPermissionModes == [""])
+        #expect(await relay.calls == [.run("go on", compact: false)])
+    }
+
+    // MARK: 每一轮被接受后补发当前档（执行进程被复用时 runtime.run 带的档不生效）
+
+    @Test("两轮之间切档后的下一轮：上一轮的执行进程被复用、run 带的新档不生效；被接受后补发，实际按新档跑")
+    func supplementAfterSwitchBetweenTurns() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        await model.load()
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.executorMode == "acceptEdits")
+        model.turnStarted()
+        await relay.finishTurn()
+        await model.turnEnded(normally: false)
+
+        await model.setPermissionMode("plan")
+        model.edit(text: "next", cursor: 4)
+        await model.send()
+        #expect(await relay.runPermissionModes == ["acceptEdits", "plan"])
+        #expect(await relay.executorMode == "plan")
+        #expect(model.failure == nil)
+    }
+
+    @Test("没切过档也补发：池里的进程是按别的档起的（别的端、App 重启之前），被接受后纠正成本机当前档")
+    func supplementWithoutSwitch() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        let model = composer(relay: relay)
+        await model.load()
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.executorMode == "acceptEdits")
+        #expect(model.failure == nil)
+    }
+
+    @Test("排队取回合并后发出的那一轮同样补发：接续那一轮复用别的端按旧档起的进程，被接受后按本机当前档跑")
+    func supplementAfterContinuation() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        await relay.startTurn()
+        let model = composer(relay: relay)
+        await model.load()
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-local-1", text: "a")])
+        await relay.finishTurn()
+        await model.turnEnded(normally: true)
+        #expect(await relay.calls.suffix(3) == [.drain, .run("a", compact: false), .permission("acceptEdits")])
+        #expect(await relay.executorMode == "acceptEdits")
+        #expect(model.failure == nil)
+    }
+
+    @Test("补发失败不提示、不改变这次发送的结果：不说没发出、不还字、不说没改成，面板照旧，还能接着发")
+    func supplementFailureIsSilent() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        await relay.fail("permission")
+        let model = composer(relay: relay)
+        await model.load()
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.calls == [.run("go on", compact: false), .permission("acceptEdits")])
+        #expect(model.failure == nil)
+        #expect(model.text.isEmpty)
+        #expect(model.settings?.permissionMode == "acceptEdits")
+        model.edit(text: "next", cursor: 4)
+        #expect(model.canSend)
+    }
+
+    @Test("应答丢了、靠问机器才确认受理的那一轮不补发", arguments: [SavedConversation.Lifecycle.running, SavedConversation.Lifecycle.idle])
+    func noSupplementForConfirmedTurn(_ lifecycle: String) async throws {
+        let relay = FakeComposerRelay()
+        await relay.set(runReceipt: .confirmed(lifecycle: lifecycle))
+        let model = composer(relay: relay)
+        await model.load()
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.calls == [.run("go on", compact: false)])
+        #expect(model.failure == nil)
+    }
+
+    @Test("开新一轮的调用在飞时切档：只改本机当前档，被接受后随补发生效——不另发一次、也不被补发的旧档盖掉")
+    func switchWhileRunInFlight() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        let model = composer(relay: relay)
+        await model.load()
+        model.text = "go on"
+        await relay.holdNextRun()
+        let sending = Task { await model.send() }
+        await relay.waitForHeldRun()
+        // agentred 在应答之前就推了开轮帧（runtime.go:571-593）：输入区此刻已是运行中。
+        model.turnStarted()
+        await model.setPermissionMode("plan")
+        #expect(model.failure == nil)
+        #expect(model.settings?.permissionMode == "plan")
+        await relay.releaseRun()
+        await sending.value
+        #expect(await relay.calls == [.run("go on", compact: false), .permission("plan")])
+        #expect(await relay.executorMode == "plan")
     }
 
     @Test("一轮在跑时切档：额外让执行端即刻换档；它答没有进行中的一轮时如实说没改成、面板照旧，下一轮仍带原档")

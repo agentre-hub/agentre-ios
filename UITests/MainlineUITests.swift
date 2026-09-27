@@ -120,7 +120,10 @@ final class MainlineUITests: XCTestCase {
         screen.expectGone(screen.button(copy("Composer", "composer.stop")), "stop button once the turn ended")
         screen.shot("13 allowed")
 
-        // 两轮之间切权限模式：只改本机当前档，不报「没有改成」；下一轮 runtime.run 带上它。
+        // 两轮之间切权限模式：只改本机当前档，不报「没有改成」、不去问执行端；下一轮 runtime.run 带上它。上一轮的
+        // 执行进程还在池里被复用，run 带的新档不生效：这一轮被接受后补发当前档，机器上实际按新档跑。
+        let conversationID = server.read { _ in box.runs.last?.conversationID ?? "" }
+        XCTAssertEqual(server.read { _ in box.effectivePermissionMode(conversationID) }, "default", "the first turn's executor mode")
         screen.tap(screen.button(copy("Composer", "composer.permissionMode")), "permission mode")
         let plan = screen.button(startingWith: "plan")
         screen.expect(plan, "plan mode option")
@@ -134,6 +137,7 @@ final class MainlineUITests: XCTestCase {
         screen.shot("14 permission mode")
         screen.dismissSheet()
         screen.expectGone(plan, "permission panel")
+        XCTAssertTrue(server.read { _ in box.permissionModeCalls.isEmpty }, "switching between turns called runtime.setPermissionMode")
 
         screen.type(Self.secondMessage, into: screen.input(copy("Composer", "composer.message")), "composer field")
         screen.tap(screen.button(copy("Composer", "composer.send")), "send second message")
@@ -141,7 +145,9 @@ final class MainlineUITests: XCTestCase {
         screen.expect("the second runtime.run carried the plan mode") {
             server.read { _ in box.runs.count == 2 && box.runs.last?.permissionMode == "plan" }
         }
-        XCTAssertTrue(server.read { _ in box.permissionModeCalls.isEmpty }, "switching between turns called runtime.setPermissionMode")
+        screen.expect("the machine runs the second turn in plan mode") {
+            server.read { _ in box.effectivePermissionMode(conversationID) == "plan" }
+        }
         screen.shot("15 second message")
 
         // 这一轮在跑时再发一句：进队列（插话）。这一轮正常收场时它整轮没被取走（纯文字轮没有工具边界），
@@ -189,6 +195,7 @@ final class MainlineUITests: XCTestCase {
 
         // 发出后应答没到就进了后台（report-7 11f）：机器受理并开跑，往手机那一路此后什么都没到；进后台后连接断了，
         // 这一轮在机器上跑完。回到前台：这句话与回复都在屏上，不说「消息没有发出」、不把原文放回输入框，也不再发一遍。
+        let supplementsBeforeStall = server.read { _ in box.permissionModeCalls.count }
         server.perform { _ in box.stallNextRun() }
         screen.type(Self.stalledMessage, into: screen.input(copy("Composer", "composer.message")), "composer field")
         screen.tap(screen.button(copy("Composer", "composer.send")), "send a message whose answer never arrives")
@@ -215,6 +222,10 @@ final class MainlineUITests: XCTestCase {
         )
         screen.expectGone(screen.button(copy("Composer", "composer.stop")), "stop button once the stalled turn ended")
         XCTAssertEqual(server.read { _ in box.runs.count }, 4, "the accepted message was sent again")
+        XCTAssertEqual(
+            server.read { _ in box.permissionModeCalls.count }, supplementsBeforeStall,
+            "the turn confirmed by lookup after its answer was lost re-sent the permission mode"
+        )
         screen.shot("17a lost answer resumed")
 
         // 撤销本机 → 回到登录屏。先退回消息列表：键盘随对话屏收起，标签栏才露出来。

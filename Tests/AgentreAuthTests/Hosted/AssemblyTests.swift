@@ -215,7 +215,7 @@ struct AssemblyTests {
         #expect(harness.server.requests.contains { $0.url.path() == "/v1/engine/snapshot" })
     }
 
-    @Test("两轮之间切档：只改本机当前档、不去问执行端也不报失败，下一轮 runtime.run 带上它")
+    @Test("两轮之间切档：只改本机当前档、不去问执行端也不报失败；下一轮 runtime.run 带上它，上一轮的执行进程被复用时靠被接受后的补发生效")
     func permissionModeRidesTheNextRun() async throws {
         let harness = try Harness()
         defer { harness.cleanUp() }
@@ -228,17 +228,66 @@ struct AssemblyTests {
         await composer.load()
         #expect(composer.settings?.permissionMode == "default")
 
+        // 上一轮按 default 起了执行进程；收场后进程留在池里。
+        composer.edit(text: "look around", cursor: 11)
+        await composer.send()
+        harness.machine.finishTurn("conv-1")
+        #expect(harness.machine.effectivePermissionMode("conv-1") == "default")
+        let supplementsBefore = harness.relay.calls(WireMethod.runtimeSetPermissionMode).count
+
         await composer.setPermissionMode("plan")
         #expect(composer.failure == nil)
         #expect(composer.settings?.permissionMode == "plan")
-        #expect(harness.relay.calls(WireMethod.runtimeSetPermissionMode).isEmpty)
+        #expect(harness.relay.calls(WireMethod.runtimeSetPermissionMode).count == supplementsBefore)
 
         composer.edit(text: "go on", cursor: 5)
         await composer.send()
-        let run = try #require(harness.relay.calls(WireMethod.runtimeRun).first)
+        let run = try #require(harness.relay.calls(WireMethod.runtimeRun).last)
         #expect(run.target == "machine:machine-a")
         #expect(run.payload.string(16) == "plan")
+        #expect(harness.machine.effectivePermissionMode("conv-1") == "plan")
         #expect(composer.failure == nil)
+    }
+
+    @Test("排队取回合并后发出的那一轮：复用别的端按旧档起的执行进程，被接受后补发，实际按本机当前档跑")
+    func continuationSupplementsThePermissionMode() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", title: "Live"), frames: [])
+        // 桌面端开的这一轮按 plan 起了执行进程，转录里没报过档：手机起手是执行端的默认档。
+        harness.machine.launchExecutor("conv-1", mode: "plan")
+        let environment = try harness.environment()
+        let key = try await environment.store.save(MachineSession(conversationID: "conv-1", title: "Live"), via: "machine-a")
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let screen = try #require(await services.conversationModel(for: key))
+        let attached = Task { await screen.transcript.start() }
+        defer { attached.cancel() }
+        _ = try await eventually("transcript attached") {
+            harness.relay.calls(WireMethod.sessionAttach).count >= 1 ? true : nil
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        await screen.composer.load()
+        #expect(screen.composer.settings?.permissionMode == "default")
+
+        harness.machine.setLifecycle("conv-1", "running")
+        harness.relay.notify("machine:machine-a", WireNotification.turnStarted("conv-1"))
+        _ = try await eventually("turn running") { screen.composer.isTurnRunning ? true : nil }
+        screen.composer.edit(text: "also check lint", cursor: 15)
+        await screen.composer.send()
+        #expect(screen.composer.queue.items.map(\.text) == ["also check lint"])
+
+        harness.machine.setLifecycle("conv-1", "idle")
+        harness.relay.notify("machine:machine-a", WireNotification.turnDone("conv-1"))
+        _ = try await eventually("continuation sent") {
+            harness.relay.calls(WireMethod.runtimeRun).isEmpty ? nil : true
+        }
+        #expect(harness.relay.calls(WireMethod.runtimeRun).map { $0.payload.string(11) } == ["also check lint"])
+        _ = try await eventually("continuation runs in the phone's mode") {
+            harness.machine.effectivePermissionMode("conv-1") == "default" ? true : nil
+        }
+        #expect(screen.composer.failure == nil)
     }
 
     @Test("一轮在跑时切档：额外调 runtime.setPermissionMode 即刻生效；执行端答没有进行中的一轮时如实报没改成、面板照旧")
@@ -265,20 +314,23 @@ struct AssemblyTests {
         await composer.send()
         harness.relay.notify("machine:machine-a", WireNotification.turnStarted("conv-1"))
         _ = try await eventually("turn running") { composer.isTurnRunning ? true : nil }
+        let supplements = harness.relay.calls(WireMethod.runtimeSetPermissionMode).count
         await composer.setPermissionMode("plan")
-        let applied = try #require(harness.relay.calls(WireMethod.runtimeSetPermissionMode).first)
+        let applied = try #require(harness.relay.calls(WireMethod.runtimeSetPermissionMode).last)
         #expect(applied.target == "machine:machine-a")
         #expect(applied.payload.string(1) == "conv-1")
         #expect(applied.payload.string(3) == "plan")
         #expect(composer.failure == nil)
         #expect(composer.settings?.permissionMode == "plan")
+        #expect(harness.machine.effectivePermissionMode("conv-1") == "plan")
 
         // 执行端已把这一轮收掉、收场帧还没到：那一次失败如实呈现，面板仍标注原档。
         harness.machine.finishTurn("conv-1")
         await composer.setPermissionMode("default")
-        #expect(harness.relay.calls(WireMethod.runtimeSetPermissionMode).count == 2)
+        #expect(harness.relay.calls(WireMethod.runtimeSetPermissionMode).count == supplements + 2)
         #expect(composer.failure == .change)
         #expect(composer.settings?.permissionMode == "plan")
+        #expect(harness.machine.effectivePermissionMode("conv-1") == "plan")
     }
 
     @Test("起手档位：转录里执行端最后报过的当前档；报过的档不在这台机器的可选范围里时退回执行端的默认档")
