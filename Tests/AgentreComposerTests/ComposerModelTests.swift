@@ -698,6 +698,49 @@ struct ComposerModelTests {
         #expect(await relay.executorMode == "plan")
     }
 
+    @Test("开新一轮的调用在飞时切档、应答又丢了：问机器确认这一轮还在跑，就是一轮在跑时切档——即刻让它生效，没改成如实说、面板退回这一轮带的档")
+    func switchWhileRunInFlightThenAnswerLost() async throws {
+        for failing in [false, true] {
+            let relay = FakeComposerRelay()
+            await relay.set(runReceipt: .confirmed(lifecycle: SavedConversation.Lifecycle.running))
+            if failing { await relay.fail("permission") }
+            let model = composer(relay: relay)
+            await model.load()
+            model.text = "go on"
+            await relay.holdNextRun()
+            let sending = Task { await model.send() }
+            await relay.waitForHeldRun()
+            model.turnStarted()
+            await model.setPermissionMode("plan")
+            await relay.releaseRun()
+            await sending.value
+            #expect(await relay.calls == [.run("go on", compact: false), .permission("plan")])
+            #expect(await relay.executorMode == (failing ? "acceptEdits" : "plan"))
+            #expect(model.failure == (failing ? .change : nil))
+            #expect(model.settings?.permissionMode == (failing ? "acceptEdits" : "plan"))
+            #expect(model.isTurnRunning)
+        }
+    }
+
+    @Test("开新一轮的调用在飞时切档、应答丢了而机器说这一轮已收场：那是两轮之间，只改本机，不去问执行端")
+    func switchWhileRunInFlightThenAnswerLostAfterTheTurn() async throws {
+        let relay = FakeComposerRelay()
+        await relay.set(runReceipt: .confirmed(lifecycle: SavedConversation.Lifecycle.idle))
+        let model = composer(relay: relay)
+        await model.load()
+        model.text = "go on"
+        await relay.holdNextRun()
+        let sending = Task { await model.send() }
+        await relay.waitForHeldRun()
+        model.turnStarted()
+        await model.setPermissionMode("plan")
+        await relay.releaseRun()
+        await sending.value
+        #expect(await !relay.calls.contains(.permission("plan")))
+        #expect(model.failure == nil)
+        #expect(model.settings?.permissionMode == "plan")
+    }
+
     @Test("一轮在跑时切档：额外让执行端即刻换档；它答没有进行中的一轮时如实说没改成、面板照旧，下一轮仍带原档")
     func permissionModeDuringATurn() async throws {
         let relay = FakeComposerRelay()

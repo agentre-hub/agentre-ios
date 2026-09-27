@@ -68,6 +68,8 @@ public final class ComposerModel {
     private var isStopping = false
     /// 用户这次亲手选过权限档位：此后执行端报来的档不再顶掉它（控制台 `permissionMode || sessionRuntime.permissionMode`）。
     private var permissionModeChosen = false
+    /// 开新一轮的调用在飞时切过档（只改了本机）：值是切之前亲手选过没有，没改成时连它一起退回。
+    private var chosenBeforeSwitchWhileStarting: Bool?
     /// 这一轮是按机器的会话状态收掉的（收场帧没递到）；此后、下一轮开起来之前再到的收场帧就是它迟到的那一帧。
     private var endedByReconcile = false
     private var skills: [ComposerSkillSource] = []
@@ -137,16 +139,18 @@ public final class ComposerModel {
             // 不认 /compact 的 CLI 上把这一句转成压缩调用，否则模型会一本正经地回答「/compact」。
             let compact = trimmed == "/compact" && SlashCommands.isHostCompact(backendType: conversation.backendType)
             isStartingTurn = true
+            chosenBeforeSwitchWhileStarting = nil
+            let carried = permissionMode
             let receipt: ComposerRunReceipt
             do {
-                receipt = try await relay.run(key, peerFingerprint: peer, text: body, compact: compact, permissionMode: permissionMode)
+                receipt = try await relay.run(key, peerFingerprint: peer, text: body, compact: compact, permissionMode: carried)
             } catch {
                 isStartingTurn = false
                 restore(draft)
                 return
             }
             isStartingTurn = false
-            await settle(receipt)
+            await settle(receipt, carried: carried)
         }
     }
 
@@ -154,14 +158,27 @@ public final class ComposerModel {
     /// runtime.run 带的档（claudecode/runtime.go:620-626，复用判据 launchIdentity 不含档位），此刻这一轮已登记、
     /// runtime.setPermissionMode 落得到活着的 CLI 上（:342-357）。不论这次切没切过档都补：App 重启、别的端改过档
     /// 之后池里的进程一样是旧档。补发没成（这一轮已收场、执行端不认权限模式……）不提示、不改变这次发送的结果。
-    /// 应答丢了、问机器才确认受理的那一轮不补发，按机器报的生命周期落定。
-    private func settle(_ receipt: ComposerRunReceipt) async {
+    /// 应答丢了、问机器才确认受理的那一轮不补发，按机器报的生命周期落定；调用在飞时用户切过档、这一轮
+    /// 还在跑，那一次就是一轮在跑时切档：此刻让它即刻生效，没改成如实呈现、面板退回这一轮带出去的那一档。
+    private func settle(_ receipt: ComposerRunReceipt, carried: String) async {
+        let chosenBefore = chosenBeforeSwitchWhileStarting
+        chosenBeforeSwitchWhileStarting = nil
         switch receipt {
         case .acknowledged:
             guard !permissionMode.isEmpty else { return }
             try? await relay.setPermissionMode(key, peerFingerprint: peer, mode: permissionMode)
         case .confirmed(let lifecycle):
             await settleConfirmedTurn(lifecycle: lifecycle)
+            guard lifecycle == SavedConversation.Lifecycle.running, let chosenBefore, permissionMode != carried else { return }
+            let mode = permissionMode
+            do {
+                try await relay.setPermissionMode(key, peerFingerprint: peer, mode: mode)
+            } catch {
+                failure = .change
+                guard settings?.permissionMode == mode else { return }
+                settings?.permissionMode = carried
+                permissionModeChosen = chosenBefore
+            }
         }
     }
 
@@ -209,6 +226,7 @@ public final class ComposerModel {
         }
         // 问信箱与接续那一轮在路上时，这就是一次开新一轮的调用：此时点发送不能再另开一轮。
         isStartingTurn = true
+        chosenBeforeSwitchWhileStarting = nil
         defer { isStartingTurn = false }
         let drained: [ComposerConsumedSteer]?
         do {
@@ -225,9 +243,10 @@ public final class ComposerModel {
         queue.endTurn()
         let next = drained.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n")
         guard !next.isEmpty else { return }
+        let carried = permissionMode
         let receipt: ComposerRunReceipt
         do {
-            receipt = try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: permissionMode)
+            receipt = try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: carried)
         } catch {
             restore(ComposerMentions.draft(fromBody: next))
             return
@@ -235,7 +254,7 @@ public final class ComposerModel {
         // 与发送同一处落定：被接受就补发当前档；应答丢了时接续那一轮的开轮帧可能已递到、收场帧随连接丢了，
         // 只有机器报的生命周期说得出来。
         isStartingTurn = false
-        await settle(receipt)
+        await settle(receipt, carried: carried)
     }
 
     /// 重新接上承载机后，机器此刻报的会话生命周期。以为在跑、机器却说不在跑了：这一轮在看不到的时候
@@ -392,10 +411,12 @@ public final class ComposerModel {
     /// 权限档位随每一轮发送带过去（与控制台 useSessionSend、桌面端 usePermissionMode 同一口径）：
     /// 两轮之间只改本机记下的当前档，下一轮随 runtime.run 与它被接受后的补发生效——此时执行端已把会话收掉，
     /// 去问它只会得到「没有进行中的一轮」。一轮正在跑时再额外让它即刻生效，那一次没改成才如实呈现。
-    /// 开新一轮的调用在飞时同两轮之间：被接受后的补发读的就是此刻的当前档，另发一次反倒会被在它之后到的补发盖掉。
+    /// 开新一轮的调用在飞时同两轮之间：被接受后的补发读的就是此刻的当前档，另发一次反倒会被在它之后到的补发盖掉；
+    /// 应答丢了没有补发时，由落定那一处补上。
     public func setPermissionMode(_ mode: String) async {
         guard var settings, settings.permissionMode != mode else { return }
         guard isTurnRunning, !isStartingTurn else {
+            if isStartingTurn, chosenBeforeSwitchWhileStarting == nil { chosenBeforeSwitchWhileStarting = permissionModeChosen }
             failure = nil
             permissionModeChosen = true
             settings.permissionMode = mode
