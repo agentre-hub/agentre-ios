@@ -408,9 +408,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreRelay/Adapters/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 353708a
+    note: "complete with concerns。RED：AgentreComposerTests exit 65（6 条新测因不补发失败，如 executorMode 仍 acceptEdits、续发调用序列缺 permission）；宿主换回旧 ComposerModel 时 permissionModeRidesTheNextRun、continuationSupplementsThePermissionMode exit 65；UI 换回旧模型 testMainlineEnglishLight exit 65 于 MainlineUITests.swift:148「the machine runs the second turn in plan mode」。GREEN：Composer 94、Relay 92、宿主 41 exit 0；supplementFailureIsSilent、noSupplementForConfirmedTurn、switchWhileRunInFlight 过；主线 UI 两批 6/6 exit 0（断言轮 1 后实际 default、两轮之间切档不下发、下一轮后实际 plan）。三处伪对端按会话记执行进程档位：run 只在无进程时定档，setPermissionMode 只在登记中的一轮改档。范围内附带：开新一轮在飞时切档只改本机、随补发生效。关切：应答丢失且在飞时切档，靠查询确认的那一轮保持旧档（按规格不补发），下一轮纠正。"
 
 review:
   status: pending
