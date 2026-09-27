@@ -124,7 +124,9 @@ payload 的编解码使用由同一份 schema 生成的 Swift 消息类型，帧
 
 展开面板提供：权限模式、模型、思考档位、会话信息、上下文、删除会话。
 
-**权限模式随每一轮发送带过去，而不是靠一次「立即切换」。** 宿主就是这么做的：控制台每一轮 `runtime.run` 都带上当前生效的档位（`agentre-server/frontend/src/components/session/useSessionSend.ts:301`），桌面端先落库、再尽力下发给活着的 CLI、CLI 不在时不报错（`agentre/frontend/src/components/agentre/permission-mode/use-permission-mode.ts`）。`runtime.setPermissionMode` 只对正在跑的这一轮有意义——一轮结束后 agentred 已把会话收掉，它一律回「没有进行中的一轮」（`agentre/internal/daemon/handlers/runtime.go:1454-1462`、`:1682-1689`）。因此：两轮之间切档只改本机记下的当前档，不报失败，下一轮随 `runtime.run` 生效；一轮正在跑时再额外调 `runtime.setPermissionMode` 让它即刻生效，那一次失败才如实呈现。起手档位的取法与控制台同：用户这次选的 → 转录里执行端报过的当前档 → 执行端报的默认档。
+**权限模式随每一轮发送带过去，而不是靠一次「立即切换」。** 宿主就是这么做的：控制台每一轮 `runtime.run` 都带上当前生效的档位（`agentre-server/frontend/src/components/session/useSessionSend.ts:301`），桌面端先落库、再尽力下发给活着的 CLI、CLI 不在时不报错（`agentre/frontend/src/components/agentre/permission-mode/use-permission-mode.ts`）。`runtime.setPermissionMode` 只对正在跑的这一轮有意义——一轮结束后 agentred 已把会话收掉，它一律回「没有进行中的一轮」（`agentre/internal/daemon/handlers/runtime.go:1454-1462`、`:1682-1689`）。因此：两轮之间切档只改本机记下的当前档，不报失败；一轮正在跑时再额外调 `runtime.setPermissionMode` 让它即刻生效，那一次失败才如实呈现。起手档位的取法与控制台同：用户这次选的 → 转录里执行端报过的当前档 → 执行端报的默认档。
+
+**每一轮被接受后，手机再补发一次 `runtime.setPermissionMode`（当前档）。** 运行验证实测（report-11，用户决定）：`runtime.run` 带上的档位只在 agentred 为这一轮新起 claude 进程时生效；上一轮的进程还在池里（闲置 15 分钟内）时它被原样复用，新档不下发（`agentre/internal/pkg/agentruntime/runtimes/claudecode/runtime.go:620-626`，复用判据 `launchIdentity` `:725-733` 不含档位），于是两轮之间切到 plan 后，接下来两轮实际仍按旧档运行，界面却显示新档。一轮已被接受时这一轮已在 agentred 登记、进程在池中，`runtime.setPermissionMode` 能落到活着的 CLI 上（`claudecode/runtime.go:342-357`）。所以：手机发出的每一轮——包括排队消息取回合并后发出的那一轮——在 `runtime.run` 被接受后立即补发一次当前档，**不论这次是否切过档**（App 重启、别的客户端改过档之后也一并纠正）。补发晚于这一轮的用户消息交给 CLI：两轮之间切档后，下一轮从补发落地起按新档检查工具调用、这一轮开头的推理可能尚未看到新档，再下一轮完全按新档运行。补发失败（这一轮已经结束、执行端不支持权限模式等）不提示、不改变这次发送的结果。应答丢失、靠查询确认已被接受的那一轮不补发，下一轮照常补发。被否方案：只在切过档后的下一轮补发——本机标记在 App 重启后丢失、别的客户端改档无从得知，复用进程时仍按旧档跑；等 agentred 修复复用逻辑——不在本仓库，且桌面端与控制台经 agentred 远程对话时同样受影响，记为 agentre 仓库的后续事项。
 
 斜杠命令与提及不占面板条目：它们由用户在输入框中直接键入触发，并就地给出候选。斜杠命令的候选按当前会话的工作目录作用域解析。
 
@@ -223,7 +225,7 @@ payload 的编解码使用由同一份 schema 生成的 Swift 消息类型，帧
 | 新建对话入库（注入伪中继 + 真实数据库） | 派发成功后这条对话必定在本地库里；落库失败时对话不被当成未创建，界面给出「已开始但未入列」这一事实与重试 | 无 |
 | 本地化 | 字符串目录中不存在缺失语言的条目；界面不通过拼接构造句子 | 无 |
 | 界面排版（按语言） | 断言**几何**而非只断言文字与次序：审批卡三枚处置在中英文下都同处一行且右对齐；只断言次序的界面测试会在英文下给出假绿（运行验证已证） | 无 |
-| 伪对端与真实对端同形 | 伪中继照搬已核实的 agentred 行为，而不是「什么都接」：一轮结束后 `runtime.setPermissionMode` 回「没有进行中的一轮」；`runtime.run` 带上的权限档位被记下可查。凡是伪对端行为与真实对端不同的地方，都是一条会被盖住的缺陷 | `agentre/internal/daemon/handlers/runtime.go` |
+| 伪对端与真实对端同形 | 伪中继照搬已核实的 agentred 行为，而不是「什么都接」：一轮结束后 `runtime.setPermissionMode` 回「没有进行中的一轮」；`runtime.run` 带上的权限档位被记下可查；同一会话的执行进程还在时，`runtime.run` 带来的新档不改变实际生效的档位，只有这一轮进行中的 `runtime.setPermissionMode` 才改变它（`agentre/internal/pkg/agentruntime/runtimes/claudecode/runtime.go:620-626`）。凡是伪对端行为与真实对端不同的地方，都是一条会被盖住的缺陷 | `agentre/internal/daemon/handlers/runtime.go` |
 | 主线界面流程（XCUITest，对本地伪服务端） | 仓库内一个 UI 测试 target 驱动真实构建的 App：测试进程在本机起一个伪 HTTP 服务端与伪中继，App 经启动参数指向它；走登录（设备流）→ 机器 → 保存到手机 → 新建对话并发出 → 审批 → 切权限模式 → 挂起回前台后打开着的对话屏续上 → 撤销本机回到登录屏。整条流程在**简体中文 × 英文、浅色 × 深色**四种组合下各跑一遍并留截图。确定、无需网络与账号，可重复跑 | 运行验证时 scratch 内的手写驱动（本 target 取代它） |
 
 无法自动化、需以真机运行观察确认的部分：权限审批卡片右对齐的三枚处置按钮是否真的落在拇指可达区，且相邻两枚不会误触；系统字号放大到较大档位时各屏是否仍可用。这两项在本轮收尾时以真机操作记录结论。挂起后回到前台的续上改由主线界面流程覆盖，真实服务端上的那一侧仍在运行验证里观察。
