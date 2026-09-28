@@ -702,6 +702,30 @@ struct ComposerModelTests {
         #expect(model.failure == nil)
     }
 
+    @Test("补发在飞时切档、再补没成：切的时候这一轮已在跑，那一次就是一轮在跑时切档——如实说没改成、面板退回执行端上那一档；开轮帧还没到时切的同两轮之间，不提示")
+    func switchWhileSupplementInFlightThenResendFails() async throws {
+        for running in [true, false] {
+            let relay = FakeComposerRelay()
+            await relay.launchExecutor(mode: "default")
+            let model = composer(relay: relay)
+            await model.load()
+            model.text = "go on"
+            await relay.holdPermissions()
+            let sending = Task { await model.send() }
+            try await eventually("supplement in flight") { await relay.heldPermissions == 1 }
+            if running { model.turnStarted() }
+            await model.setPermissionMode("plan")
+            #expect(model.failure == nil)
+            await relay.fail("permission")
+            await relay.releasePermissions()
+            await sending.value
+            #expect(await relay.calls == [.run("go on", compact: false), .permission("acceptEdits"), .permission("plan")])
+            #expect(await relay.executorMode == "acceptEdits")
+            #expect(model.failure == (running ? .change : nil))
+            #expect(model.settings?.permissionMode == (running ? "acceptEdits" : "plan"))
+        }
+    }
+
     @Test("补发失败不提示、不改变这次发送的结果：不说没发出、不还字、不说没改成，面板照旧，还能接着发")
     func supplementFailureIsSilent() async throws {
         let relay = FakeComposerRelay()
