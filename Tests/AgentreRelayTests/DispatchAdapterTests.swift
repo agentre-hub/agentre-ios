@@ -46,6 +46,10 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(body.sourceDevice == "phone-fp")
         #expect(body.sourceDeviceName == "My iPhone")
         #expect(body.permissionMode.isEmpty)
+        // 新建对话没有选模型与思考档位的入口：两者留空，按 Agent 绑定与后端配置跑。
+        #expect(body.llmProviderKey.isEmpty)
+        #expect(body.llmModelKey.isEmpty)
+        #expect(body.reasoningEffort.isEmpty)
         #expect(!body.compact)
         socket.respond(id, to: run, with: ack("0190-conv"))
         try await sent

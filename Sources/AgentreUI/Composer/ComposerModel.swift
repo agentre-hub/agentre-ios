@@ -109,6 +109,20 @@ public final class ComposerModel {
     /// 本机此刻生效的权限档位，随每一轮 runtime.run 带过去；面板还没载入时为空（执行端按默认档跑）。
     private var permissionMode: String { settings?.permissionMode ?? "" }
 
+    /// 随每一轮 runtime.run 带过去的设定：执行端只认 run 上带的模型目标与思考档位，面板上切的只写进会话行供显示。
+    /// 模型目标与桌面端 remoteKeysOnlyEffective 同一取法：钉了供应商就带会话的两枚键（模型键空 = 供应商默认模型），
+    /// 没钉两格都空、跟随 Agent 绑定。面板上没有可标注的模型（没钉、或只钉了供应商）或面板还没载入时取会话行上的。
+    private var runSettings: ComposerRunSettings {
+        let providerKey = settings?.model?.providerKey ?? conversation.providerKey
+        let modelKey = settings?.model?.modelKey ?? conversation.modelKey
+        return ComposerRunSettings(
+            permissionMode: permissionMode,
+            providerKey: providerKey,
+            modelKey: providerKey.isEmpty ? "" : modelKey,
+            reasoningEffort: settings?.reasoningEffort ?? conversation.reasoningEffort
+        )
+    }
+
     /// 输入框从不因一轮在跑而禁用：那时发出的话进入队列。只有开新一轮的调用在飞时不能再发。
     public var canSend: Bool {
         !isStartingTurn && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -145,17 +159,17 @@ public final class ComposerModel {
             let compact = trimmed == "/compact" && SlashCommands.isHostCompact(backendType: conversation.backendType)
             isStartingTurn = true
             chosenBeforeSwitchWhileStarting = nil
-            let carried = permissionMode
+            let carried = runSettings
             let receipt: ComposerRunReceipt
             do {
-                receipt = try await relay.run(key, peerFingerprint: peer, text: body, compact: compact, permissionMode: carried)
+                receipt = try await relay.run(key, peerFingerprint: peer, text: body, compact: compact, settings: carried)
             } catch {
                 isStartingTurn = false
                 restore(draft)
                 return
             }
             isStartingTurn = false
-            await settle(receipt, carried: carried)
+            await settle(receipt, carried: carried.permissionMode)
         }
     }
 
@@ -260,10 +274,10 @@ public final class ComposerModel {
         queue.endTurn()
         let next = drained.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n")
         guard !next.isEmpty else { return }
-        let carried = permissionMode
+        let carried = runSettings
         let receipt: ComposerRunReceipt
         do {
-            receipt = try await relay.run(key, peerFingerprint: peer, text: next, compact: false, permissionMode: carried)
+            receipt = try await relay.run(key, peerFingerprint: peer, text: next, compact: false, settings: carried)
         } catch {
             restore(ComposerMentions.draft(fromBody: next))
             return
@@ -271,7 +285,7 @@ public final class ComposerModel {
         // 与发送同一处落定：被接受就补发当前档；应答丢了时接续那一轮的开轮帧可能已递到、收场帧随连接丢了，
         // 只有机器报的生命周期说得出来。
         isStartingTurn = false
-        await settle(receipt, carried: carried)
+        await settle(receipt, carried: carried.permissionMode)
     }
 
     /// 重新接上承载机后，机器此刻报的会话生命周期。以为在跑、机器却说不在跑了：这一轮在看不到的时候

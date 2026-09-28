@@ -34,7 +34,7 @@ struct AssemblyTests {
         try await services.approvals.submitToolPermission(ToolPermissionReply(
             conversation: key, peerFingerprint: "origin-desktop", requestID: "perm-1", disposition: .allowOnce
         ))
-        _ = try await services.composerRelay.run(key, peerFingerprint: "origin-desktop", text: "hi", compact: false, permissionMode: "")
+        _ = try await services.composerRelay.run(key, peerFingerprint: "origin-desktop", text: "hi", compact: false, settings: ComposerRunSettings())
 
         let approval = try #require(harness.relay.calls(WireMethod.runtimeSubmitToolPermission).first)
         #expect(approval.target == "machine:machine-a")
@@ -249,16 +249,58 @@ struct AssemblyTests {
         #expect(composer.failure == nil)
     }
 
-    @Test("排队取回合并后发出的那一轮：复用别的端按旧档起的执行进程，被接受后补发，实际按本机当前档跑")
+    @Test("两轮之间切模型与思考档位：只写会话行、机器照旧；下一轮 runtime.run 带上它们，机器实际按新模型与新档位跑")
+    func modelAndEffortRideTheNextRun() async throws {
+        let harness = try Harness()
+        defer { harness.cleanUp() }
+        try harness.signIn()
+        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", peerFingerprint: "origin-desktop", title: "Elsewhere", cwd: "/repo"), frames: [])
+        let environment = try harness.environment()
+        let key = try await savedElsewhere(harness, environment)
+        let services = environment.startServices()
+        defer { Task { await environment.tearDown() } }
+        let composer = try #require(await services.conversationModel(for: key)).composer
+        await composer.load()
+        #expect(composer.settings?.model == nil)
+
+        // 会话没钉模型、没设档位：第一轮两格都空，机器按 Agent 绑定与后端配置跑。
+        composer.edit(text: "look around", cursor: 11)
+        await composer.send()
+        harness.machine.finishTurn("conv-1")
+        harness.machine.setLifecycle("conv-1", "idle")
+        #expect(harness.machine.effectiveTarget("conv-1") == FakeMachine.Target())
+
+        let opus = try #require(composer.settings?.models.first { $0.modelKey == "opus" })
+        await composer.setModel(opus)
+        await composer.setReasoningEffort("max")
+        #expect(composer.failure == nil)
+        #expect(composer.settings?.model == opus)
+        #expect(harness.machine.effectiveTarget("conv-1") == FakeMachine.Target())
+
+        composer.edit(text: "go on", cursor: 5)
+        await composer.send()
+        let run = try #require(harness.relay.calls(WireMethod.runtimeRun).last)
+        #expect(run.target == "machine:machine-a")
+        #expect(harness.machine.effectiveTarget("conv-1") == FakeMachine.Target(providerKey: "anthropic", modelKey: "opus", reasoningEffort: "max"))
+        // 权限档位的补发照旧（任务 38）。
+        #expect(harness.machine.effectivePermissionMode("conv-1") == "default")
+        #expect(composer.failure == nil)
+    }
+
+    @Test("排队取回合并后发出的那一轮：复用别的端按旧档起的执行进程，被接受后补发，实际按本机当前档跑；会话钉的模型与思考档位同样带上")
     func continuationSupplementsThePermissionMode() async throws {
         let harness = try Harness()
         defer { harness.cleanUp() }
         try harness.signIn()
-        harness.machine.add(FakeMachine.Session(conversationID: "conv-1", title: "Live"), frames: [])
+        harness.machine.add(
+            FakeMachine.Session(conversationID: "conv-1", title: "Live", providerKey: "anthropic", modelKey: "opus", reasoningEffort: "high"), frames: []
+        )
         // 桌面端开的这一轮按 plan 起了执行进程，转录里没报过档：手机起手是执行端的默认档。
         harness.machine.launchExecutor("conv-1", mode: "plan")
         let environment = try harness.environment()
-        let key = try await environment.store.save(MachineSession(conversationID: "conv-1", title: "Live"), via: "machine-a")
+        let key = try await environment.store.save(
+            MachineSession(conversationID: "conv-1", title: "Live", providerKey: "anthropic", modelKey: "opus", reasoningEffort: "high"), via: "machine-a"
+        )
         let services = environment.startServices()
         defer { Task { await environment.tearDown() } }
         let screen = try #require(await services.conversationModel(for: key))
@@ -287,6 +329,7 @@ struct AssemblyTests {
         _ = try await eventually("continuation runs in the phone's mode") {
             harness.machine.effectivePermissionMode("conv-1") == "default" ? true : nil
         }
+        #expect(harness.machine.effectiveTarget("conv-1") == FakeMachine.Target(providerKey: "anthropic", modelKey: "opus", reasoningEffort: "high"))
         #expect(screen.composer.failure == nil)
     }
 

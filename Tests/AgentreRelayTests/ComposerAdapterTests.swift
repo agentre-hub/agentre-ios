@@ -38,10 +38,12 @@ private func answer<Request: SwiftProtobuf.Message>(
 }
 
 @Suite struct ComposerAdapterTests {
-    @Test("发送：runtimeRun 带 conversation_id、发起端、会话的工作目录 / 标题 / Agent / 后端、本机当前的权限档位与来源设备")
+    @Test("发送：runtimeRun 带 conversation_id、发起端、会话的工作目录 / 标题 / Agent / 后端、本机当前的权限档位 / 模型目标 / 思考档位与来源设备")
     func runSendsTurn() async throws {
         let harness = await Harness.started()
-        async let sent = composer(harness).run(key, peerFingerprint: "peer-1", text: "go on", compact: false, permissionMode: "plan")
+        async let sent = composer(harness).run(key, peerFingerprint: "peer-1", text: "go on", compact: false, settings: ComposerRunSettings(
+            permissionMode: "plan", providerKey: "anthropic", modelKey: "opus", reasoningEffort: "max"
+        ))
         let body = try await answer(harness, .runtimeRun, as: Agentre_Wire_RuntimeRunRequest.self, with: Agentre_Wire_RuntimeRunResponse())
         #expect(try await sent == .acknowledged)
         #expect(body.conversationID == "conv-1")
@@ -53,6 +55,9 @@ private func answer<Request: SwiftProtobuf.Message>(
         #expect(body.agentSyncID == "agent-1")
         #expect(body.backend.type == "claudecode")
         #expect(body.permissionMode == "plan")
+        #expect(body.llmProviderKey == "anthropic")
+        #expect(body.llmModelKey == "opus")
+        #expect(body.reasoningEffort == "max")
         #expect(body.sourceDevice == "phone-fp")
         #expect(body.sourceDeviceName == "My iPhone")
     }
@@ -61,7 +66,7 @@ private func answer<Request: SwiftProtobuf.Message>(
     private func runTimesOut(_ harness: Harness, text: String, saved: SavedConversation = saved) async throws
         -> (Task<ComposerRunReceipt, any Error>, FakeSocket, String, Agentre_Wire_RpcFrame) {
         let composer = composer(harness, saved: saved)
-        let sending = Task { try await composer.run(key, peerFingerprint: "peer-1", text: text, compact: false, permissionMode: "") }
+        let sending = Task { try await composer.run(key, peerFingerprint: "peer-1", text: text, compact: false, settings: ComposerRunSettings()) }
         let (socket, id) = try await harness.machineChannel("carrier-fp")
         let run = try await socket.nextRequest(on: id, method: .runtimeRun)
         try await FailureScenario.timeout.apply(harness, socket, id, run)
@@ -152,7 +157,7 @@ private func answer<Request: SwiftProtobuf.Message>(
     func runRefusedIsNotRechecked() async throws {
         let harness = await Harness.started()
         let composer = composer(harness)
-        let sending = Task { try await composer.run(key, peerFingerprint: "peer-1", text: "write kotlin", compact: false, permissionMode: "") }
+        let sending = Task { try await composer.run(key, peerFingerprint: "peer-1", text: "write kotlin", compact: false, settings: ComposerRunSettings()) }
         let (socket, id) = try await harness.machineChannel("carrier-fp")
         let run = try await socket.nextRequest(on: id, method: .runtimeRun)
         try await FailureScenario.peerError.apply(harness, socket, id, run)
@@ -163,12 +168,15 @@ private func answer<Request: SwiftProtobuf.Message>(
     @Test("压缩：compact 为真且不带正文")
     func runCompacts() async throws {
         let harness = await Harness.started()
-        async let sent = composer(harness).run(key, peerFingerprint: "peer-1", text: "/compact", compact: true, permissionMode: "")
+        async let sent = composer(harness).run(key, peerFingerprint: "peer-1", text: "/compact", compact: true, settings: ComposerRunSettings())
         let body = try await answer(harness, .runtimeRun, as: Agentre_Wire_RuntimeRunRequest.self, with: Agentre_Wire_RuntimeRunResponse())
         _ = try await sent
         #expect(body.compact)
         #expect(body.userText.isEmpty)
         #expect(body.permissionMode.isEmpty)
+        #expect(body.llmProviderKey.isEmpty)
+        #expect(body.llmModelKey.isEmpty)
+        #expect(body.reasoningEffort.isEmpty)
     }
 
     @Test("插话：runtimeSteer 带本端句柄与正文，交回执行端的句柄")
@@ -335,7 +343,7 @@ private func answer<Request: SwiftProtobuf.Message>(
         typealias Call = @Sendable (RelayComposer) async throws -> Void
         let calls: [(Agentre_Wire_RpcMethod, Call)] = [
             // 到期之后开新一轮还要回头问机器（见 runAnswerLost…）；这里只看压缩那一轮：它没有用户消息可认。
-            (.runtimeRun, { _ = try await $0.run(key, peerFingerprint: "", text: "/compact", compact: true, permissionMode: "") }),
+            (.runtimeRun, { _ = try await $0.run(key, peerFingerprint: "", text: "/compact", compact: true, settings: ComposerRunSettings()) }),
             (.runtimeAbort, { try await $0.abort(key, peerFingerprint: "") }),
             (.runtimeSteer, { _ = try await $0.steer(key, peerFingerprint: "", queuedID: "q", text: "x") }),
             (.runtimeCancelSteer, { _ = try await $0.cancelSteer(key, peerFingerprint: "", queuedID: "q") }),

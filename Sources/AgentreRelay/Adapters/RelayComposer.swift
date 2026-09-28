@@ -48,7 +48,7 @@ public struct RelayComposer: ComposerRelay {
     /// 然后才回应答（agentre/internal/daemon/handlers/runtime.go:571-593），这一轮也不随那次请求取消（:540-544）。
     /// 手机发出后进了后台被挂起时，应答连同开轮帧就丢在那条连接上（report-7 11f）。此时回头问机器：发送前本机
     /// 最新帧号之后有这句话，就是受理了。问不到或没有，才照原样抛出。
-    public func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws -> ComposerRunReceipt {
+    public func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, settings: ComposerRunSettings) async throws -> ComposerRunReceipt {
         let summary = await conversation(key)
         var request = Agentre_Wire_RuntimeRunRequest()
         request.conversationID = key.conversationID
@@ -66,7 +66,12 @@ public struct RelayComposer: ComposerRelay {
             request.userText = text
         }
         // 档位随每一轮过线（控制台 useSessionSend.ts 同此）：两轮之间执行端没有会话可改，只认这一格。
-        request.permissionMode = permissionMode
+        request.permissionMode = settings.permissionMode
+        // 模型与思考档位同样每轮过线（桌面端 protowire/run.go、控制台 useSessionSend.ts 同此）：agentred 执行时只认这几格，
+        // setModelTarget / setSessionReasoningEffort 写下的只供显示。
+        request.llmProviderKey = settings.providerKey
+        request.llmModelKey = settings.modelKey
+        request.reasoningEffort = settings.reasoningEffort
         request.sourceDevice = source.fingerprint
         request.sourceDeviceName = source.name
         let machine = try await carrier(key)

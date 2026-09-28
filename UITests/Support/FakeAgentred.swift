@@ -15,6 +15,9 @@ import SwiftProtobuf
 /// - 执行进程照搬 claudecode 的进程池：会话没有活着的进程时 runtime.run 按它带的档起一个（空 = 起手默认档）；进程还在
 ///   （闲置 15 分钟内，与通道无关）时原样复用，run 带来的新档不生效，只有这一轮登记着时的 runtime.setPermissionMode
 ///   才改它（agentre/internal/pkg/agentruntime/runtimes/claudecode/runtime.go:620-626、:342-357；report-11 实测）。
+/// - 模型与思考档位只认 runtime.run 带的 llm_provider_key / llm_model_key / reasoning_effort（runtime.go:384-385、:449-453；
+///   两者都在 launchIdentity 里，变了就另起进程）；setModelTarget / setSessionReasoningEffort 只写会话行、清单照它答，
+///   执行不看它（report-14 实测：面板换了模型，机器每一轮仍按 Agent 绑定跑）。
 /// - runtime.run 先发不带号的 turn_started，再落用户那一帧（带号），然后才回应答；此后的事件由
 ///   这一轮自己陆续产出（runtime.go:578-590）。一轮收场先落带号的 done（runtime_transcript.go 的 finish），
 ///   再发不带号、补拉不回来的 run_result_done。
@@ -44,6 +47,13 @@ final class FakeAgentred: @unchecked Sendable {
         case hold
     }
 
+    /// 一轮机器实际用的模型目标（两枚键都空 = 跟随 Agent 绑定）与思考档位（空 = 后端配置）。
+    struct Target: Equatable {
+        var providerKey = ""
+        var modelKey = ""
+        var reasoningEffort = ""
+    }
+
     struct Session {
         var summary: Agentre_Wire_SessionSummary
         var frames: [Agentre_Wire_DurableNotification] = []
@@ -63,6 +73,8 @@ final class FakeAgentred: @unchecked Sendable {
     private var mailboxes: [String: [Agentre_Wire_ConsumedSteer]] = [:]
     /// 每条会话活着的执行进程此刻实际按哪一档跑；没有 = 进程不在。
     private var executorModes: [String: String] = [:]
+    /// 每条会话最近一轮实际用的模型目标与思考档位。
+    private var effectiveTargets: [String: Target] = [:]
     private var subscribers: [String: Set<RelayPeer>] = [:]
     private var pendingPermissions: [String: (requestID: String, callID: String, output: String, reply: String)] = [:]
     private var heldTurns: [String] = []
@@ -122,6 +134,11 @@ final class FakeAgentred: @unchecked Sendable {
         executorModes[conversationID]
     }
 
+    /// 这条会话最近一轮实际用的模型目标与思考档位；还没跑过为 nil。
+    func effectiveTarget(_ conversationID: String) -> Target? {
+        effectiveTargets[conversationID]
+    }
+
     // MARK: 通道一侧
 
     func forget(_ peer: RelayPeer) {
@@ -141,6 +158,8 @@ final class FakeAgentred: @unchecked Sendable {
             case .runtimeRun: return run(try .init(serializedBytes: payload), from: peer)
             case .runtimeSubmitToolPermission: return submitPermission(try .init(serializedBytes: payload))
             case .runtimeSetPermissionMode: return setPermissionMode(try .init(serializedBytes: payload))
+            case .setModelTarget: return setModelTarget(try .init(serializedBytes: payload))
+            case .setSessionReasoningEffort: return setReasoningEffort(try .init(serializedBytes: payload))
             case .runtimeSteer: return steer(try .init(serializedBytes: payload), from: peer)
             case .runtimeDrainPending: return drainPending(try .init(serializedBytes: payload), from: peer)
             case .skillsCommands: return .result(Agentre_Wire_SkillCommandsResponse())
@@ -250,6 +269,7 @@ final class FakeAgentred: @unchecked Sendable {
         if executorModes[id] == nil {
             executorModes[id] = request.permissionMode.isEmpty ? capabilities().permissionMode.launchDefaultMode : request.permissionMode
         }
+        effectiveTargets[id] = Target(providerKey: request.llmProviderKey, modelKey: request.llmModelKey, reasoningEffort: request.reasoningEffort)
         sessions[id]?.summary.lifecycleState = "running"
         subscribers[id, default: []].insert(peer)
         var started = Agentre_Wire_RpcNotification()
@@ -319,6 +339,20 @@ final class FakeAgentred: @unchecked Sendable {
         executorModes[request.conversationID] = request.mode
         record(request.conversationID, .permissionModeChanged(.with { $0.mode = request.mode }))
         return .result(Agentre_Wire_Empty())
+    }
+
+    /// 只写会话行（SessionModelTargetHandlers.SetModelTarget）：会话不在时回 session not found。
+    private func setModelTarget(_ request: Agentre_Wire_SetModelTargetRequest) -> Reply {
+        guard sessions[request.conversationID] != nil else { return .error(-32014, "runtime: session not found") }
+        sessions[request.conversationID]?.summary.providerKey = request.providerKey
+        sessions[request.conversationID]?.summary.modelKey = request.modelKey
+        return .result(Agentre_Wire_SetModelTargetResponse())
+    }
+
+    private func setReasoningEffort(_ request: Agentre_Wire_SetSessionReasoningEffortRequest) -> Reply {
+        guard sessions[request.conversationID] != nil else { return .error(-32014, "runtime: session not found") }
+        sessions[request.conversationID]?.summary.reasoningEffort = request.reasoningEffort
+        return .result(Agentre_Wire_SetSessionReasoningEffortResponse())
     }
 
     private func steer(_ request: Agentre_Wire_RuntimeSteerRequest, from peer: RelayPeer) -> Reply {

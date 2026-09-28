@@ -32,6 +32,28 @@ public enum ComposerRunReceipt: Sendable, Equatable {
     case confirmed(lifecycle: String?)
 }
 
+/// 随每一轮 runtime.run 带过去的这条会话的当前设定。agentred 执行时只认 run 上带的这几格
+/// （agentre/internal/daemon/handlers/runtime.go:384-385、:449-453）；setModelTarget / setSessionReasoningEffort
+/// 写下的只供显示，漏带就按 Agent 绑定与后端配置跑（report-14）。
+public struct ComposerRunSettings: Sendable, Equatable {
+    /// RuntimeRunRequest.permission_mode；空 = 不知道，由执行端按它的默认档跑。
+    public var permissionMode: String
+    /// RuntimeRunRequest.llm_provider_key / llm_model_key，与桌面端 remoteKeysOnlyEffective 同一取法
+    /// （agentre/internal/service/chat_svc/effective_llm.go）：会话钉了供应商时是会话的两枚键（模型键空 = 该供应商的
+    /// 默认模型），没钉时两格都空，执行端跟随 Agent 绑定。
+    public var providerKey: String
+    public var modelKey: String
+    /// RuntimeRunRequest.reasoning_effort；空 = 跟随后端配置。
+    public var reasoningEffort: String
+
+    public init(permissionMode: String = "", providerKey: String = "", modelKey: String = "", reasoningEffort: String = "") {
+        self.permissionMode = permissionMode
+        self.providerKey = providerKey
+        self.modelKey = modelKey
+        self.reasoningEffort = reasoningEffort
+    }
+}
+
 /// 某台机器答回来的 Skill 目录中的一条（wire 的 SkillCommand：名字不带触发前缀）。
 public struct ComposerSkillSource: Sendable, Equatable {
     public var name: String
@@ -49,10 +71,9 @@ public struct ComposerSkillSource: Sendable, Equatable {
 /// setModelTarget / setSessionReasoningEffort / sessionDelete / skillCommands。
 public protocol ComposerRelay: Sendable {
     /// 在这条对话上开新一轮。`compact` 为真时这一轮是一次上下文压缩（RuntimeRunRequest.compact）。
-    /// `permissionMode` 是本机此刻生效的权限档位，随每一轮带过去（RuntimeRunRequest.permission_mode）；
-    /// 空 = 不知道，由执行端按它的默认档跑。
+    /// `settings` 是本机此刻这条会话的权限档位、模型目标与思考档位，随每一轮带过去。
     /// 应答没到时适配器回头问机器：机器确实受理了就交回 `.confirmed`；只有机器没受理（或问不到）才抛出。
-    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws -> ComposerRunReceipt
+    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, settings: ComposerRunSettings) async throws -> ComposerRunReceipt
     /// 把运行中的这一轮停下来（runtimeAbort）。
     func abort(_ key: ConversationKey, peerFingerprint: String) async throws
     /// 一轮运行中插一句话。`queuedID` 是本端铸的号，执行端回显或换成它自己的。

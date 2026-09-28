@@ -195,7 +195,8 @@ final class FakeAgentreServer: @unchecked Sendable {
 
     private static let engineJSON = """
     {"providers":[{"provider_key":"anthropic","name":"Anthropic","type":"anthropic","base_url":"","api_key":"sk-uitest",\
-    "default_model_key":"sonnet","models":[{"model_key":"sonnet","model_id":"claude-sonnet","name":"Sonnet","enabled":true}]}],\
+    "default_model_key":"sonnet","models":[{"model_key":"sonnet","model_id":"claude-sonnet","name":"Sonnet","enabled":true},\
+    {"model_key":"opus","model_id":"claude-opus","name":"Opus","enabled":true}]}],\
     "cli_overlays":[],"backends":[]}
     """
 

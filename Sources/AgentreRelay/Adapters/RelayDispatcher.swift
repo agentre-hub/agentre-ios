@@ -30,6 +30,7 @@ public struct RelayDispatcher: NewConversationDispatching {
             backend.syncID = request.target.backendSyncID
         }
         run.backend = backend
+        // 新建对话没有选模型与思考档位的入口：llm_provider_key / llm_model_key / reasoning_effort 留空，按 Agent 绑定与后端配置跑。
         run.sourceDevice = source.fingerprint
         run.sourceDeviceName = source.name
 

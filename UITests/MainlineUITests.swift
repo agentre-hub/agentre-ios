@@ -4,7 +4,7 @@ import XCTest
 /// App 经启动参数指向它。
 ///
 /// 登录（设备流）→ 「我」里切外观 → 机器 → 机器详情保存到手机 → 消息列表 → 新建对话并发出 → 审批 Allow Once
-/// → 两轮之间切权限模式后再发一句 → 这一轮在跑时排一句、收场后它接续成下一轮 → 挂起回前台、打开着的对话屏续上
+/// → 两轮之间切权限模式、模型与思考档位后再发一句 → 这一轮在跑时排一句、收场后它接续成下一轮 → 挂起回前台、打开着的对话屏续上
 /// → 发出后应答没到就进后台、回前台后如实显示机器受理了的那一轮 → 撤销本机回到登录屏。
 /// 简体中文 × 英文、浅色 × 深色四种组合各跑一遍；每步断言屏上可见的结果并留截图（xcresult 附件）。
 @MainActor
@@ -139,6 +139,30 @@ final class MainlineUITests: XCTestCase {
         screen.expectGone(plan, "permission panel")
         XCTAssertTrue(server.read { _ in box.permissionModeCalls.isEmpty }, "switching between turns called runtime.setPermissionMode")
 
+        // 两轮之间切模型与思考档位：机器只把它们写进会话行（供显示），执行只认 runtime.run 带的那几格（report-14）。
+        // 第一轮会话没钉模型、没设档位：两格留空，按 Agent 绑定与后端配置跑。
+        XCTAssertEqual(server.read { _ in box.effectiveTarget(conversationID) }, FakeAgentred.Target(), "the first turn's model and effort")
+        screen.tap(screen.button(copy("Composer", "composer.model")), "model")
+        // 选项行的朗读是「名字、模型 ID」，分隔符随语言而变（en「, 」、zh「、」）。
+        let opus = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Opus")).firstMatch
+        screen.expect(opus, "Opus model option")
+        screen.tap(opus, "Opus model")
+        screen.expectSelected(opus, "Opus model")
+        screen.shot("14a model")
+        screen.dismissSheet()
+        screen.expectGone(opus, "model panel")
+        screen.tap(screen.button(copy("Composer", "composer.effort")), "reasoning effort")
+        let maxEffort = screen.button(startingWith: "max")
+        screen.expect(maxEffort, "max effort option")
+        screen.tap(maxEffort, "max effort")
+        screen.expectSelected(maxEffort, "max effort")
+        screen.shot("14b effort")
+        screen.dismissSheet()
+        screen.expectGone(maxEffort, "effort panel")
+        XCTAssertEqual(
+            server.read { _ in box.effectiveTarget(conversationID) }, FakeAgentred.Target(), "switching between turns changed the running model"
+        )
+
         screen.type(Self.secondMessage, into: screen.input(copy("Composer", "composer.message")), "composer field")
         screen.tap(screen.button(copy("Composer", "composer.send")), "send second message")
         screen.expectOnScreen(screen.text(Self.secondMessage), "the second message in the transcript")
@@ -148,6 +172,11 @@ final class MainlineUITests: XCTestCase {
         screen.expect("the machine runs the second turn in plan mode") {
             server.read { _ in box.effectivePermissionMode(conversationID) == "plan" }
         }
+        XCTAssertEqual(
+            server.read { _ in box.effectiveTarget(conversationID) },
+            FakeAgentred.Target(providerKey: "anthropic", modelKey: "opus", reasoningEffort: "max"),
+            "the machine runs the second turn on the chosen model and effort"
+        )
         screen.shot("15 second message")
 
         // 这一轮在跑时再发一句：进队列（插话）。这一轮正常收场时它整轮没被取走（纯文字轮没有工具边界），
@@ -164,6 +193,11 @@ final class MainlineUITests: XCTestCase {
         screen.expect("the leftover queued message opened the next turn") {
             server.read { _ in box.runs.count == 3 && box.runs.last?.userText == Self.queuedMessage }
         }
+        XCTAssertEqual(
+            server.read { _ in box.effectiveTarget(conversationID) },
+            FakeAgentred.Target(providerKey: "anthropic", modelKey: "opus", reasoningEffort: "max"),
+            "the machine runs the continuation on the chosen model and effort"
+        )
         screen.expectOnScreen(screen.text(Self.queuedMessage), "the queued message in the transcript")
         XCTAssertFalse(
             screen.text(String(format: copy("Composer", "composer.dropped %lld"), 1)).exists, "the queued message was reported as not sent"

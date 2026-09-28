@@ -133,12 +133,14 @@ enum WireMethod {
     static let sessionList: UInt32 = 2
     static let sessionAttach: UInt32 = 3
     static let sessionPull: UInt32 = 4
+    static let setModelTarget: UInt32 = 7
     static let runtimeCapabilities: UInt32 = 8
     static let runtimeSteer: UInt32 = 9
     static let runtimeDrainPending: UInt32 = 11
     static let runtimeSetPermissionMode: UInt32 = 14
     static let runtimeSubmitToolPermission: UInt32 = 16
     static let runtimeRun: UInt32 = 17
+    static let setSessionReasoningEffort: UInt32 = 57
     static let sessionCounts: UInt32 = 59
 }
 

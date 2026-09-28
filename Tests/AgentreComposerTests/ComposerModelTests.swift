@@ -843,6 +843,99 @@ struct ComposerModelTests {
         #expect(model.failure == .change)
     }
 
+    // MARK: 模型与思考档位随每一轮带过去（执行端只认 runtime.run 带的这几格）
+
+    @Test("两轮之间切模型与思考档位：写下只供显示、机器照旧；下一轮 run 带上它们，机器实际按新模型与新档位跑")
+    func modelAndEffortRideTheNextRun() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        await model.load()
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+        #expect(await relay.effectiveEffort == "high")
+        model.turnStarted()
+        await relay.finishTurn()
+        await model.turnEnded(normally: true)
+
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        await model.setReasoningEffort("max")
+        #expect(model.failure == nil)
+        #expect(await relay.storedModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+
+        model.edit(text: "next", cursor: 4)
+        await model.send()
+        #expect(await relay.runSettings.last == ComposerRunSettings(
+            permissionMode: "acceptEdits", providerKey: "anthropic", modelKey: "claude-opus", reasoningEffort: "max"
+        ))
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(await relay.effectiveEffort == "max")
+    }
+
+    @Test("排队取回合并后发出的那一轮同样带上当前的模型与思考档位（包括这一轮在跑时切的）")
+    func continuationCarriesModelAndEffort() async throws {
+        let relay = FakeComposerRelay()
+        await relay.startTurn()
+        let model = composer(relay: relay)
+        await model.load()
+        model.turnStarted()
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        await model.setReasoningEffort("low")
+        model.text = "a"
+        await model.send()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-local-1", text: "a")])
+        await relay.finishTurn()
+        await model.turnEnded(normally: true)
+        #expect(await relay.calls.contains(.run("a", compact: false)))
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(await relay.effectiveEffort == "low")
+    }
+
+    @Test("没钉模型、没设思考档位：两枚键与档位都留空，机器按 Agent 绑定与后端配置跑")
+    func unsetModelAndEffortStayEmpty() async throws {
+        let relay = FakeComposerRelay()
+        var settings = FakeSettingsSource()
+        settings.settings.model = nil
+        settings.settings.reasoningEffort = ""
+        let model = composer(relay: relay, settings: settings)
+        await model.load()
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.runSettings == [ComposerRunSettings(permissionMode: "acceptEdits")])
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "", modelKey: ""))
+        #expect(await relay.effectiveEffort == "")
+    }
+
+    @Test("会话钉了供应商、模型跟随它的默认（模型键空）：面板没有可标注的模型，run 仍带上供应商键——面板没载入时同样取自会话行")
+    func pinnedProviderDefaultRides() async throws {
+        let saved = conversation(providerKey: "relay", reasoningEffort: "medium")
+        for loads in [true, false] {
+            let relay = FakeComposerRelay()
+            let model = composer(saved: saved, relay: relay, settings: FakeSettingsSource(settings: ComposerSettings(
+                conversation: saved, permissionMode: "default", permissionModes: ["default"], models: namedCatalog
+            )))
+            if loads { await model.load() }
+            model.edit(text: "go on", cursor: 5)
+            await model.send()
+            #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "relay", modelKey: ""), "loaded: \(loads)")
+            #expect(await relay.effectiveEffort == "medium", "loaded: \(loads)")
+        }
+    }
+
+    @Test("切模型没写成：面板照旧，下一轮仍带原来的模型")
+    func failedModelSwitchDoesNotRide() async throws {
+        let relay = FakeComposerRelay()
+        await relay.fail("model")
+        let model = composer(relay: relay)
+        await model.load()
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(model.failure == .change)
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+    }
+
     // MARK: 删除
 
     @Test("删除会话：机器上删掉，本地库也删掉，交回宿主")

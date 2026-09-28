@@ -7,8 +7,13 @@ import Testing
 
 let key = ConversationKey(machineFingerprint: "fp-mini", conversationID: "conv-1")
 
-func conversation(backend: String = "claudecode", cwd: String = "/srv/app") -> SavedConversation {
-    SavedConversation(key: key, carrierFingerprint: "fp-mini", peerFingerprint: "fp-desk", title: "修构建", agentSyncID: "coder", cwd: cwd, backendType: backend)
+func conversation(
+    backend: String = "claudecode", cwd: String = "/srv/app", providerKey: String = "", modelKey: String = "", reasoningEffort: String = ""
+) -> SavedConversation {
+    SavedConversation(
+        key: key, carrierFingerprint: "fp-mini", peerFingerprint: "fp-desk", title: "修构建", agentSyncID: "coder", cwd: cwd, backendType: backend,
+        providerKey: providerKey, modelKey: modelKey, reasoningEffort: reasoningEffort
+    )
 }
 
 let sampleSettings = ComposerSettings(
@@ -43,6 +48,8 @@ let namedCatalog = [
 /// setPermissionMode 回「没有进行中的一轮」（agentre/internal/daemon/handlers/runtime.go:1454-1462、:1682-1689）。
 /// 执行进程照搬 claudecode 的进程池：没有活着的进程时 run 按它带的档起一个；进程还在（闲置 15 分钟内）时原样复用，
 /// run 带来的新档不生效，只有一轮登记着时的 setPermissionMode 才改它（claudecode/runtime.go:620-626、:342-357）。
+/// 模型与思考档位照搬 agentred：执行只认 run 带的那几格（agentre/internal/daemon/handlers/runtime.go:384-385、:449-453；
+/// 两者都在 launchIdentity 里，变了就另起进程），setModelTarget / setReasoningEffort 只改会话行上显示的值。
 actor FakeComposerRelay: ComposerRelay {
     /// agentruntime.ErrNoActiveTurn 的替身。
     struct NoActiveTurn: Error {}
@@ -61,8 +68,16 @@ actor FakeComposerRelay: ComposerRelay {
     }
 
     private(set) var calls: [Call] = []
+    /// 每一轮 run 带过去的设定，按调用次序。
+    private(set) var runSettings: [ComposerRunSettings] = []
     /// 每一轮 run 带过去的权限档位，按调用次序。
-    private(set) var runPermissionModes: [String] = []
+    var runPermissionModes: [String] { runSettings.map(\.permissionMode) }
+    /// 最近一轮机器实际用的模型目标（两枚键都空 = 跟随 Agent 绑定）与思考档位（空 = 后端配置）；还没跑过为 nil。
+    private(set) var effectiveModel: ComposerModelChoice?
+    private(set) var effectiveEffort: String?
+    /// 会话行上记下的模型目标与思考档位：只供显示，执行不看它。
+    private(set) var storedModel: ComposerModelChoice?
+    private(set) var storedEffort: String?
     /// 执行端此刻登记着一轮在跑。
     private(set) var activeTurn = false
     /// 这条会话的执行进程此刻实际按哪一档跑；nil = 没有活着的进程。
@@ -91,9 +106,10 @@ actor FakeComposerRelay: ComposerRelay {
         if failing.contains(method) { throw URLError(.notConnectedToInternet) }
     }
 
-    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, permissionMode: String) async throws -> ComposerRunReceipt {
+    func run(_ key: ConversationKey, peerFingerprint: String, text: String, compact: Bool, settings: ComposerRunSettings) async throws -> ComposerRunReceipt {
         calls.append(.run(text, compact: compact))
-        runPermissionModes.append(permissionMode)
+        runSettings.append(settings)
+        let permissionMode = settings.permissionMode
         if holdRun {
             holdRun = false
             await withCheckedContinuation { runGate = $0 }
@@ -101,6 +117,8 @@ actor FakeComposerRelay: ComposerRelay {
         try check("run")
         activeTurn = true
         if executorMode == nil { executorMode = permissionMode.isEmpty ? "default" : permissionMode }
+        effectiveModel = ComposerModelChoice(providerKey: settings.providerKey, modelKey: settings.modelKey)
+        effectiveEffort = settings.reasoningEffort
         return runReceipt
     }
 
@@ -199,11 +217,13 @@ actor FakeComposerRelay: ComposerRelay {
     func setModelTarget(_ key: ConversationKey, peerFingerprint: String, providerKey: String, modelKey: String) async throws {
         calls.append(.model(providerKey, modelKey))
         try check("model")
+        storedModel = ComposerModelChoice(providerKey: providerKey, modelKey: modelKey)
     }
 
     func setReasoningEffort(_ key: ConversationKey, peerFingerprint: String, effort: String) async throws {
         calls.append(.effort(effort))
         try check("effort")
+        storedEffort = effort
     }
 
     func deleteSession(_ key: ConversationKey, peerFingerprint: String) async throws -> Bool {
@@ -247,6 +267,7 @@ actor FakeConversationStore: ConversationStore {
 @MainActor
 func composer(
     backend: String = "claudecode",
+    saved: SavedConversation? = nil,
     relay: FakeComposerRelay = FakeComposerRelay(),
     store: FakeConversationStore = FakeConversationStore(),
     settings: FakeSettingsSource = FakeSettingsSource(),
@@ -254,7 +275,7 @@ func composer(
 ) -> ComposerModel {
     var counter = 0
     return ComposerModel(
-        conversation: conversation(backend: backend), relay: relay, settingsSource: settings, mentionSource: mentions, store: store,
+        conversation: saved ?? conversation(backend: backend), relay: relay, settingsSource: settings, mentionSource: mentions, store: store,
         mintID: { counter += 1; return "local-\(counter)" }
     )
 }

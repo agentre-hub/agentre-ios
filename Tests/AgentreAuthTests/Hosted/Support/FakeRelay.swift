@@ -226,6 +226,8 @@ final class FakeRelaySocket: RelaySocket, @unchecked Sendable {
 /// 执行进程照搬 claudecode 的进程池：会话没有活着的进程时 runtime.run 按它带的档起一个；进程还在（闲置 15 分钟内，
 /// 与连接无关）时原样复用，run 带来的新档不生效，只有这一轮登记着时的 runtime.setPermissionMode 才改它
 /// （agentre/internal/pkg/agentruntime/runtimes/claudecode/runtime.go:620-626、:342-357；report-11 实测）。
+/// 模型与思考档位只认 runtime.run 带的那几格（runtime.go:384-385、:449-453；两者都在 launchIdentity 里，变了就另起进程）；
+/// setModelTarget / setSessionReasoningEffort 只写会话行，清单照它答，执行不看它（report-14 实测）。
 ///
 /// runtime.run 照搬 agentred 的次序（runtime.go:571-593）：会话行置 running、推不带号的 turn_started、落用户那一帧
 /// （带号，盖上来源设备，beginTranscript）并推出去，然后才回应答——应答丢了，这一轮照样在机器上。
@@ -245,6 +247,17 @@ final class FakeMachine: @unchecked Sendable {
         var lastMessageAt: Int64 = 0
         var backendType = "claudecode"
         var cwd = "/work"
+        /// 会话行上记下的模型目标与思考档位：只供显示。
+        var providerKey = ""
+        var modelKey = ""
+        var reasoningEffort = ""
+    }
+
+    /// 一轮机器实际用的模型目标（两枚键都空 = 跟随 Agent 绑定）与思考档位（空 = 后端配置）。
+    struct Target: Equatable {
+        var providerKey = ""
+        var modelKey = ""
+        var reasoningEffort = ""
     }
 
     let fingerprint: String
@@ -261,6 +274,8 @@ final class FakeMachine: @unchecked Sendable {
     private var mailboxes: [String: [(queuedID: String, text: String)]] = [:]
     /// 每条会话活着的执行进程此刻实际按哪一档跑（claudecode 进程池里的那一个）；没有 = 进程不在。
     private var executorModes: [String: String] = [:]
+    /// 每条会话最近一轮实际用的模型目标与思考档位。
+    private var effectiveTargets: [String: Target] = [:]
 
     init(fingerprint: String, caller: @escaping @Sendable () -> String = { "" }) {
         self.fingerprint = fingerprint
@@ -299,6 +314,11 @@ final class FakeMachine: @unchecked Sendable {
     /// 这条会话的执行进程此刻实际按哪一档跑；进程不在时为 nil。
     func effectivePermissionMode(_ conversationID: String) -> String? {
         lock.withLock { executorModes[conversationID] }
+    }
+
+    /// 这条会话最近一轮实际用的模型目标与思考档位；还没跑过为 nil。
+    func effectiveTarget(_ conversationID: String) -> Target? {
+        lock.withLock { effectiveTargets[conversationID] }
     }
 
     /// 这一轮收场：agentred 在 fanout 结束时把会话从内存表里摘掉。
@@ -361,9 +381,25 @@ final class FakeMachine: @unchecked Sendable {
                     let mode = call.payload.string(16)
                     executorModes[id] = mode.isEmpty ? "default" : mode
                 }
+                effectiveTargets[id] = Target(
+                    providerKey: call.payload.string(20), modelKey: call.payload.string(21), reasoningEffort: call.payload.string(25)
+                )
                 adopted.remove(id)
                 if let index = sessions.firstIndex(where: { $0.conversationID == id }) { sessions[index].lifecycleState = "running" }
                 return .result(Proto { $0.string(1, id) })
+            case WireMethod.setModelTarget:
+                guard let index = sessions.firstIndex(where: { $0.conversationID == call.payload.string(1) }) else {
+                    return .error(code: -32014, message: "runtime: session not found")
+                }
+                sessions[index].providerKey = call.payload.string(3)
+                sessions[index].modelKey = call.payload.string(4)
+                return .result(Proto())
+            case WireMethod.setSessionReasoningEffort:
+                guard let index = sessions.firstIndex(where: { $0.conversationID == call.payload.string(1) }) else {
+                    return .error(code: -32014, message: "runtime: session not found")
+                }
+                sessions[index].reasoningEffort = call.payload.string(3)
+                return .result(Proto())
             case WireMethod.sessionAttach:
                 adopted.insert(call.payload.string(1))
                 return .result(sessionAnswer(call))
@@ -422,6 +458,9 @@ final class FakeMachine: @unchecked Sendable {
                         s.bool(11, session.waitingForInput)
                         s.int(12, Int64(frames[session.conversationID]?.count ?? 0))
                         s.int(13, session.lastMessageAt)
+                        s.string(14, session.providerKey)
+                        s.string(15, session.modelKey)
+                        s.string(16, session.reasoningEffort)
                     })
                 }
                 r.int(4, Int64(sessions.count))
