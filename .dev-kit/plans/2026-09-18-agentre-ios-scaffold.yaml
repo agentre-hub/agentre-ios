@@ -428,9 +428,9 @@ tasks:
     files: [agentre-ios/Tests/AgentreTranscriptTests/]
     model: mid
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: d74ed3f
+    note: "竞争演示：临时变体推进 turnStarted 而不合入 seq 3 子代理帧即 reconcile(.idle)，exit 1，稳定失败于同一断言（subagent 为 nil），提交前删除。修后测试等子代理帧进模型再收场；注释掉 TranscriptReducer 的 cancelRunningForegroundSubagents 时修后测试失败（仍为 running），已还原。6 个 yes 压到负载约 80 下循环 20/20 过；AgentreTranscriptTests exit 0，153 条。只改测试文件。"
 
 review:
   status: pending
