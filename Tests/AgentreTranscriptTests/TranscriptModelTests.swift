@@ -183,17 +183,25 @@ struct TranscriptModelTests {
         let local = [stored(decoder, 1, .userMessage("修构建")), stored(decoder, 2, .toolCall(spawn))]
         let (model, _, relay) = model(local: local)
         await model.load()
+        func spawnStatus() -> String? {
+            guard case .toolUse(let tool)? = model.document.messages.last?.blocks.first else { return nil }
+            return tool.subagent?.status
+        }
+
         let attach = Task { await model.attach() }
         await relay.push(liveFrame(decoder, nil, .turnStarted))
         await relay.push(liveFrame(decoder, 3, .subagent(SubagentUpdate(toolCallID: "sp", phase: .started, info: SubagentState(taskID: "t", status: "running", kind: "local_agent")))))
         try await eventually("turn running") { model.document.running }
+        // 只等到 running 不够：子代理的 started 帧（seq 3）是另一条实时帧，接流循环可能还没把它
+        // 合进模型（合入与交屏按 liveInterval 节流），高负载下会在它到位前就走到下面的 reconcile，
+        // 那时子代理还没在模型里、自然收不到 canceled。等它在模型里显出 running 再收场。
+        try await eventually("subagent frame merged into the model") { spawnStatus() == "running" }
 
         model.reconcile(lifecycle: SavedConversation.Lifecycle.running)
         #expect(model.document.running)
         model.reconcile(lifecycle: SavedConversation.Lifecycle.idle)
         #expect(!model.document.running)
-        guard case .toolUse(let tool)? = model.document.messages.last?.blocks.first else { Issue.record("no spawn"); return }
-        #expect(tool.subagent?.status == "canceled")
+        #expect(spawnStatus() == "canceled")
         await relay.finish()
         await attach.value
     }
