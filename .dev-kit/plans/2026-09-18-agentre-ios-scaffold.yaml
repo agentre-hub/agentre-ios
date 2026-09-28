@@ -418,9 +418,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Sources/AgentreUI/NewConversation/, agentre-ios/Sources/AgentreRelay/Adapters/, agentre-ios/Sources/AgentreDomain/Composer/, agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Tests/AgentreComposerTests/, agentre-ios/Tests/AgentreNewConversationTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 78b2387
+    note: "RED：ComposerTests + ComposerAdapterTests exit 65（4 条新测 13 处，如 effectiveModel 为空；适配器 body.llmProviderKey 不符）；宿主 modelAndEffortRideTheNextRun、continuationSupplementsThePermissionMode exit 65（effectiveTarget 不符）；UI testMainlineEnglishLight exit 65 于 MainlineUITests.swift:174（面板已切 Opus/max，机器第二轮模型与档位为空）。GREEN：Composer 103、Relay 92、NewConversation 55、宿主 42 exit 0；主线 UI 四组合两批 exit 0（轮间切到 Opus/max 后下一轮与接续轮均按 anthropic·opus·max 执行，首轮为空）。语义对齐桌面端 agentre/internal/service/chat_svc/effective_llm.go 的 remoteKeysOnlyEffective / sessionModelKeyFor：钉了 provider 才带两键（空 model key 为该 provider 默认），否则都空；面板未载入前取会话记录。新建对话首轮无模型选择，三格留空。三处伪对端只认 run 带的值。任务 38 补发不变。实现者记：英文浅色一次撤销浮层（:272）偶发失败、原样重跑过。"
 
 review:
   status: pending
