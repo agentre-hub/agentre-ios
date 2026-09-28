@@ -195,18 +195,20 @@ actor FakeComposerRelay: ComposerRelay {
 
     func setPermissionMode(_ key: ConversationKey, peerFingerprint: String, mode: String) async throws {
         calls.append(.permission(mode))
-        try check("permission")
-        guard activeTurn else { throw NoActiveTurn() }
-        executorMode = mode
+        let refusal: (any Error)? = failing.contains("permission") ? URLError(.notConnectedToInternet) : activeTurn ? nil : NoActiveTurn()
+        if refusal == nil { executorMode = mode }
         if holdingPermissions { await withCheckedContinuation { permissionGates.append($0) } }
+        if let refusal { throw refusal }
     }
 
-    /// 此后换成了的档照到达次序在执行端生效，应答挂起：`releasePermission()` 按次序放回最早的一个，
+    /// 此后换成了的档照到达次序在执行端生效（没成的那一次不生效），应答（连同没成的那一次的失败）挂起：`releasePermission()` 按次序放回最早的一个，
     /// `releasePermissions()` 放回全部、不再挂起。观察补发（与切档）的应答在路上的那一段。
     private var holdingPermissions = false
     private var permissionGates: [CheckedContinuation<Void, Never>] = []
     func holdPermissions() { holdingPermissions = true }
     func releasePermission() { if !permissionGates.isEmpty { permissionGates.removeFirst().resume() } }
+    /// 放回最晚挂起的那一个（后发的应答先到）。
+    func releaseLatestPermission() { if !permissionGates.isEmpty { permissionGates.removeLast().resume() } }
     func releasePermissions() {
         holdingPermissions = false
         permissionGates.forEach { $0.resume() }
@@ -254,8 +256,11 @@ struct FakeMentionSource: ComposerMentionSource {
 
 actor FakeConversationStore: ConversationStore {
     private(set) var deleted: [ConversationKey] = []
+    /// 库里这条会话此刻的那一行（跟随重新接上时按机器清单刷新）；nil = 不在库里。
+    private var row: SavedConversation?
+    func set(row: SavedConversation?) { self.row = row }
     func conversations() -> [SavedConversation] { [] }
-    func conversation(_ key: ConversationKey) -> SavedConversation? { nil }
+    func conversation(_ key: ConversationKey) -> SavedConversation? { row }
     func transcript(_ key: ConversationKey) -> [TranscriptFrame] { [] }
     func latestSeq(_ key: ConversationKey) -> Int64 { 0 }
     func markRead(_ key: ConversationKey) {}

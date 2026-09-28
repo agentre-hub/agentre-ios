@@ -726,6 +726,71 @@ struct ComposerModelTests {
         }
     }
 
+    @Test("再补在飞时又切一次、再补没成：两次都是这一轮在跑时切的，都没到执行端——如实说没改成，面板退回执行端上那一档，不停在最后切的那一档")
+    func switchAgainWhileResendInFlightThenResendFails() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        let model = composer(relay: relay)
+        await model.load()
+        model.text = "go on"
+        await relay.holdPermissions()
+        let sending = Task { await model.send() }
+        try await eventually("supplement in flight") { await relay.heldPermissions == 1 }
+        model.turnStarted()
+        await model.setPermissionMode("plan")
+        await relay.fail("permission")
+        await relay.releasePermission()
+        try await eventually("re-supplement in flight") {
+            let (held, last) = (await relay.heldPermissions, await relay.calls.last)
+            return held == 1 && last == .permission("plan")
+        }
+        await model.setPermissionMode("default")
+        #expect(model.failure == nil)
+        await relay.releasePermissions()
+        await sending.value
+        #expect(await relay.calls == [.run("go on", compact: false), .permission("acceptEdits"), .permission("plan")])
+        #expect(await relay.executorMode == "acceptEdits")
+        #expect(model.failure == .change)
+        #expect(model.settings?.permissionMode == "acceptEdits")
+        // 两次都没生效：亲手选过的记号一并退回，执行端此后报的档照常跟上。
+        model.permissionModeReported("plan")
+        #expect(model.settings?.permissionMode == "plan")
+    }
+
+    @Test("补发在飞时接续的那一轮已补上别的档，之后为一轮在跑时的切档再补没成：面板退回执行端最近确实收下的那一档，而不是这次补发自己送到的旧档")
+    func resendFailureRevertsToTheMachinesLatestMode() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        let model = composer(relay: relay)
+        await model.load()
+        model.text = "go on"
+        await relay.holdPermissions()
+        let sending = Task { await model.send() }
+        try await eventually("supplement in flight") { await relay.heldPermissions == 1 }
+        model.turnStarted()
+        // 这一轮在看不到的时候收了场，接上后按机器报的会话状态收掉；取回的一句接续成下一轮，问信箱时切到 plan。
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-q", text: "later")])
+        await relay.finishTurn()
+        await relay.holdNextDrain()
+        let reconciling = Task { await model.reconcile(lifecycle: SavedConversation.Lifecycle.idle) }
+        await relay.waitForHeldDrain()
+        await model.setPermissionMode("plan")
+        await relay.releaseDrain()
+        try await eventually("the continuation's supplement arrived") { await relay.heldPermissions == 2 }
+        await relay.releaseLatestPermission()
+        await reconciling.value
+        #expect(await relay.executorMode == "plan")
+        model.turnStarted()
+        await model.setPermissionMode("default")
+        await relay.fail("permission")
+        await relay.releasePermissions()
+        await sending.value
+        #expect(await relay.calls.suffix(2) == [.permission("plan"), .permission("default")])
+        #expect(await relay.executorMode == "plan")
+        #expect(model.failure == .change)
+        #expect(model.settings?.permissionMode == "plan")
+    }
+
     @Test("补发失败不提示、不改变这次发送的结果：不说没发出、不还字、不说没改成，面板照旧，还能接着发")
     func supplementFailureIsSilent() async throws {
         let relay = FakeComposerRelay()
@@ -958,6 +1023,58 @@ struct ComposerModelTests {
         model.edit(text: "go on", cursor: 5)
         await model.send()
         #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+    }
+
+    @Test("别的端改了这条会话的模型与思考档位（跟随接上时本地库那一行已按机器清单刷新）：下一轮跟随会话行此刻的值、面板一并标注，不拿打开时那一份旧值盖回去——面板没载入时同样")
+    func modelAndEffortFollowTheSavedRow() async throws {
+        let saved = conversation(providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "high")
+        for loads in [true, false] {
+            let relay = FakeComposerRelay()
+            let store = FakeConversationStore()
+            await store.set(row: saved)
+            let model = composer(saved: saved, relay: relay, store: store, settings: FakeSettingsSource(settings: ComposerSettings(
+                conversation: saved, permissionMode: "default", permissionModes: ["default"], models: sampleSettings.models
+            )))
+            if loads { await model.load() }
+            await store.set(row: conversation(providerKey: "anthropic", modelKey: "claude-opus", reasoningEffort: "max"))
+            model.edit(text: "go on", cursor: 5)
+            await model.send()
+            #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"), "loaded: \(loads)")
+            #expect(await relay.effectiveEffort == "max", "loaded: \(loads)")
+            if loads {
+                #expect(model.settings?.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+                #expect(model.settings?.reasoningEffort == "max")
+            }
+        }
+    }
+
+    @Test("本机亲手切过的模型与思考档位：会话行还没刷新到它时照带本机选的；会话行此后又被别的端改了，才跟随会话行")
+    func phoneChoiceHoldsUntilTheSavedRowMoves() async throws {
+        let saved = conversation(providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "high")
+        let relay = FakeComposerRelay()
+        let store = FakeConversationStore()
+        await store.set(row: saved)
+        let model = composer(saved: saved, relay: relay, store: store, settings: FakeSettingsSource(settings: ComposerSettings(
+            conversation: saved, permissionMode: "default", permissionModes: ["default"], models: sampleSettings.models
+        )))
+        await model.load()
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        await model.setReasoningEffort("max")
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(await relay.effectiveEffort == "max")
+        model.turnStarted()
+        await relay.finishTurn()
+        await model.turnEnded(normally: false)
+
+        await store.set(row: conversation(providerKey: "relay", reasoningEffort: "low"))
+        model.edit(text: "next", cursor: 4)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "relay", modelKey: ""))
+        #expect(await relay.effectiveEffort == "low")
+        #expect(model.settings?.model == nil)
+        #expect(model.settings?.reasoningEffort == "low")
     }
 
     // MARK: 删除

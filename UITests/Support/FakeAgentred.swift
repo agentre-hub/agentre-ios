@@ -341,16 +341,16 @@ final class FakeAgentred: @unchecked Sendable {
         return .result(Agentre_Wire_Empty())
     }
 
-    /// 只写会话行（SessionModelTargetHandlers.SetModelTarget）：会话不在时回 session not found。
+    /// 只写会话行（SessionModelTargetHandlers.SetModelTarget）：会话不在时回 rpcerror.ErrSessionNotFound（不是运行族的那个码）。
     private func setModelTarget(_ request: Agentre_Wire_SetModelTargetRequest) -> Reply {
-        guard sessions[request.conversationID] != nil else { return .error(-32014, "runtime: session not found") }
+        guard sessions[request.conversationID] != nil else { return .error(-32002, "Session not found") }
         sessions[request.conversationID]?.summary.providerKey = request.providerKey
         sessions[request.conversationID]?.summary.modelKey = request.modelKey
         return .result(Agentre_Wire_SetModelTargetResponse())
     }
 
     private func setReasoningEffort(_ request: Agentre_Wire_SetSessionReasoningEffortRequest) -> Reply {
-        guard sessions[request.conversationID] != nil else { return .error(-32014, "runtime: session not found") }
+        guard sessions[request.conversationID] != nil else { return .error(-32002, "Session not found") }
         sessions[request.conversationID]?.summary.reasoningEffort = request.reasoningEffort
         return .result(Agentre_Wire_SetSessionReasoningEffortResponse())
     }

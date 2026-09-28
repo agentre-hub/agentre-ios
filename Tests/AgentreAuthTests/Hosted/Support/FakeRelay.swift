@@ -388,15 +388,16 @@ final class FakeMachine: @unchecked Sendable {
                 if let index = sessions.firstIndex(where: { $0.conversationID == id }) { sessions[index].lifecycleState = "running" }
                 return .result(Proto { $0.string(1, id) })
             case WireMethod.setModelTarget:
+                // 会话行改不到时是 rpcerror.ErrSessionNotFound（session_model_target.go），不是运行族的「没有这条会话」。
                 guard let index = sessions.firstIndex(where: { $0.conversationID == call.payload.string(1) }) else {
-                    return .error(code: -32014, message: "runtime: session not found")
+                    return .error(code: -32002, message: "Session not found")
                 }
                 sessions[index].providerKey = call.payload.string(3)
                 sessions[index].modelKey = call.payload.string(4)
                 return .result(Proto())
             case WireMethod.setSessionReasoningEffort:
                 guard let index = sessions.firstIndex(where: { $0.conversationID == call.payload.string(1) }) else {
-                    return .error(code: -32014, message: "runtime: session not found")
+                    return .error(code: -32002, message: "Session not found")
                 }
                 sessions[index].reasoningEffort = call.payload.string(3)
                 return .result(Proto())

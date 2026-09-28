@@ -60,9 +60,13 @@ public struct ComposerSettings: Sendable, Equatable {
     public init(conversation: SavedConversation, permissionMode: String, permissionModes: [String], models: [ComposerModelChoice]) {
         self.init(
             permissionMode: permissionMode, permissionModes: permissionModes,
-            model: conversation.modelKey.isEmpty ? nil : Self.resolve(providerKey: conversation.providerKey, modelKey: conversation.modelKey, in: models),
-            models: models, reasoningEffort: conversation.reasoningEffort
+            model: Self.savedModel(of: conversation, in: models), models: models, reasoningEffort: conversation.reasoningEffort
         )
+    }
+
+    /// 会话行上钉的模型，在引擎目录里认出可读名；会话行上没有模型时为空，不编。
+    public static func savedModel(of conversation: SavedConversation, in models: [ComposerModelChoice]) -> ComposerModelChoice? {
+        conversation.modelKey.isEmpty ? nil : resolve(providerKey: conversation.providerKey, modelKey: conversation.modelKey, in: models)
     }
 
     /// 会话行上的两枚键在引擎目录里认出那一项（带人读名）；目录里没有时只剩两枚键，界面据此回落原始键。

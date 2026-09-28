@@ -77,6 +77,12 @@ public final class ComposerModel {
     private var switchedLocallySinceSupplement = false
     /// 补发在飞时、这一轮已在跑时切过档：值是切之前亲手选过没有。那一次再补就是一轮在跑时切档，没改成时连它一起退回。
     private var chosenBeforeSwitchWhileSupplementing: Bool?
+    /// 执行端最近一次确实收下的档（补发与再补、一轮在跑时的切档、落定那一处补上的那一次）与它的下发次序：再补没成时
+    /// 面板退回它。执行端按到达次序生效，应答却可能先后颠倒——后发的已收下时，先发的那一次应答晚到不作数。
+    private var machineMode: (order: Int, mode: String)?
+    private var permissionWrites = 0
+    /// 本地库里这条会话最近一次读到的那一行：跟随重新接上时按机器清单刷新，别的端改过的模型与思考档位由此看得见。
+    private var savedRow: SavedConversation
     /// 这一轮是按机器的会话状态收掉的（收场帧没递到）；此后、下一轮开起来之前再到的收场帧就是它迟到的那一帧。
     private var endedByReconcile = false
     private var skills: [ComposerSkillSource] = []
@@ -99,6 +105,7 @@ public final class ComposerModel {
         mintID: @escaping @MainActor () -> String = { UUID().uuidString.lowercased() }
     ) {
         self.conversation = conversation
+        self.savedRow = conversation
         self.relay = relay
         self.settingsSource = settingsSource
         self.mentionSource = mentionSource
@@ -114,15 +121,31 @@ public final class ComposerModel {
     /// 随每一轮 runtime.run 带过去的设定：执行端只认 run 上带的模型目标与思考档位，面板上切的只写进会话行供显示。
     /// 模型目标与桌面端 remoteKeysOnlyEffective 同一取法：钉了供应商就带会话的两枚键（模型键空 = 供应商默认模型），
     /// 没钉两格都空、跟随 Agent 绑定。面板上没有可标注的模型（没钉、或只钉了供应商）或面板还没载入时取会话行上的。
+    /// 取之前先 `followSavedRow()`。
     private var runSettings: ComposerRunSettings {
-        let providerKey = settings?.model?.providerKey ?? conversation.providerKey
-        let modelKey = settings?.model?.modelKey ?? conversation.modelKey
+        let providerKey = settings?.model?.providerKey ?? savedRow.providerKey
+        let modelKey = settings?.model?.modelKey ?? savedRow.modelKey
         return ComposerRunSettings(
             permissionMode: permissionMode,
             providerKey: providerKey,
             modelKey: providerKey.isEmpty ? "" : modelKey,
-            reasoningEffort: settings?.reasoningEffort ?? conversation.reasoningEffort
+            reasoningEffort: settings?.reasoningEffort ?? savedRow.reasoningEffort
         )
+    }
+
+    /// 开一轮之前重读本地库里这一行：模型目标或思考档位与上次读到的不同，就是别的端改过（或本机切的已随清单刷新回来），
+    /// 这一轮跟随它、面板一并标注；没变就留着本机此刻的，包括亲手切过、清单还没刷新到的那一次。
+    /// 屏模型在登录期间一直留着，打开时那一份会话行不能一直当真，否则每一轮都拿旧值盖掉别的端后来的选择。
+    private func followSavedRow() async {
+        guard let row = try? await store.conversation(key) else { return }
+        let seen = savedRow
+        savedRow = row
+        guard var current = settings else { return }
+        if row.providerKey != seen.providerKey || row.modelKey != seen.modelKey {
+            current.model = ComposerSettings.savedModel(of: row, in: current.models)
+        }
+        if row.reasoningEffort != seen.reasoningEffort { current.reasoningEffort = row.reasoningEffort }
+        settings = current
     }
 
     /// 输入框从不因一轮在跑而禁用：那时发出的话进入队列。只有开新一轮的调用在飞时不能再发。
@@ -134,7 +157,7 @@ public final class ComposerModel {
     public var canStop: Bool { isTurnRunning && !isStopping }
 
     public func load() async {
-        settings = try? await settingsSource.settings(for: conversation)
+        settings = try? await settingsSource.settings(for: savedRow)
     }
 
     // MARK: 发送与排队
@@ -161,6 +184,7 @@ public final class ComposerModel {
             let compact = trimmed == "/compact" && SlashCommands.isHostCompact(backendType: conversation.backendType)
             isStartingTurn = true
             chosenBeforeSwitchWhileStarting = nil
+            await followSavedRow()
             let carried = runSettings
             let receipt: ComposerRunReceipt
             do {
@@ -189,10 +213,11 @@ public final class ComposerModel {
             // 补发在飞时的切档只改本机（轮末接续那一轮的开轮帧要等这里落定之后才递得进来；发送那一轮的开轮帧
             // 到了也不另发——另发的那一次应答在路上时，这里再补读到的还是它之前的档，后到执行端反把它盖掉）：
             // 补发回来后按此刻的当前档再补一次，否则这一轮一直按补发带的旧档跑。每多补一次都要用户又切过一次。
-            // 补发本身没成不提示；为一轮在跑时的切档再补的那一次没成，如实呈现、面板退回执行端上那一档。
+            // 补发本身没成不提示；为一轮在跑时的切档再补的那一次没成，如实呈现、面板退回执行端最近确实收下的那一档
+            // （补发在飞时接续的那一轮可能已补上别的档）。
             supplementsInFlight += 1
             defer { supplementsInFlight -= 1 }
-            var delivered: String?
+            var delivered = false
             repeat {
                 switchedLocallySinceSupplement = false
                 let chosenBeforeRunningSwitch = chosenBeforeSwitchWhileSupplementing
@@ -200,13 +225,16 @@ public final class ComposerModel {
                 let mode = permissionMode
                 guard !mode.isEmpty else { return }
                 do {
-                    try await relay.setPermissionMode(key, peerFingerprint: peer, mode: mode)
-                    delivered = mode
+                    try await writePermissionMode(mode)
+                    delivered = true
                 } catch {
-                    guard let chosenBeforeRunningSwitch, let delivered else { return }
+                    guard let chosenBeforeRunningSwitch, delivered, let machineMode = machineMode?.mode else { return }
                     failure = .change
-                    guard settings?.permissionMode == mode else { return }
-                    settings?.permissionMode = delivered
+                    // 这次再补在飞时、这一轮在跑时又切的那一档同样只改了本机、没到执行端，一并退回；
+                    // 那之后是在两轮之间切的（这一轮已收场），留给下一轮带过去。
+                    guard settings?.permissionMode == mode || chosenBeforeSwitchWhileSupplementing != nil else { return }
+                    chosenBeforeSwitchWhileSupplementing = nil
+                    settings?.permissionMode = machineMode
                     permissionModeChosen = chosenBeforeRunningSwitch
                     return
                 }
@@ -216,7 +244,7 @@ public final class ComposerModel {
             guard lifecycle == SavedConversation.Lifecycle.running, let chosenBefore, permissionMode != carried else { return }
             let mode = permissionMode
             do {
-                try await relay.setPermissionMode(key, peerFingerprint: peer, mode: mode)
+                try await writePermissionMode(mode)
             } catch {
                 failure = .change
                 guard settings?.permissionMode == mode else { return }
@@ -287,6 +315,7 @@ public final class ComposerModel {
         queue.endTurn()
         let next = drained.map(\.text).filter { !$0.isEmpty }.joined(separator: "\n\n")
         guard !next.isEmpty else { return }
+        await followSavedRow()
         let carried = runSettings
         let receipt: ComposerRunReceipt
         do {
@@ -472,8 +501,15 @@ public final class ComposerModel {
             self.settings = settings
             return
         }
-        await change({ try await self.relay.setPermissionMode(self.key, peerFingerprint: self.peer, mode: mode) }) { $0.permissionMode = mode }
+        await change({ try await self.writePermissionMode(mode) }) { $0.permissionMode = mode }
         if failure == nil { permissionModeChosen = true }
+    }
+
+    private func writePermissionMode(_ mode: String) async throws {
+        permissionWrites += 1
+        let order = permissionWrites
+        try await relay.setPermissionMode(key, peerFingerprint: peer, mode: mode)
+        if order > machineMode?.order ?? 0 { machineMode = (order, mode) }
     }
 
     /// 执行端在转录里报了它此刻的档位（例如退出计划模式后）。起手档位的取法与控制台同：用户这次选的 →
