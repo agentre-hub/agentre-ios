@@ -70,6 +70,11 @@ public final class ComposerModel {
     private var permissionModeChosen = false
     /// 开新一轮的调用在飞时切过档（只改了本机）：值是切之前亲手选过没有，没改成时连它一起退回。
     private var chosenBeforeSwitchWhileStarting: Bool?
+    /// 被接受后的补发在飞（连同它回来后的再补）：此时切档只改本机，由补发回来后按此刻的当前档再补一次。
+    /// 计数而非开关：补发在飞时这一轮按清单收场、接续那一轮的补发叠在它上面。
+    private var supplementsInFlight = 0
+    /// 上一次补发下发之后又只改了本机的档：补发回来后按此刻的当前档再补一次。
+    private var switchedLocallySinceSupplement = false
     /// 这一轮是按机器的会话状态收掉的（收场帧没递到）；此后、下一轮开起来之前再到的收场帧就是它迟到的那一帧。
     private var endedByReconcile = false
     private var skills: [ComposerSkillSource] = []
@@ -165,8 +170,20 @@ public final class ComposerModel {
         chosenBeforeSwitchWhileStarting = nil
         switch receipt {
         case .acknowledged:
-            guard !permissionMode.isEmpty else { return }
-            try? await relay.setPermissionMode(key, peerFingerprint: peer, mode: permissionMode)
+            // 补发在飞时的切档只改本机（轮末接续那一轮的开轮帧要等这里落定之后才递得进来；发送那一轮的开轮帧
+            // 到了也不另发——另发的那一次应答在路上时，这里再补读到的还是它之前的档，后到执行端反把它盖掉）：
+            // 补发回来后按此刻的当前档再补一次，否则这一轮一直按补发带的旧档跑。每多补一次都要用户又切过一次。
+            supplementsInFlight += 1
+            defer { supplementsInFlight -= 1 }
+            repeat {
+                switchedLocallySinceSupplement = false
+                guard !permissionMode.isEmpty else { return }
+                do {
+                    try await relay.setPermissionMode(key, peerFingerprint: peer, mode: permissionMode)
+                } catch {
+                    return
+                }
+            } while switchedLocallySinceSupplement
         case .confirmed(let lifecycle):
             await settleConfirmedTurn(lifecycle: lifecycle)
             guard lifecycle == SavedConversation.Lifecycle.running, let chosenBefore, permissionMode != carried else { return }
@@ -412,11 +429,12 @@ public final class ComposerModel {
     /// 两轮之间只改本机记下的当前档，下一轮随 runtime.run 与它被接受后的补发生效——此时执行端已把会话收掉，
     /// 去问它只会得到「没有进行中的一轮」。一轮正在跑时再额外让它即刻生效，那一次没改成才如实呈现。
     /// 开新一轮的调用在飞时同两轮之间：被接受后的补发读的就是此刻的当前档，另发一次反倒会被在它之后到的补发盖掉；
-    /// 应答丢了没有补发时，由落定那一处补上。
+    /// 应答丢了没有补发时，由落定那一处补上。补发在飞时同样只改本机，由补发回来后再补一次（没补成同补发，不提示）。
     public func setPermissionMode(_ mode: String) async {
         guard var settings, settings.permissionMode != mode else { return }
-        guard isTurnRunning, !isStartingTurn else {
+        guard isTurnRunning, !isStartingTurn, supplementsInFlight == 0 else {
             if isStartingTurn, chosenBeforeSwitchWhileStarting == nil { chosenBeforeSwitchWhileStarting = permissionModeChosen }
+            switchedLocallySinceSupplement = true
             failure = nil
             permissionModeChosen = true
             settings.permissionMode = mode

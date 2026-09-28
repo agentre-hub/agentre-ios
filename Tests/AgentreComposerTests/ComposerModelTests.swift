@@ -109,9 +109,13 @@ struct ComposerModelTests {
         #expect(!model.canStop, "闲着的时候没有什么可停")
         model.turnStarted()
         #expect(model.canStop)
-        async let first: Void = model.stop()
-        async let second: Void = model.stop()
-        _ = await (first, second)
+        await relay.holdNextAbort()
+        let first = Task { await model.stop() }
+        await relay.waitForHeldAbort()
+        #expect(!model.canStop, "停的调用在飞")
+        await model.stop()
+        await relay.releaseAbort()
+        await first.value
         #expect(await relay.calls == [.abort])
         #expect(model.canStop, "停没停下来由这一轮的收场帧说话，不在这里猜")
         await model.turnEnded(normally: false)
@@ -645,6 +649,56 @@ struct ComposerModelTests {
         await model.turnEnded(normally: true)
         #expect(await relay.calls.suffix(3) == [.drain, .run("a", compact: false), .permission("acceptEdits")])
         #expect(await relay.executorMode == "acceptEdits")
+        #expect(model.failure == nil)
+    }
+
+    @Test("轮末接续那一轮的补发在飞时切档：那一轮的开轮帧要等这里落定才递得进来，此刻只改得了本机；补发回来后按新档再补一次，机器实际按新档跑")
+    func switchWhileContinuationSupplementInFlight() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        await relay.startTurn()
+        let model = composer(relay: relay)
+        await model.load()
+        model.turnStarted()
+        model.text = "a"
+        await model.send()
+        await relay.set(drained: [ComposerConsumedSteer(queuedID: "exec-local-1", text: "a")])
+        await relay.finishTurn()
+        await relay.holdPermissions()
+        let ending = Task { await model.turnEnded(normally: true) }
+        try await eventually("supplement in flight") { await relay.heldPermissions == 1 }
+        await model.setPermissionMode("plan")
+        await relay.releasePermissions()
+        await ending.value
+        #expect(await relay.executorMode == "plan")
+        #expect(model.settings?.permissionMode == "plan")
+        #expect(model.failure == nil)
+    }
+
+    @Test("补发在飞时切档、开轮帧随后到了再切一次：补发回来之前都只改本机，回来后按最新那一档再补——不与补发交错另发，再补的那一次也盖不掉更新的选择")
+    func switchWhileSupplementInFlightThenTurnStarted() async throws {
+        let relay = FakeComposerRelay()
+        await relay.launchExecutor(mode: "default")
+        let model = composer(relay: relay)
+        await model.load()
+        model.text = "go on"
+        await relay.holdPermissions()
+        let sending = Task { await model.send() }
+        try await eventually("supplement in flight") { await relay.heldPermissions == 1 }
+        await model.setPermissionMode("plan")
+        model.turnStarted()
+        let switching = Task { await model.setPermissionMode("default") }
+        // 改完了本机，或者已经递到执行端、应答在路上。
+        try await eventually("the switch is made") {
+            if model.settings?.permissionMode == "default" { return true }
+            return await relay.calls.last == .permission("default")
+        }
+        await relay.releasePermission()
+        await relay.releasePermissions()
+        await sending.value
+        await switching.value
+        #expect(await relay.executorMode == "default")
+        #expect(model.settings?.permissionMode == "default")
         #expect(model.failure == nil)
     }
 

@@ -106,7 +106,20 @@ actor FakeComposerRelay: ComposerRelay {
 
     func abort(_ key: ConversationKey, peerFingerprint: String) async throws {
         calls.append(.abort)
+        if holdAbort {
+            holdAbort = false
+            await withCheckedContinuation { abortGate = $0 }
+        }
         try check("abort")
+    }
+
+    /// 下一次停止挂起，直到 `releaseAbort()`：观察停的调用在飞的那一段。
+    private var holdAbort = false
+    private var abortGate: CheckedContinuation<Void, Never>?
+    func holdNextAbort() { holdAbort = true }
+    func releaseAbort() { abortGate?.resume(); abortGate = nil }
+    nonisolated func waitForHeldAbort() async {
+        for _ in 0..<3_000 where await abortGate == nil { try? await Task.sleep(for: .milliseconds(1)) }
     }
 
     func steer(_ key: ConversationKey, peerFingerprint: String, queuedID: String, text: String) async throws -> ComposerSteerHandle {
@@ -141,7 +154,7 @@ actor FakeComposerRelay: ComposerRelay {
     func holdNextDrain() { holdDrain = true }
     func releaseDrain() { drainGate?.resume(); drainGate = nil }
     nonisolated func waitForHeldDrain() async {
-        for _ in 0..<1_000 where await drainGate == nil { await Task.yield() }
+        for _ in 0..<3_000 where await drainGate == nil { try? await Task.sleep(for: .milliseconds(1)) }
     }
 
     /// 下一次插话挂起，直到 `releaseSteer()`：观察插话在飞时这一轮收场的那一段。
@@ -150,7 +163,7 @@ actor FakeComposerRelay: ComposerRelay {
     func holdNextSteer() { holdSteer = true }
     func releaseSteer() { steerGate?.resume(); steerGate = nil }
     nonisolated func waitForHeldSteer() async {
-        for _ in 0..<1_000 where await steerGate == nil { await Task.yield() }
+        for _ in 0..<3_000 where await steerGate == nil { try? await Task.sleep(for: .milliseconds(1)) }
     }
 
     /// 下一次开新一轮挂起，直到 `releaseRun()`：观察开新一轮的调用在飞的那一段。
@@ -159,7 +172,7 @@ actor FakeComposerRelay: ComposerRelay {
     func holdNextRun() { holdRun = true }
     func releaseRun() { runGate?.resume(); runGate = nil }
     nonisolated func waitForHeldRun() async {
-        for _ in 0..<1_000 where await runGate == nil { await Task.yield() }
+        for _ in 0..<3_000 where await runGate == nil { try? await Task.sleep(for: .milliseconds(1)) }
     }
 
     func setPermissionMode(_ key: ConversationKey, peerFingerprint: String, mode: String) async throws {
@@ -167,7 +180,21 @@ actor FakeComposerRelay: ComposerRelay {
         try check("permission")
         guard activeTurn else { throw NoActiveTurn() }
         executorMode = mode
+        if holdingPermissions { await withCheckedContinuation { permissionGates.append($0) } }
     }
+
+    /// 此后换成了的档照到达次序在执行端生效，应答挂起：`releasePermission()` 按次序放回最早的一个，
+    /// `releasePermissions()` 放回全部、不再挂起。观察补发（与切档）的应答在路上的那一段。
+    private var holdingPermissions = false
+    private var permissionGates: [CheckedContinuation<Void, Never>] = []
+    func holdPermissions() { holdingPermissions = true }
+    func releasePermission() { if !permissionGates.isEmpty { permissionGates.removeFirst().resume() } }
+    func releasePermissions() {
+        holdingPermissions = false
+        permissionGates.forEach { $0.resume() }
+        permissionGates = []
+    }
+    var heldPermissions: Int { permissionGates.count }
 
     func setModelTarget(_ key: ConversationKey, peerFingerprint: String, providerKey: String, modelKey: String) async throws {
         calls.append(.model(providerKey, modelKey))
