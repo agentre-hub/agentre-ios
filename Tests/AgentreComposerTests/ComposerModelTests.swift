@@ -1114,6 +1114,86 @@ struct ComposerModelTests {
         #expect(model.settings?.reasoningEffort == "low")
     }
 
+    @Test("屏模型建好之后本地库那一行已按清单刷新（比如上一次载入没成、重新接上后再打开）：面板按库里此刻那一行标注，不按建屏时那一份")
+    func loadReadsTheLatestRow() async throws {
+        let saved = conversation(providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "high")
+        let store = FakeConversationStore()
+        await store.set(row: conversation(providerKey: "anthropic", modelKey: "claude-opus", reasoningEffort: "max"))
+        let model = composer(saved: saved, store: store, settings: RowSettingsSource())
+        await model.load()
+        #expect(model.settings?.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(model.settings?.reasoningEffort == "max")
+    }
+
+    @Test("本机切过模型与思考档位、清单还没刷新到它时别的端又改回原来那一档：刷新回来的是别的端后来的选择，下一轮跟随它，不留着本机先前那一次")
+    func anotherHostsRevertAfterPhoneSwitchIsFollowed() async throws {
+        let saved = conversation(providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "high")
+        let relay = FakeComposerRelay()
+        let store = FakeConversationStore()
+        await store.set(row: saved)
+        let model = composer(saved: saved, relay: relay, store: store, settings: FakeSettingsSource(settings: ComposerSettings(
+            conversation: saved, permissionMode: "default", permissionModes: ["default"], models: sampleSettings.models
+        )))
+        await model.load()
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        await model.setReasoningEffort("max")
+        // 机器上此刻是本机切的 opus/max；别的端随后改回 sonnet/high，重新接上时本地库那一行按清单刷新成它。
+        await store.set(row: saved)
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+        #expect(await relay.effectiveEffort == "high")
+        #expect(model.settings?.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+        #expect(model.settings?.reasoningEffort == "high")
+    }
+
+    @Test("切模型在飞时另一次切思考档位没成：切模型本身成了就照样算数，别的端此后改回去时下一轮同样跟随")
+    func modelSwitchBesideAFailedChangeStillCounts() async throws {
+        let saved = conversation(providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "high")
+        let relay = FakeComposerRelay()
+        let store = FakeConversationStore()
+        await store.set(row: saved)
+        let model = composer(saved: saved, relay: relay, store: store, settings: FakeSettingsSource(settings: ComposerSettings(
+            conversation: saved, permissionMode: "default", permissionModes: ["default"], models: sampleSettings.models
+        )))
+        await model.load()
+        await relay.holdNextModel()
+        await relay.fail("effort")
+        let switching = Task { await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus")) }
+        await relay.waitForHeldModel()
+        await model.setReasoningEffort("max")
+        #expect(model.failure == .change)
+        await relay.releaseModel()
+        await switching.value
+        #expect(model.settings?.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+
+        await store.set(row: saved)
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+        #expect(model.settings?.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+    }
+
+    @Test("一轮在跑时切档在飞、另一次切思考档位没成：切档本身成了就算亲手选过，执行端此后报来的档不再顶掉它")
+    func modeSwitchBesideAFailedChangeStillChosen() async throws {
+        let relay = FakeComposerRelay()
+        let model = composer(relay: relay)
+        await model.load()
+        await relay.startTurn()
+        model.turnStarted()
+        await relay.holdPermissions()
+        let switching = Task { await model.setPermissionMode("plan") }
+        try await eventually("switch in flight") { await relay.heldPermissions == 1 }
+        await relay.fail("effort")
+        await model.setReasoningEffort("max")
+        #expect(model.failure == .change)
+        await relay.releasePermissions()
+        await switching.value
+        #expect(model.settings?.permissionMode == "plan")
+        model.permissionModeReported("default")
+        #expect(model.settings?.permissionMode == "plan")
+    }
+
     // MARK: 删除
 
     @Test("删除会话：机器上删掉，本地库也删掉，交回宿主")

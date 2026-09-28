@@ -22,3 +22,10 @@ public protocol ConversationStore: Sendable {
     /// 库每变一次就吐一个信号（多次变动可能合并成一个）。每次调用给出一条独立的流。
     func changes() async -> AsyncStream<Void>
 }
+
+/// 本机在承载机上改成了的会话设定，照记进本地库那一行：清单下次刷新之前，这一行就是机器此刻的值；
+/// 刷新回来的若与它不同，就是别的端此后又改过。不在库里时什么都不做。
+public protocol ConversationSettingsRecording: ConversationStore {
+    func recordModelTarget(_ key: ConversationKey, providerKey: String, modelKey: String) async throws
+    func recordReasoningEffort(_ key: ConversationKey, effort: String) async throws
+}

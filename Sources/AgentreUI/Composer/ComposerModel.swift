@@ -59,7 +59,7 @@ public final class ComposerModel {
     private let relay: any ComposerRelay
     private let settingsSource: any ComposerSettingsSource
     private let mentionSource: any ComposerMentionSource
-    private let store: any ConversationStore
+    private let store: any ConversationSettingsRecording
     private let mintID: @MainActor () -> String
 
     /// 开新一轮的调用在飞：连点不重复开。
@@ -82,8 +82,8 @@ public final class ComposerModel {
     private var machineMode: (order: Int, mode: String)?
     private var permissionWrites = 0
     /// 本地库里这条会话最近一次读到的那一行：跟随重新接上时按机器清单刷新，别的端改过的模型与思考档位由此看得见。
-    /// 本机切成了模型或思考档位时，那一项按库里此刻的值重记：此后库里那一项再变才是别的端改的，
-    /// 清单刷新回来的本机更早那一次选择不能盖掉本机后来的选择。
+    /// 本机切成了模型或思考档位时，那一项照记进库里那一行、这里一并记下：此后库里那一项再变才是别的端改的——
+    /// 包括改回本机切之前那一档；清单刷新回来的本机更早那一次选择也不能盖掉本机后来的选择。
     private var savedRow: SavedConversation
     /// 这一轮是按机器的会话状态收掉的（收场帧没递到）；此后、下一轮开起来之前再到的收场帧就是它迟到的那一帧。
     private var endedByReconcile = false
@@ -103,7 +103,7 @@ public final class ComposerModel {
 
     public init(
         conversation: SavedConversation, relay: any ComposerRelay, settingsSource: any ComposerSettingsSource,
-        mentionSource: any ComposerMentionSource, store: any ConversationStore,
+        mentionSource: any ComposerMentionSource, store: any ConversationSettingsRecording,
         mintID: @escaping @MainActor () -> String = { UUID().uuidString.lowercased() }
     ) {
         self.conversation = conversation
@@ -158,7 +158,9 @@ public final class ComposerModel {
     /// 只在一轮真的在跑时可停；闲着的时候没有什么可停。
     public var canStop: Bool { isTurnRunning && !isStopping }
 
+    /// 面板按库里此刻那一行标注：屏模型建好之后那一行可能已按清单刷新过。
     public func load() async {
+        if let row = try? await store.conversation(key) { savedRow = row }
         settings = try? await settingsSource.settings(for: savedRow)
     }
 
@@ -503,8 +505,7 @@ public final class ComposerModel {
             self.settings = settings
             return
         }
-        await change({ try await self.writePermissionMode(mode) }) { $0.permissionMode = mode }
-        if failure == nil { permissionModeChosen = true }
+        if await change({ try await self.writePermissionMode(mode) }, apply: { $0.permissionMode = mode }) { permissionModeChosen = true }
     }
 
     private func writePermissionMode(_ mode: String) async throws {
@@ -526,25 +527,26 @@ public final class ComposerModel {
 
     public func setModel(_ choice: ComposerModelChoice) async {
         guard let settings, settings.model != choice else { return }
-        await change({ try await self.relay.setModelTarget(self.key, peerFingerprint: self.peer, providerKey: choice.providerKey, modelKey: choice.modelKey) }) {
+        let changed = await change({ try await self.relay.setModelTarget(self.key, peerFingerprint: self.peer, providerKey: choice.providerKey, modelKey: choice.modelKey) }) {
             $0.model = choice
         }
-        guard failure == nil, let row = try? await store.conversation(key) else { return }
-        savedRow.providerKey = row.providerKey
-        savedRow.modelKey = row.modelKey
+        guard changed, (try? await store.recordModelTarget(key, providerKey: choice.providerKey, modelKey: choice.modelKey)) != nil else { return }
+        savedRow.providerKey = choice.providerKey
+        savedRow.modelKey = choice.modelKey
     }
 
     /// 空串 = 改回跟随后端配置。no-op 判据是会话行上的值，不是有效档位：会话行为空而后端配的
     /// 是 high 时，显式选 high 是一次真实写入。
     public func setReasoningEffort(_ effort: String) async {
         guard let settings, settings.reasoningEffort != effort else { return }
-        await change({ try await self.relay.setReasoningEffort(self.key, peerFingerprint: self.peer, effort: effort) }) { $0.reasoningEffort = effort }
-        guard failure == nil, let row = try? await store.conversation(key) else { return }
-        savedRow.reasoningEffort = row.reasoningEffort
+        let changed = await change({ try await self.relay.setReasoningEffort(self.key, peerFingerprint: self.peer, effort: effort) }) { $0.reasoningEffort = effort }
+        guard changed, (try? await store.recordReasoningEffort(key, effort: effort)) != nil else { return }
+        savedRow.reasoningEffort = effort
     }
 
-    /// 写成功才改面板上的值：没改成时面板照旧标注机器上真实的那一档。
-    private func change(_ write: () async throws -> Void, apply: (inout ComposerSettings) -> Void) async {
+    /// 写成功才改面板上的值：没改成时面板照旧标注机器上真实的那一档。交回写成了没有——不拿 `failure` 判：
+    /// 写在飞时别的操作没成，也会把它记上。
+    private func change(_ write: () async throws -> Void, apply: (inout ComposerSettings) -> Void) async -> Bool {
         failure = nil
         do {
             try await write()
@@ -552,8 +554,10 @@ public final class ComposerModel {
                 apply(&current)
                 settings = current
             }
+            return true
         } catch {
             failure = .change
+            return false
         }
     }
 

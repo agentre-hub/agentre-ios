@@ -45,7 +45,7 @@ public struct FollowTarget: Sendable, Equatable {
 ///   请求与落定改「等你处理」。与帧号正交——线上的轮次边界帧不带号，照样跟随。
 ///
 /// 实时帧与补齐帧只有 `record` 这一个入口。
-public actor LocalConversationStore: ConversationStore {
+public actor LocalConversationStore: ConversationSettingsRecording {
     public static let fileName = "Conversations.store"
     static let schema = Schema([ConversationRecord.self, FrameRecord.self])
 
@@ -213,6 +213,19 @@ public actor LocalConversationStore: ConversationStore {
     public func markRead(_ key: ConversationKey) throws {
         guard let row = try fetchConversation(key) else { return }
         row.readMarker = row.lastMessageAt
+        try commit()
+    }
+
+    public func recordModelTarget(_ key: ConversationKey, providerKey: String, modelKey: String) throws {
+        guard let row = try fetchConversation(key) else { return }
+        row.providerKey = providerKey
+        row.modelKey = modelKey
+        try commit()
+    }
+
+    public func recordReasoningEffort(_ key: ConversationKey, effort: String) throws {
+        guard let row = try fetchConversation(key) else { return }
+        row.reasoningEffort = effort
         try commit()
     }
 

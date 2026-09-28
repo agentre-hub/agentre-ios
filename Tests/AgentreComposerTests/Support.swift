@@ -218,6 +218,10 @@ actor FakeComposerRelay: ComposerRelay {
 
     func setModelTarget(_ key: ConversationKey, peerFingerprint: String, providerKey: String, modelKey: String) async throws {
         calls.append(.model(providerKey, modelKey))
+        if holdModel {
+            holdModel = false
+            await withCheckedContinuation { modelGate = $0 }
+        }
         try check("model")
         storedModel = ComposerModelChoice(providerKey: providerKey, modelKey: modelKey)
     }
@@ -226,6 +230,15 @@ actor FakeComposerRelay: ComposerRelay {
         calls.append(.effort(effort))
         try check("effort")
         storedEffort = effort
+    }
+
+    /// 下一次切模型挂起，直到 `releaseModel()`：观察切模型的调用在飞的那一段。
+    private var holdModel = false
+    private var modelGate: CheckedContinuation<Void, Never>?
+    func holdNextModel() { holdModel = true }
+    func releaseModel() { modelGate?.resume(); modelGate = nil }
+    nonisolated func waitForHeldModel() async {
+        for _ in 0..<3_000 where await modelGate == nil { try? await Task.sleep(for: .milliseconds(1)) }
     }
 
     func deleteSession(_ key: ConversationKey, peerFingerprint: String) async throws -> Bool {
@@ -246,6 +259,13 @@ struct FakeSettingsSource: ComposerSettingsSource {
     func settings(for conversation: SavedConversation) async throws -> ComposerSettings { settings }
 }
 
+/// 与真实来源同一取法：面板上的模型与思考档位取自交进来的那一行。
+struct RowSettingsSource: ComposerSettingsSource {
+    func settings(for conversation: SavedConversation) async throws -> ComposerSettings {
+        ComposerSettings(conversation: conversation, permissionMode: "default", permissionModes: ["default"], models: sampleSettings.models)
+    }
+}
+
 struct FakeMentionSource: ComposerMentionSource {
     var sources = ComposerMentionSources(
         agents: [ComposerMentionAgent(id: 7, name: "reviewer"), ComposerMentionAgent(id: 8, name: "writer")],
@@ -254,11 +274,16 @@ struct FakeMentionSource: ComposerMentionSource {
     func mentionSources() async throws -> ComposerMentionSources { sources }
 }
 
-actor FakeConversationStore: ConversationStore {
+actor FakeConversationStore: ConversationSettingsRecording {
     private(set) var deleted: [ConversationKey] = []
     /// 库里这条会话此刻的那一行（跟随重新接上时按机器清单刷新）；nil = 不在库里。
     private var row: SavedConversation?
     func set(row: SavedConversation?) { self.row = row }
+    func recordModelTarget(_ key: ConversationKey, providerKey: String, modelKey: String) {
+        row?.providerKey = providerKey
+        row?.modelKey = modelKey
+    }
+    func recordReasoningEffort(_ key: ConversationKey, effort: String) { row?.reasoningEffort = effort }
     func conversations() -> [SavedConversation] { [] }
     func conversation(_ key: ConversationKey) -> SavedConversation? { row }
     func transcript(_ key: ConversationKey) -> [TranscriptFrame] { [] }
@@ -275,7 +300,7 @@ func composer(
     saved: SavedConversation? = nil,
     relay: FakeComposerRelay = FakeComposerRelay(),
     store: FakeConversationStore = FakeConversationStore(),
-    settings: FakeSettingsSource = FakeSettingsSource(),
+    settings: any ComposerSettingsSource = FakeSettingsSource(),
     mentions: FakeMentionSource = FakeMentionSource()
 ) -> ComposerModel {
     var counter = 0

@@ -69,6 +69,30 @@ struct ConversationStoreTests {
         #expect(conversation.reasoningEffort == "xhigh")
     }
 
+    @Test("本机在机器上切成的模型与思考档位照记进那一行、冷启动照样读得出，别的格不动；不在库里的会话不因此多出一行")
+    func recordedSettingsPersist() async throws {
+        let directory = try TemporaryDirectory()
+        do {
+            let store = try openStore(directory)
+            var listed = summary("conv-1", title: "修一个 bug")
+            listed.providerKey = "anthropic"
+            listed.modelKey = "claude-sonnet"
+            listed.reasoningEffort = "high"
+            try await store.save(listed, via: machine)
+            try await store.recordModelTarget(key("conv-1"), providerKey: "relay", modelKey: "")
+            try await store.recordReasoningEffort(key("conv-1"), effort: "max")
+            try await store.recordModelTarget(key("conv-gone"), providerKey: "relay", modelKey: "")
+            try await store.recordReasoningEffort(key("conv-gone"), effort: "max")
+        }
+        let reopened = try openStore(directory)
+        let conversation = try #require(try await reopened.conversation(key("conv-1")))
+        #expect(conversation.providerKey == "relay")
+        #expect(conversation.modelKey == "")
+        #expect(conversation.reasoningEffort == "max")
+        #expect(conversation.title == "修一个 bug")
+        #expect(try await reopened.conversations().map(\.key) == [key("conv-1")])
+    }
+
     @Test("同一 seq 到两次只落一行，先到的那一行为准——一批之内、两批之间、跨冷启动都一样")
     func duplicateSeqLandsOnce() async throws {
         let directory = try TemporaryDirectory()
