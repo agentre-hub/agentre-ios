@@ -1077,6 +1077,43 @@ struct ComposerModelTests {
         #expect(model.settings?.reasoningEffort == "low")
     }
 
+    @Test("本机切过、会话行随清单刷新到它之后本机又切一次：下一轮带本机最后选的，不被那次刷新回来的本机旧选择盖掉；只切了模型时，别的端改的思考档位照样跟随")
+    func phoneChoiceAfterItsOwnRefreshStillHolds() async throws {
+        let saved = conversation(providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "high")
+        let relay = FakeComposerRelay()
+        let store = FakeConversationStore()
+        await store.set(row: saved)
+        let model = composer(saved: saved, relay: relay, store: store, settings: FakeSettingsSource(settings: ComposerSettings(
+            conversation: saved, permissionMode: "default", permissionModes: ["default"], models: sampleSettings.models
+        )))
+        await model.load()
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        await model.setReasoningEffort("max")
+        // 回到前台重新接上，本地库那一行按机器清单刷新到了本机刚才切的；此后本机又切回去。
+        await store.set(row: conversation(providerKey: "anthropic", modelKey: "claude-opus", reasoningEffort: "max"))
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+        await model.setReasoningEffort("medium")
+        model.edit(text: "go on", cursor: 5)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+        #expect(await relay.effectiveEffort == "medium")
+        #expect(model.settings?.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-sonnet"))
+        #expect(model.settings?.reasoningEffort == "medium")
+        model.turnStarted()
+        await relay.finishTurn()
+        await model.turnEnded(normally: false)
+
+        // 清单刷新到了本机那一次，思考档位又被别的端改成 low；本机只切了模型。
+        await store.set(row: conversation(providerKey: "anthropic", modelKey: "claude-sonnet", reasoningEffort: "low"))
+        await model.setModel(ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        model.edit(text: "next", cursor: 4)
+        await model.send()
+        #expect(await relay.effectiveModel == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(await relay.effectiveEffort == "low")
+        #expect(model.settings?.model == ComposerModelChoice(providerKey: "anthropic", modelKey: "claude-opus"))
+        #expect(model.settings?.reasoningEffort == "low")
+    }
+
     // MARK: 删除
 
     @Test("删除会话：机器上删掉，本地库也删掉，交回宿主")
