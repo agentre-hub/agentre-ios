@@ -446,9 +446,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreDesign/, agentre-ios/Tests/AgentreDesignTests/, agentre-ios/Sources/AgentreUI/, agentre-ios/Sources/AgentreApp/, agentre-ios/ThirdPartyLicenses/]
     model: strong
     interfaces: "ColorToken 用稿子的变量名（camelCase）；Font.agentre(_ role:, mono:) 与 UIFont 同名；AgentreIcon 枚举 + Image(_ icon: AgentreIcon)"
-    status: todo
-    commit: null
-    note: null
+    status: done
+    commit: 2f97ef7
+    note: "complete with concerns（均不阻塞）。RED：xcodebuild test -only-testing:AgentreDesignTests（新 DD /tmp/t41-red）exit 65，编译失败：agent1…agentNeutral、FontRole、FontWeight、AgentreIcon 不存在；途中两次运行期红：内存描述符注册字体被 CoreText 拒（303）→ 改写临时文件按 URL 注册；图标像素计数误读位图 → 改 RGBA8 上下文。GREEN：同命令新 DD /tmp/t41-g3 exit 0，6 套 30 条过——valuesEqualTheDesign / deviationsAreSmall（恰 6 处且 ≤9/255）/ originalsFailTheLine；identityColorsEqualTheHost（tokens.css:172-191,358-376，agentInk 两主题白）；translucentTokensKeepAlpha；foregroundContrast / roles（状态色在三层底与自身 -dim 上 4.5，primaryInk 在 primary 上，agentInk 在 17 色上，idle 3.0）；扫描放过 .token(.primary) 仍抓 .foregroundStyle(.primary) 等，viewSourcesUseTokensOnly 过；FontTests（6 个 PostScript 名可解析、AX3 >1.5×、Font.agentre(.body)==Font.custom(\"Inter-Regular\",15,relativeTo:.body)）；IconTests（恰为稿子用到的 42 个 lucide 名，24×24 模板图有像素）。全 scheme build-for-testing（新 DD /tmp/t41-b，DIAGNOSE…=YES_ERROR）exit 0，AgentreKit_AgentreDesign.bundle 已嵌入；219 行改名（textPrimary→ink、textSecondary→ink2、accent→primary、onAccent→primaryInk、running→run、waiting→amber、failure→coral），无布局改动。主会话核验：提交路径全在 files 内。接口：Font.agentre(_ role: FontRole, mono: Bool = false, weight: FontWeight? = nil)，UIFont.agentre 同参另带 compatibleWith:；FontRole 预设 display 30 / title 21 / headline 17 / body 15 / callout 14 / subheadline 13 / footnote 12 / caption 11.5 / caption2 10.5，另有 FontRole(size:weight:relativeTo:)；Image(_ icon: AgentreIcon)、UIImage(_ icon:)（可失败）；另增 agentInk（身份色上的白字，唯一豁免深浅须不同的 token）。concerns：lucide 1.x 去掉品牌图标，github 取自 lucide-static 0.577.0，两份 ISC 许可在 ThirdPartyLicenses/；signal/wifi/battery-full 只在稿子假状态栏里，未收；CTFontManagerRegisterGraphicsFont 在 iOS 18 已弃用，故首用时写临时目录按 URL 注册。"
 
   - id: 42
     goal: "身份字形（规格「逐屏视觉契约·全局框架」头像字形一条、决策 21、测试决策「头像字形与身份色」）：纯函数——项目首字原样大小写、Agent 首字母规则、空名不编字母、agent-N → token、缺失或越界 → agentNeutral；解码 /v1/workspace/projects 的 color 与 /agents 的 avatar_color；头像字形视图：项目 / Agent / 无项目中性字形 / 项目已挂但列表未取到时的空白字形；按会话的 project_sync_id 与承载机器指纹查项目与机器名的目录。"
