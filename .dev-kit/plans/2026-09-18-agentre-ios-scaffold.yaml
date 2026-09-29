@@ -466,9 +466,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: "41 的 token/字体/图标；42 的 AvatarGlyph、IdentityDirectory"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 758facf
+    note: "complete with concerns（不阻塞）。RED：-only-testing:AgentreHostedTests/ShellChromeTests（新 DD /tmp/t43-red）exit 65，找不到 ShellTab、Router 无 newConversation / tab；第二次 RED -only-testing:AgentreUITests/ShellChromeUITests（/tmp/t43-ui1）exit 65「machine detail after the edge swipe did not go away」——隐藏系统导航栏后 UIKit 停掉边缘右滑。GREEN：-only-testing:AgentreUITests（新 DD /tmp/t43-ui3）exit 0，8 条过（ShellChromeUITests 中浅 / 英深 + Mainline 四组合）：tab 栏在三个顶层页出现，机器详情、模态、草稿、对话、草稿与对话键盘弹起时都不存在；模态有「取消」「新建对话」，取消后 tab 栏回来；首条发出后模态收起、对话在消息栈打开；边缘右滑在机器详情与对话上返回且 tab 栏回来；xcresult 留三个顶层页截图。-only-testing:AgentreHostedTests -only-testing:AgentreAuthTests -only-testing:AgentreDesignTests（/tmp/t43-g6）exit 0（48 + 54 + 36）：栈 / 模态 / 键盘通知下的 tab 栏、取消与首条交接、紧凑返回、贴合面板低于窗口 35%、搜索框 ≥44pt 且占位随语言、命中区登记数 = 放置数（3 个 tab；8 个部件）各 ≥44×44 且不重叠；测试辅助按标识 shell.tab.* / shell.tabBar / shell.title / shell.action / shell.back / shell.cancel 找。主会话核验：提交路径全在 files 内。接口：ShellTab { messages, machines, me }；ShellView(selection:showsTabBar:messages:machines:me:)；.topLevelHeader(_ title: Text) { actions } 与 ChromeIconButton(_ icon: AgentreIcon, label: Text, size: CGFloat = 22, action:)；.compactNavigationBar(title: Text, subtitle: Text? = nil, leading:, trailing:) 与 CompactNavigationBar(…, onBack:)；.modalNavigationBar(title:onCancel:)；GroupedSection(style: .page / .sheet) { GroupedRow(_ icon:, title: Text, value: Text? = nil, monoValue: Bool = false, role: .standard / .destructive, action:) }；.fittedSheet(isPresented:) / .fittedSheet(item:)；SearchField(text:placeholder:table:onSubmit:)；App 内 Router.tab、Router.newConversation: [NewConversationRoute]?、Router.me: NavigationPath、Router.open(started:)。concerns：顶层页尚无输入框，「顶层页键盘弹起时隐藏」目前只在宿主测试里用键盘通知证明，任务 44 加消息搜索后可由 XCUITest 覆盖；「我」的二级页须按值 push 进 Router.me，否则 tab 栏不会收起；边缘右滑靠 .compactNavigationBar 内的隐藏探针替换导航控制器的 pop 手势代理（Chrome.swift）；为让 LoginScreenTests（不在写入集）照常编译保留了自管的 ShellView(messages:machines:me:)；LoopTests、LanguageSwitchTests、Mainline 改为先返回再切 tab。"
 
   - id: 44
     goal: "01 消息屏对齐（规格「逐屏视觉契约·01 消息」、测试决策「显示取值」本地搜索一项）：头部与新建入口；本地库内按标题 / 项目名 / 机器名大小写不敏感子串搜索、清空恢复；平铺行加分隔线；项目字形头像带状态点；等你处理置顶铺 surface、琥珀待处理行与未处理请求条数；运行中「正在输入…」；未读加粗加圆点不写数；01 屏在中/英 × 浅/深的截图。"
