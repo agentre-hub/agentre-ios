@@ -456,9 +456,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Sources/AgentreREST/Workspace/, agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/SignedInServices.swift, agentre-ios/Tests/AgentreNewConversationTests/, agentre-ios/Tests/AgentreDesignTests/]
     model: mid
     interfaces: "41 的 ColorToken 身份色 case 与 Font.agentre"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 24bf564
+    note: "RED：xcodebuild test -only-testing:AgentreNewConversationTests -only-testing:AgentreDesignTests（新 DD /tmp/t42-red）exit 65，找不到 IdentityColor / IdentityGlyph。GREEN：同命令 exit 0（72 + 36 条）——projectInitialKeepsCase（6 例）；agentInitialPairsLatinWords / DoesNotPairMixedScripts / SingleWordTakesFirstCharacter；*OfEmptyNameIsNil（空名与全空白返回 nil，不移植宿主的 \"?\"）；identityColorParsesEachSlot / FallsBackToNeutral（含原始 hex 等 7 个反例）；WorkspaceClientTests 解码 color / avatar_color；AvatarGlyphTests 6 例含 blankIsNotNeutral（空白为描边、中性为填充）；WorkspaceIdentityDirectoryTests 3 例（未载入前为 nil、失败保留旧值、机器名查找）。全 scheme build-for-testing（新 DD）exit 0。主会话核验：提交路径全在 files 内。接口：IdentityColor（AgentreDomain，case slot(Int) / neutral，init(wireToken:)）；projectInitial(_:) / agentInitial(_:) -> String?；IdentityGlyph（case identity(letter:color:) / neutral / blank；static project(_ syncID:in projects: [WorkspaceProject]?)、static agent(_:)）；IdentityDirectory 协议（projects() async -> [WorkspaceProject]?，nil = 从未载入；machineName(fingerprint:) async -> String?）；WorkspaceIdentityDirectory（AgentreREST，actor，init(workspace:roster:)，load()）；AvatarGlyph（AgentreUI/Shell，init(_ glyph:, size: CGFloat = 28)）；WorkspaceAgent.avatarColor / WorkspaceProject.color（默认 .neutral）；SignedInServices.identity，start() 中 load()。concerns：项目列表已载入但找不到该 syncID（如项目已删）时落中性字形，规格未写此边界；目录自行取 /v1/workspace/projects 与 /v1/devices，不与新建对话、机器目录共享缓存（后者不在本任务写入集）。"
 
   - id: 43
     goal: "外壳与通用部件（规格「逐屏视觉契约·全局框架」、决策 23、测试决策「tab 栏可见性」）：自绘 tab 栏只在三个顶层页、当前栈为空、无模态且键盘收起时出现（XCUITest 断言二级页与键盘弹起时界面上不存在 tab 栏元素）；新建对话改为自带栈的模态、左上「取消」，草稿首条发出后模态收起并在消息栈上打开该对话；紧凑导航栏（系统边缘右滑返回仍可用，有测试）、顶层大字标题、分组卡片行、贴合内容的底部面板、搜索框；宿主测试与 UI 测试辅助改为按 shell.tabBar 标识找 tab；三个顶层页的截图。"
