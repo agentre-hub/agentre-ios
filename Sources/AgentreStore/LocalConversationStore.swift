@@ -306,17 +306,18 @@ public actor LocalConversationStore: ConversationSettingsRecording {
         var conversation = row.snapshot
         let preview = try preview(of: row)
         conversation.pending = preview.pending
+        conversation.pendingCount = preview.pendingCount
         conversation.lastText = preview.lastText
         return conversation
     }
 
     /// 从最新的帧往回找，最多看 `previewWindow` 帧：等你处理时，对端停在那次请求上，
-    /// 它就在转录末尾附近。
+    /// 它就在转录末尾附近；数尚未处理的请求条数同样只看这一段窗口。
     static let previewWindow = 200
 
-    /// 待决取最近一次没有落定的审批 / 提问请求，只在这一行正等你处理时才取——
-    /// 等待与否由摘要说了算（跟随规则），帧只回答「等的是什么」。
-    private func preview(of row: ConversationRecord) throws -> (pending: PendingInput?, lastText: String) {
+    /// 待决取最近一次没有落定的审批 / 提问请求，与这一行尚未处理的请求条数，只在正等你处理时才取——
+    /// 等待与否由摘要说了算（跟随规则），帧只回答「等的是什么、有几件」。
+    private func preview(of row: ConversationRecord) throws -> (pending: PendingInput?, lastText: String, pendingCount: Int) {
         let owner = row.machineFingerprint
         let id = row.conversationID
         var descriptor = FetchDescriptor<FrameRecord>(
@@ -328,8 +329,11 @@ public actor LocalConversationStore: ConversationSettingsRecording {
         var pending: PendingInput?
         var lastText: String?
         var resolved = Set<String>()
+        // 未落定的请求标识，按各自的 requestID 去重：数的是「有几件事等着」，不是「有几帧提到过它」。
+        var pendingIDs = Set<String>()
         for frame in try modelContext.fetch(descriptor) {
-            if lastText != nil, !wantsPending || pending != nil { break }
+            // 不等你处理时，找到最后一句话就可以收手；等你处理时必须看完整段窗口才数得全未处理的请求。
+            if lastText != nil, !wantsPending { break }
             guard let notification = try? Agentre_Wire_RpcNotification(serializedBytes: frame.payload),
                   let event = notification.runtimeEventOfAnyTurn
             else { continue }
@@ -342,16 +346,20 @@ public actor LocalConversationStore: ConversationSettingsRecording {
                 resolved.insert(resolution.requestID)
             case .userAskResolved(let resolution):
                 resolved.insert(resolution.requestID)
-            case .toolPermissionRequest(let request) where wantsPending && pending == nil && !resolved.contains(request.requestID):
-                pending = .permission(tool: request.toolName, detail: permissionDetail(request.input))
-            case .userAskRequest(let request) where wantsPending && pending == nil && !resolved.contains(request.requestID):
-                let question = request.questions.first.map { $0.question.isEmpty ? $0.header : $0.question } ?? ""
-                pending = .question(question)
+            case .toolPermissionRequest(let request) where wantsPending && !resolved.contains(request.requestID):
+                if pendingIDs.insert(request.requestID).inserted, pending == nil {
+                    pending = .permission(tool: request.toolName, detail: permissionDetail(request.input))
+                }
+            case .userAskRequest(let request) where wantsPending && !resolved.contains(request.requestID):
+                if pendingIDs.insert(request.requestID).inserted, pending == nil {
+                    let question = request.questions.first.map { $0.question.isEmpty ? $0.header : $0.question } ?? ""
+                    pending = .question(question)
+                }
             default:
                 continue
             }
         }
-        return (pending, lastText ?? "")
+        return (pending, lastText ?? "", pendingIDs.count)
     }
 
     /// 应用一条会话的一批帧。

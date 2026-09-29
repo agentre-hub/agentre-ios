@@ -1,6 +1,40 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "messages.search": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search conversations, projects, machines"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索会话、项目、机器"
+          }
+        }
+      }
+    },
+    "messages.pendingCount %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld pending request(s)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 条待处理"
+          }
+        }
+      }
+    },
     "messages.title": {
       "extractionState": "manual",
       "localizations": {

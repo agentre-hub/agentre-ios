@@ -51,6 +51,16 @@ final class ShellChromeUITests: XCTestCase {
         screen.tap(screen.tab(.messages), "Messages tab")
         screen.expectTabBar("the message list")
         screen.shot("top-level messages")
+
+        // 顶层页键盘弹起时同样没有 tab 栏：消息列表的本地搜索框（规格「01 消息」）。
+        let search = screen.input(copy("Messages", "messages.search"))
+        screen.tap(search, "messages search field")
+        screen.expect(app.keyboards.firstMatch, "keyboard on the message list")
+        screen.expectNoTabBar("the message list with the keyboard up")
+        screen.shot("messages keyboard up")
+        search.typeText("\n")
+        screen.expectTabBar("the message list after dismissing the keyboard")
+
         let newConversation = screen.button(copy("NewConversation", "newconv.title"))
         screen.tap(newConversation, "new conversation")
         screen.expect(screen.cancel, "cancel on the new-conversation modal")

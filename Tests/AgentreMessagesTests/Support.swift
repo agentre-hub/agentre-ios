@@ -188,6 +188,24 @@ actor FakeConversationStore: ConversationStore {
     }
 }
 
+/// 注入视图模型的伪身份目录：项目树与机器名由测试摆好，`load()` 前后可以给出不同的答案
+/// （与 `WorkspaceIdentityDirectory` 同一份协议，见任务 42）。
+actor FakeIdentityDirectory: IdentityDirectory {
+    private var projectList: [WorkspaceProject]?
+    private var machines: [String: String]
+
+    init(projects: [WorkspaceProject]? = nil, machines: [String: String] = [:]) {
+        projectList = projects
+        self.machines = machines
+    }
+
+    func set(projects: [WorkspaceProject]?) { projectList = projects }
+    func set(machines: [String: String]) { self.machines = machines }
+
+    func projects() -> [WorkspaceProject]? { projectList }
+    func machineName(fingerprint: String) -> String? { machines[fingerprint] }
+}
+
 /// 等一个条件成立（真实时间上限 3 秒）。
 @MainActor
 func eventually(_ what: String = "condition", sourceLocation: SourceLocation = #_sourceLocation, _ probe: @MainActor () async -> Bool) async throws {

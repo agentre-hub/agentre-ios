@@ -43,6 +43,9 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
     /// 此刻等你处理的那一件事（待批准的命令 / 待回答的问题），取自已落库的帧；
     /// 不在等你处理时为 nil。
     public var pending: PendingInput?
+    /// 这条会话里尚未处理的请求条数（待批准的命令 + 待回答的问题，按各自的 `requestID` 去重）；
+    /// 不在等你处理时为 0。消息列表用它标出「行尾的琥珀计数」（规格「01 消息」）。
+    public var pendingCount: Int
     /// 转录里最近一句正文或用户消息；还没有时为空。
     public var lastText: String
     /// 这条会话此刻用的模型（清单原样）；空 = 机器没报。
@@ -68,6 +71,7 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         latestSeq: Int64 = 0,
         readMarker: Int64? = nil,
         pending: PendingInput? = nil,
+        pendingCount: Int = 0,
         lastText: String = "",
         providerKey: String = "",
         modelKey: String = "",
@@ -87,6 +91,7 @@ public struct SavedConversation: Sendable, Equatable, Identifiable {
         self.latestSeq = latestSeq
         self.readMarker = readMarker
         self.pending = pending
+        self.pendingCount = pendingCount
         self.lastText = lastText
         self.providerKey = providerKey
         self.modelKey = modelKey

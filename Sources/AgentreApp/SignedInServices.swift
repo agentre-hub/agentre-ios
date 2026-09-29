@@ -164,7 +164,7 @@ final class SignedInServices {
             catalog: EngineCatalogClient(transport: environment.transport, server: server), connection: connection, carrier: carrier,
             store: store
         )
-        messages = MessagesModel(store: store)
+        messages = MessagesModel(store: store, identity: identity)
         machines = MachinesModel(roster: roster)
         newConversation = NewConversationModel(workspace: workspace, store: store)
         let failures = SyncFailures()

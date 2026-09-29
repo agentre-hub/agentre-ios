@@ -68,6 +68,35 @@ struct MessagesModelTests {
         #expect(model.badge.unread == 1)
     }
 
+    @Test("本地搜索按标题 / 项目名 / 机器名做大小写不敏感的子串匹配，不发网络请求；清空恢复全表")
+    func searchMatchesTitleProjectAndMachine() async throws {
+        var byTitle = row("by-title", last: 300)
+        byTitle.title = "修复中继重连后游标错位"
+        var byProject = row("by-project", last: 200)
+        byProject.projectSyncID = "proj-1"
+        var byMachine = row("by-machine", last: 100)
+        byMachine.carrierFingerprint = "fp-a"
+        let store = FakeConversationStore([byTitle, byProject, byMachine])
+        let identity = FakeIdentityDirectory(
+            projects: [WorkspaceProject(syncID: "proj-1", name: "agentre-server")], machines: ["fp-a": "mac-studio"]
+        )
+        let model = MessagesModel(store: store, identity: identity)
+        await model.load()
+        #expect(model.conversations.count == 3)
+
+        model.query = "游标"
+        #expect(model.conversations.map(\.key.conversationID) == ["by-title"])
+        model.query = "AGENTRE-SERVER"
+        #expect(model.conversations.map(\.key.conversationID) == ["by-project"])
+        model.query = "mac-studio"
+        #expect(model.conversations.map(\.key.conversationID) == ["by-machine"])
+        model.query = "没有任何会话匹配这个词"
+        #expect(model.conversations.isEmpty)
+
+        model.query = ""
+        #expect(model.conversations.map(\.key.conversationID) == ["by-title", "by-project", "by-machine"])
+    }
+
     @Test("冷启动、没有任何中继：真实本地库里已保存的会话直接出现在列表上")
     func coldStartShowsLocalContent() async throws {
         let directory = try TemporaryDirectory()

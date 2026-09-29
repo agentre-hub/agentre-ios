@@ -42,6 +42,29 @@ struct StorePreviewTests {
         #expect(try await store.conversation(key("web"))?.pending == .permission(tool: "WebSearch", detail: nil))
     }
 
+    @Test("琥珀计数是这条会话里尚未处理的请求条数，不是扫到第一条就停：多条待批准 / 待回答的都数得到")
+    func pendingCountCoversEveryUnresolvedRequest() async throws {
+        let directory = try TemporaryDirectory()
+        let store = try openStore(directory)
+        try await store.save(summary("conv-1", lifecycle: "running"), via: machine)
+        try await store.record([
+            live(permissionRequest("conv-1", id: "p0"), seq: 1),
+            live(permissionResolved("conv-1", id: "p0"), seq: 2),
+            live(permissionRequest("conv-1", id: "p1", input: #"{"command":"rm -rf build"}"#), seq: 3),
+            live(askRequest("conv-1", id: "q1", question: "用哪个分支？"), seq: 4),
+        ], via: machine)
+        let row = try #require(try await store.conversation(key("conv-1")))
+        #expect(row.waitingForInput)
+        // 两件尚未处理的事：p0 已经落定，不算。最近一件（q1）是给行上那一句预览的。
+        #expect(row.pendingCount == 2, "\(row)")
+        #expect(row.pending == .question("用哪个分支？"))
+
+        try await store.record([live(askResolved("conv-1", id: "q1"), seq: 5)], via: machine)
+        let afterOneResolved = try #require(try await store.conversation(key("conv-1")))
+        #expect(afterOneResolved.pendingCount == 1)
+        #expect(afterOneResolved.pending == .permission(tool: "Bash", detail: "rm -rf build"))
+    }
+
     @Test("不在等你处理时没有待决可读：落定了的、快照说不等了的都不算")
     func noPendingWhenNotWaiting() async throws {
         let directory = try TemporaryDirectory()
