@@ -476,9 +476,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Sources/AgentreDomain/Session/, agentre-ios/Sources/AgentreStore/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreMessagesTests/, agentre-ios/Tests/AgentreStoreTests/, agentre-ios/UITests/]
     model: mid
     interfaces: "42 的 AvatarGlyph、IdentityDirectory；43 的 TopLevelHeader、SearchField"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: ea259b4
+    note: "complete with concerns（不阻塞）。RED：-only-testing:AgentreMessagesTests（只留测试、生产改动暂存）exit 65，编译错误：pendingCount / glyph 多余参数、无法推断 neutral（缺 SavedConversation.pendingCount、MessageRow(glyph:)、MessagesModel(identity:)）。GREEN：AgentreMessagesTests exit 0——searchMatchesTitleProjectAndMachine（标题 / 项目 / 机器子串匹配，空查询恢复全表）、avatarBadgeOnlyForWaitingAndRunning（状态点只在等你处理与运行中）、rowsCarryTheFacts（正在输入…、未读加粗加点不写数）；StorePreviewTests.pendingCountCoversEveryUnresolvedRequest exit 0（两条未决都计入，处理一条后为 1）；AgentreStoreTests 22/22 exit 0；AgentreUITests/ShellChromeUITests exit 0（2/2，新增消息搜索框键盘弹起时 tab 栏不存在的断言）；AgentreUITests/MainlineUITests exit 0（5/5，既有「09 messages」截图覆盖 01 屏四种组合）；LocalizationTests exit 0；全 scheme build-for-testing（DIAGNOSE…=YES_ERROR）成功。头部与新建入口沿用任务 43 的接线，Messages 源码中无筛选按钮。主会话核验：提交路径全在 files 内。concerns：AvatarGlyph 圆角为 size/4（任务 42/43 的 Shell 接口），50pt 行头像约 12.5pt，稿子为 16pt；平铺行与分隔线没有专门断言，留运行验证与稿子逐屏对照。"
 
   - id: 45
     goal: "对话转录对齐（规格「逐屏视觉契约·02 对话」除输入区外的各条、测试决策「显示取值」日期胶囊一项）：导航栏返回 / 项目字形 / 标题 / 随状态的副标题 / ⓘ 打开会话信息；按自然日插日期胶囊（帧源端时刻，实时帧取收到时刻）；primary 用户气泡；回复署名为后端 shortLabel + 等宽模型名（收场时报的模型，运行中取会话当前模型）；组头耗时 分:秒、每步结果「N 处 / N 行 / +N / 失败」、运行中步骤不写耗时；Subagent 单行卡；审批卡标题「请求执行命令」/「请求使用 <工具>」；glass「N 条新内容」；02、02C、03 屏截图。"
