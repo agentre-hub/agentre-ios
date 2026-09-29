@@ -154,6 +154,40 @@
         }
       }
     },
+    "permission.title.command": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run a command"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求执行命令"
+          }
+        }
+      }
+    },
+    "permission.title.tool %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求使用 %@"
+          }
+        }
+      }
+    },
     "question.answered": {
       "extractionState": "manual",
       "localizations": {

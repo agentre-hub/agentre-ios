@@ -38,7 +38,7 @@ struct TranscriptScreenTests {
             .textDelta("再读一个文件。"),
             .toolCall(readUse("r3", path: "/repo/go.mod")), .toolResult(result("r3", "module x")),
             .permissionRequest(PermissionRequest(requestID: "p1", toolCallID: "", toolName: "Bash", input: ["command": "rm -rf build"])),
-            .turnDone(TurnDone(durationMs: 6600)),
+            .turnDone(TurnDone(durationMs: 6600, model: "opus-5")),
         ]
         if tall {
             // 内容高过一屏：视口停在顶上、不在底部，「不跟随」才是真实可达的状态。
@@ -83,6 +83,9 @@ struct TranscriptScreenTests {
         let report = await hitTargetReport(of: TranscriptView(model: model, agentName: "Claude Code"))
         #expect(report.targets.count == placed, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
+        // 回到最新的入口写「N 条新内容」。
+        let labels = await HostedScreen(TranscriptView(model: model, agentName: "Claude Code")).labels().joined(separator: "\n")
+        #expect(labels.contains(Self.format("transcript.jumpToLatest %lld", 1)), "\(labels)")
     }
 
     @Test("折叠态读得到：步数、固定顺序的汇总、红色失败数、耗时；Subagent 只一行：名称、步数、耗时，不带分类汇总")
@@ -95,13 +98,40 @@ struct TranscriptScreenTests {
         #expect(labels.contains(Self.format("activity.summary.read %lld", 2)))
         #expect(labels.contains(Self.format("activity.summary.command %lld", 1)))
         #expect(labels.contains(Self.format("activity.summary.failures %lld", 1)))
-        #expect(labels.contains(Self.format("activity.duration %@", "6.6")))
+        // 耗时写成「分:秒」：组头 6.6 秒、Subagent 12.3 秒。
+        #expect(labels.contains("0:07"), "\(labels)")
         #expect(labels.contains(Self.format("subagent.title %@", "查日志")))
-        #expect(labels.contains(Self.format("activity.duration %@", "12.3")))
+        #expect(labels.contains("0:12"), "\(labels)")
         // Subagent 的内层汇总不出现在折叠行上（「命令 3」只在展开后的它自己的块里）。
         #expect(!labels.contains(Self.format("activity.summary.command %lld", 3)))
-        // 单独成行的那一步：名字与相对路径就在转录里。
+        // 单独成行的那一步：名字与相对路径就在转录里，行尾是读到的行数。
         #expect(labels.contains("/repo/go.mod"))
+        #expect(labels.contains(Self.format("activity.row.lines %lld", 1)), "\(labels)")
+        // 署名：后端显示名，后接这一轮收场时报的模型。
+        #expect(labels.contains("opus-5"), "\(labels)")
+    }
+
+    @Test("展开的组头：每步行尾按种类写「N 处 / N 行 / 失败」，成功命令的原文不上行尾")
+    func expandedStepResults() async throws {
+        let model = await settledModel()
+        let header = try #require(model.rows.first { if case .activityHeader = $0.content { true } else { false } })
+        guard case .activityHeader(let row) = header.content else { return }
+        model.toggle(row.blockKey, current: row.expanded)
+        let labels = await HostedScreen(TranscriptView(model: model, agentName: "Claude Code")).labels().joined(separator: "\n")
+        #expect(labels.contains(Self.format("activity.row.lines %lld", 2)), "\(labels)")
+        #expect(labels.contains(Self.format("activity.row.failed")), "\(labels)")
+        #expect(!labels.contains("exit 1"), "\(labels)")
+    }
+
+    @Test("导航栏副标题：运行中写「正在输入…」、等你处理写「等你回复」，其余写承载机器名；机器名不知道时不写")
+    func subtitle() async throws {
+        let typing = try #require(ConversationSubtitle.text(.typing, machineName: "mac-studio"))
+        #expect(await HostedScreen(typing).labels() == [Self.format("conversation.subtitle.typing")])
+        let waiting = try #require(ConversationSubtitle.text(.waiting, machineName: "mac-studio"))
+        #expect(await HostedScreen(waiting).labels() == [Self.format("conversation.subtitle.waiting")])
+        let idle = try #require(ConversationSubtitle.text(.idle, machineName: "mac-studio"))
+        #expect(await HostedScreen(idle).labels() == ["mac-studio"])
+        #expect(ConversationSubtitle.text(.idle, machineName: nil) == nil)
     }
 
     @Test("运行中的组头只留「执行中 · N 步」，不出耗时")

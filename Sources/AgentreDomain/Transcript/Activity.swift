@@ -140,16 +140,23 @@ public struct StepFacts: Sendable, Equatable {
     public var backgroundTaskID: String?
     /// 非零退出码。
     public var exitCode: Int?
-    public var plus: Int?
-    public var minus: Int?
+    /// 行尾写的结果；没有结构化结果（成功命令的原文、认不出的工具、运行中）时为 nil。
+    public var result: StepResult?
     /// 展开体要渲染的结果正文（命令结果取 output）。
     public var resultText = ""
-    /// 单行结果的预览，封顶 200 字。
-    public var preview: String?
-    /// 多行结果的行数。
-    public var lines: Int?
 
     public init() {}
+}
+
+/// 一步在行尾写的结果，按工具种类取（规格「02 对话」：搜索类「N 处」，读文件「N 行」，改文件「+N」，失败写「失败」）。
+public enum StepResult: Sendable, Equatable {
+    /// 搜索形状（入参带 pattern / query）：结果的非空行数。
+    case matches(Int)
+    /// 读文件形状（入参带路径）：结果的行数。
+    case lines(Int)
+    /// 改文件 / 写入：后端已算好的增删行。
+    case changed(plus: Int, minus: Int)
+    case failed
 }
 
 /// 一步在行首怎么称呼自己。

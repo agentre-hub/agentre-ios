@@ -95,6 +95,11 @@ func realisticReply(_ text: String, thinkingDeltas: Int = 795) -> [TranscriptEve
     return events
 }
 
+/// 除日期胶囊之外的行：胶囊随帧的时刻插，与这些用例要数的内容无关。
+func contentRows(_ rows: [TranscriptRow]) -> [TranscriptRow] {
+    rows.filter { if case .day = $0.content { false } else { true } }
+}
+
 let machine = "machine-1"
 let conversationKey = ConversationKey(machineFingerprint: machine, conversationID: "conv-1")
 

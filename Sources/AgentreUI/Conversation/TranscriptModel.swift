@@ -17,10 +17,17 @@ public final class TranscriptModel {
     /// 上下文用量；窗口不为正时为 nil（整块不渲染）。
     public var contextUsage: ContextUsage? { document.contextUsage }
 
+    /// 会话此刻的模型（装配层从输入区的设置递进来）：还在跑、执行端还没报模型的那一轮署它。
+    public var currentModel: String? {
+        didSet { if currentModel != oldValue { rebuild(countingNewRows: false) } }
+    }
+
     @ObservationIgnored private let store: any ConversationStore
     @ObservationIgnored private let relay: any TranscriptRelay
     @ObservationIgnored private let decoder: any TranscriptPayloadDecoding
     @ObservationIgnored private let pageSize: Int
+    /// 本机时钟：实时帧不带源端时刻，日期胶囊取收到它的时刻。
+    @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var timeline = TranscriptTimeline()
     /// 实时流合进来了、还没交给屏的变化。一篇长回复一秒几十片，每片都交一次，屏就每片重排一次，
     /// 排不过来的片越积越多，转录便落后于机器；所以接流时最多每 `liveInterval` 交一次。
@@ -45,18 +52,21 @@ public final class TranscriptModel {
     /// - Parameters:
     ///   - conversation: 本地库里的会话；它的键给出承载机器，`peerFingerprint` 原样带给 pull / attach。
     ///   - pageSize: 本地少于这么多帧即向机器补一页；向后翻页也按这个大小。
+    ///   - now: 本机时钟（实时帧收到的时刻）。
     public init(
         conversation: SavedConversation,
         store: any ConversationStore,
         relay: any TranscriptRelay,
         decoder: any TranscriptPayloadDecoding,
-        pageSize: Int = 50
+        pageSize: Int = 50,
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.conversation = conversation
         self.store = store
         self.relay = relay
         self.decoder = decoder
         self.pageSize = max(1, pageSize)
+        self.now = now
     }
 
     /// 读历史并跟随实时帧，直到所在任务被取消（视图出现时调用，随视图消失而取消）。
@@ -97,7 +107,7 @@ public final class TranscriptModel {
         loaded = true
         let frames = (try? await store.transcript(conversation.key)) ?? []
         for frame in frames {
-            insert(seq: frame.seq, payload: frame.payload)
+            insert(seq: frame.seq, payload: frame.payload, time: frame.createtime)
         }
         hasOlder = timeline.oldestSeq.map { $0 > 1 } ?? true
         rebuild(countingNewRows: false)
@@ -147,7 +157,9 @@ public final class TranscriptModel {
             hasOlder = false
             return true
         }
-        return insert(seq: frame.seq, payload: frame.payload)
+        // 补齐拉回的帧带源端时刻（没记时为 0）；实时帧不带，取收到它的时刻。
+        let time = frame.createtime ?? Int64(now().timeIntervalSince1970 * 1000)
+        return insert(seq: frame.seq, payload: frame.payload, time: time)
     }
 
     /// 离上一次交出已满 `liveInterval` 就当场交，否则到点再交；其间合进来的都并进那一次。
@@ -237,17 +249,18 @@ public final class TranscriptModel {
     private func merge(older frames: [TranscriptFrame]) {
         var changed = false
         for frame in frames {
-            changed = insert(seq: frame.seq, payload: frame.payload) || changed
+            changed = insert(seq: frame.seq, payload: frame.payload, time: frame.createtime) || changed
         }
         if changed { rebuild(countingNewRows: false) }
     }
 
+    /// - Parameter time: 帧的时刻（Unix 毫秒）；0 = 不知道。
     @discardableResult
-    private func insert(seq: Int64?, payload: Data) -> Bool {
+    private func insert(seq: Int64?, payload: Data, time: Int64) -> Bool {
         guard let decoded = decoder.decode(payload) else { return false }
         // 新的一轮开始（不是向前补回来的旧帧）：那一次按清单的收场作废。
         if case .turnStarted = decoded.event, !decoded.preview, seq.map({ $0 > (timeline.latestSeq ?? 0) }) ?? true { endedUnseen = false }
-        return timeline.insert(seq: seq, event: decoded.event, preview: decoded.preview)
+        return timeline.insert(seq: seq, event: decoded.event, preview: decoded.preview, time: time)
     }
 
     /// 把转录交给屏。还没交出去的实时变化先按新行交出（它们要记进「回到最新」的条数），
@@ -264,11 +277,14 @@ public final class TranscriptModel {
         document.liveThinking = timeline.liveThinking
         self.document = document
         let previous = countingNewRows ? Set(rows.map(\.id)) : []
-        rows = TranscriptRows.build(document, disclosure: disclosure, cwd: conversation.cwd)
+        rows = TranscriptRows.build(document, disclosure: disclosure, cwd: conversation.cwd, currentModel: currentModel)
         if countingNewRows {
+            // 署名与日期胶囊只是新内容的框，不算「N 条新内容」。
             follow.appended(rows.count { row in
-                if case .agentHeader = row.content { return false }
-                return !previous.contains(row.id)
+                switch row.content {
+                case .agentHeader, .day: false
+                default: !previous.contains(row.id)
+                }
             })
         }
     }

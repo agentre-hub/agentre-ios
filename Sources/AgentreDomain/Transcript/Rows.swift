@@ -11,10 +11,12 @@ public struct TranscriptRow: Sendable, Equatable, Identifiable {
     }
 
     public enum Content: Sendable, Equatable {
+        /// 日期胶囊：一个自然日的第一条消息前一枚，带那条消息的时刻（Unix 毫秒）。
+        case day(Int64)
         /// 用户消息：右侧气泡。
         case user(String)
-        /// 助手消息的首行：头像与署名。
-        case agentHeader
+        /// 助手消息的首行：头像与署名。署名里后端显示名之后的模型；nil = 不写。
+        case agentHeader(model: String?)
         case text(String, streaming: Bool)
         /// 还在流的思考。
         case thinking(String)

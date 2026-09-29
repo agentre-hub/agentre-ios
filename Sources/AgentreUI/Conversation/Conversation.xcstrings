@@ -1,23 +1,6 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "activity.duration %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@s"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@s"
-          }
-        }
-      }
-    },
     "activity.elided %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -120,23 +103,6 @@
         }
       }
     },
-    "activity.row.exit %lld": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "exit %lld"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "exit %lld"
-          }
-        }
-      }
-    },
     "activity.row.failed": {
       "extractionState": "manual",
       "localizations": {
@@ -184,6 +150,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 行"
+          }
+        }
+      }
+    },
+    "activity.row.matches %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld matches"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 处"
           }
         }
       }
@@ -477,6 +460,40 @@
         }
       }
     },
+    "conversation.subtitle.typing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Typing…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在输入…"
+          }
+        }
+      }
+    },
+    "conversation.subtitle.waiting": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for you"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等你回复"
+          }
+        }
+      }
+    },
     "subagent.steps %lld": {
       "extractionState": "manual",
       "localizations": {
@@ -528,6 +545,40 @@
         }
       }
     },
+    "transcript.day.today %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "今天 %@"
+          }
+        }
+      }
+    },
+    "transcript.day.yesterday %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yesterday %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "昨天 %@"
+          }
+        }
+      }
+    },
     "transcript.error.unknown": {
       "extractionState": "manual",
       "localizations": {
@@ -568,13 +619,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Jump to latest · %lld new"
+            "value": "%lld new"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "回到最新 · %lld 条新内容"
+            "value": "%lld 条新内容"
           }
         }
       }

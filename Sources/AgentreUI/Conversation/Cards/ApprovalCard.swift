@@ -40,16 +40,16 @@ private struct ApprovalPermissionCard: View {
         let input = ApprovalInput(toolName: request.toolName, input: request.input, cwd: model.conversation.cwd)
         let expanded = model.isExpanded(request.requestID)
         ApprovalCardFrame(tone: state.tone) {
-            HStack(spacing: 8) {
-                Image(systemName: "shield")
-                    .font(.subheadline.weight(.semibold))
+            HStack(spacing: 7) {
+                Image(.shieldAlert)
+                    .resizable()
+                    .frame(width: 14, height: 14)
                     .foregroundStyle(.token(state.tone))
                     .accessibilityHidden(true)
-                // 工具名是机器产出的：等宽（规格「设计语言」），与提问卡的标题同一呈现。
-                Text(verbatim: request.toolName)
-                    .font(.subheadline.monospaced().weight(.semibold))
-                    .foregroundStyle(.token(.ink))
-                Spacer(minLength: 8)
+                ApprovalPermissionTitle(input: input)
+                    .font(.agentre(FontRole(size: 12.5, weight: .semibold, relativeTo: .footnote)))
+                    .foregroundStyle(.token(state.tone))
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if let settled = state.settledKey {
                     ApprovalPill(key: settled, tone: state.tone)
                 }
@@ -86,6 +86,20 @@ private struct ApprovalPermissionCard: View {
     }
 }
 
+/// 标题按请求种类：命令类为「请求执行命令」，其余为「请求使用」加等宽工具名（工具名是机器产出的）。
+private struct ApprovalPermissionTitle: View {
+    let input: ApprovalInput
+
+    var body: some View {
+        if input.command != nil {
+            Text("permission.title.command", tableName: "Cards", bundle: .module)
+        } else {
+            Text("permission.title.tool \(Text(verbatim: input.toolName).font(.agentre(FontRole(size: 12.5, weight: .semibold, relativeTo: .footnote), mono: true)))",
+                 tableName: "Cards", bundle: .module)
+        }
+    }
+}
+
 /// 执行目录与命令合成一块，按终端的样子排：目录在上、`$` 与命令在下，共用一层浅底。
 private struct ApprovalMachineBlock: View {
     let input: ApprovalInput
@@ -94,15 +108,16 @@ private struct ApprovalMachineBlock: View {
     var body: some View {
         let shown = showsFullText ? input.text : input.summary
         if !input.cwd.isEmpty || !shown.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 if !input.cwd.isEmpty {
                     Text(verbatim: input.cwd)
-                        .foregroundStyle(.token(.ink2))
+                        .font(.agentre(.caption2, mono: true))
+                        .foregroundStyle(.token(.ink3))
                 }
                 if input.command != nil {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
                         Text(verbatim: "$")
-                            .foregroundStyle(.token(.ink2))
+                            .foregroundStyle(.token(.ink3))
                         Text(verbatim: shown)
                             .foregroundStyle(.token(.ink))
                     }
@@ -111,11 +126,12 @@ private struct ApprovalMachineBlock: View {
                         .foregroundStyle(.token(.ink))
                 }
             }
-            .font(.footnote.monospaced())
+            .font(.agentre(.footnote, mono: true))
             .lineLimit(showsFullText ? nil : 1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-            .background(.token(.surface2), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(.token(.bg), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }
@@ -304,18 +320,19 @@ private struct ApprovalCardFrame<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             content
         }
-        .padding(12)
-        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.token(tone).opacity(0.5), lineWidth: 1))
+        .padding(.vertical, 11)
+        .padding(.horizontal, 12)
+        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(.token(tone), lineWidth: 1))
         .padding(.vertical, 6)
     }
 }
 
-/// 处置一行：按标签宽度排、右对齐；排不下一行时自上而下叠放，仍右对齐。
-/// 相邻两枚的命中区之间隔着 `spacing` 的死区。
+/// 处置一行：按标签宽度排、右对齐。稿子的内边距排不下（英文的三枚在 331pt 宽的卡片里）时先收窄按钮的
+/// 内边距，仍排不下才自上而下叠放，仍右对齐。相邻两枚的命中区之间隔着 `spacing` 的死区，不随之收窄。
 private struct ApprovalButtonRow<Content: View>: View {
     static var spacing: CGFloat { 10 }
     @ViewBuilder let content: Content
@@ -323,10 +340,17 @@ private struct ApprovalButtonRow<Content: View>: View {
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: Self.spacing) { content }
+            HStack(spacing: Self.spacing) { content }
+                .environment(\.approvalButtonInset, 8)
             VStack(alignment: .trailing, spacing: Self.spacing) { content }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
+}
+
+extension EnvironmentValues {
+    /// 处置按钮标签两侧的内边距：稿子 12。
+    @Entry fileprivate var approvalButtonInset: CGFloat = 12
 }
 
 /// 处置按钮：绘制 34pt 高、不配图标；命中区由 hitTarget() 补满 44×44。
@@ -336,24 +360,25 @@ private struct ApprovalButton: View {
     let action: () -> Void
     /// 离线时处置发不出去：点不动，而不是点了再报失败。
     @Environment(\.isOffline) private var isOffline
+    @Environment(\.approvalButtonInset) private var inset
 
     var body: some View {
         Button(action: action) {
             Text(key, tableName: "Cards", bundle: .module)
-                .font(.footnote.weight(.semibold))
+                .font(.agentre(.subheadline, weight: .semibold))
                 .lineLimit(1)
                 .fixedSize()
                 .foregroundStyle(.token(weight.foreground))
-                .padding(.horizontal, 12)
+                .padding(.horizontal, inset)
                 .frame(height: 34)
                 .background {
                     switch weight {
                     case .outline:
-                        RoundedRectangle(cornerRadius: 8).strokeBorder(.token(.ink2).opacity(0.5), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 9).strokeBorder(.token(.lineStrong), lineWidth: 1)
                     case .tinted:
-                        RoundedRectangle(cornerRadius: 8).fill(.token(.primary).opacity(0.14))
+                        RoundedRectangle(cornerRadius: 9).fill(.token(.surface2))
                     case .solid:
-                        RoundedRectangle(cornerRadius: 8).fill(.token(.primary))
+                        RoundedRectangle(cornerRadius: 9).fill(.token(.primary))
                     }
                 }
         }
@@ -382,8 +407,8 @@ enum ApprovalButtonWeight: Equatable {
 
     fileprivate var foreground: ColorToken {
         switch self {
-        case .outline: .ink
-        case .tinted: .primary
+        case .outline: .ink2
+        case .tinted: .ink
         case .solid: .primaryInk
         }
     }

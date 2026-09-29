@@ -35,6 +35,7 @@ public struct TranscriptView<Card: View>: View {
                                 TranscriptCells.reply(row, in: model.rows)
                             })
                             .equatable()
+                            .padding(.leading, replyIndent)
                         }
                     }
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
@@ -150,7 +151,7 @@ private final class Pin {
     }
 }
 
-/// 回到最新：上滚离开底部时出现，标明其间新增了多少。
+/// 回到最新：上滚离开底部时出现，`glass` 底胶囊写「N 条新内容」。
 private struct JumpToLatestButton: View {
     let unseen: Int
     let action: () -> Void
@@ -158,8 +159,9 @@ private struct JumpToLatestButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.down")
-                    .font(.footnote.weight(.semibold))
+                Image(.arrowDown)
+                    .resizable()
+                    .frame(width: 14, height: 14)
                     .accessibilityHidden(true)
                 if unseen > 0 {
                     Text("transcript.jumpToLatest \(unseen)", tableName: "Conversation", bundle: .module)
@@ -167,11 +169,13 @@ private struct JumpToLatestButton: View {
                     Text("transcript.jumpToLatest", tableName: "Conversation", bundle: .module)
                 }
             }
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.token(.primaryInk))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.token(.primary), in: Capsule())
+            .font(.agentre(FontRole(size: 12.5, weight: .medium, relativeTo: .footnote)))
+            .foregroundStyle(.token(.primary))
+            .padding(.horizontal, 16)
+            .frame(minHeight: 34)
+            .background(.token(.glass), in: Capsule())
+            .overlay { Capsule().strokeBorder(.token(.line), lineWidth: 1) }
+            .shadow(color: .token(.shadow), radius: 8, y: 4)
         }
         .hitTarget()
     }

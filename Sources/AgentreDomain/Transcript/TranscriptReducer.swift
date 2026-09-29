@@ -23,21 +23,21 @@ public enum TranscriptReducer {
         mutating func apply(_ entry: TimelineEntry) {
             switch entry.event {
             case .userMessage(let text):
-                pushUser(text, id: entry.anchor)
+                pushUser(text, id: entry.anchor, time: entry.time)
             case .steerConsumed(let texts):
                 for (index, text) in texts.enumerated() where !text.isEmpty {
-                    pushUser(text, id: "\(entry.anchor).\(index)")
+                    pushUser(text, id: "\(entry.anchor).\(index)", time: entry.time)
                 }
             case .textDelta(let text):
-                appendText(text, thinking: false, anchor: entry.anchor)
+                appendText(text, thinking: false, entry: entry)
             case .thinkingDelta(let text):
-                appendText(text, thinking: true, anchor: entry.anchor)
+                appendText(text, thinking: true, entry: entry)
             case .toolCall(let use):
-                append(.toolUse(use), anchor: entry.anchor)
+                append(.toolUse(use), entry: entry)
             case .toolResult(let result):
-                append(.toolResult(result), anchor: entry.anchor)
+                append(.toolResult(result), entry: entry)
             case .permissionRequest(let request):
-                append(.permission(request), anchor: entry.anchor)
+                append(.permission(request), entry: entry)
             case .permissionResolved(let requestID, let allowed, let alwaysAllow):
                 mutateLastBlock { block in
                     guard case .permission(var request) = block, request.requestID == requestID else { return false }
@@ -48,7 +48,7 @@ public enum TranscriptReducer {
                     return true
                 }
             case .questionRequest(let request):
-                append(.question(request), anchor: entry.anchor)
+                append(.question(request), entry: entry)
             case .questionResolved(let requestID):
                 mutateLastBlock { block in
                     guard case .question(var request) = block, request.requestID == requestID else { return false }
@@ -59,7 +59,7 @@ public enum TranscriptReducer {
             case .subagent(let update):
                 applySubagent(update)
             case .usage(let total, let window):
-                let index = openAssistant(anchor: entry.anchor)
+                let index = openAssistant(entry)
                 if total > 0 { document.messages[index].totalInputTokens = total }
                 if window > 0 { document.contextWindow = window }
             case .contextWindow(let window):
@@ -69,6 +69,7 @@ public enum TranscriptReducer {
             case .turnDone(let done):
                 if let turn {
                     if done.durationMs > 0 { document.messages[turn].durationMs = done.durationMs }
+                    if !done.model.isEmpty { document.messages[turn].model = done.model }
                     if !done.stopError.isEmpty, document.messages[turn].errorText?.isEmpty ?? true { document.messages[turn].errorText = done.stopError }
                 }
                 if done.contextWindow > 0 { document.contextWindow = done.contextWindow }
@@ -76,7 +77,7 @@ public enum TranscriptReducer {
                 document.running = false
                 open = nil
             case .error(let message):
-                let index = open ?? turn ?? openAssistant(anchor: entry.anchor)
+                let index = open ?? turn ?? openAssistant(entry)
                 document.messages[index].errorText = message
                 open = nil
             case .ignored:
@@ -84,29 +85,30 @@ public enum TranscriptReducer {
             }
         }
 
-        mutating func pushUser(_ text: String, id: String) {
-            document.messages.append(TranscriptMessage(id: id, role: .user, text: text))
+        mutating func pushUser(_ text: String, id: String, time: Int64) {
+            document.messages.append(TranscriptMessage(id: id, role: .user, text: text, time: time))
             open = nil
             turn = nil
         }
 
-        mutating func openAssistant(anchor: String) -> Int {
+        /// 这一帧开启新的助手消息时，消息的身份与时刻都取这一帧的。
+        mutating func openAssistant(_ entry: TimelineEntry) -> Int {
             if let open { return open }
-            document.messages.append(TranscriptMessage(id: anchor, role: .assistant))
+            document.messages.append(TranscriptMessage(id: entry.anchor, role: .assistant, time: entry.time))
             let index = document.messages.count - 1
             open = index
             turn = index
             return index
         }
 
-        mutating func append(_ block: TranscriptBlock, anchor: String) {
-            let index = openAssistant(anchor: anchor)
+        mutating func append(_ block: TranscriptBlock, entry: TimelineEntry) {
+            let index = openAssistant(entry)
             document.messages[index].blocks.append(block)
         }
 
         /// 同类型且紧邻就并进去，否则另起一块。
-        mutating func appendText(_ text: String, thinking: Bool, anchor: String) {
-            let index = openAssistant(anchor: anchor)
+        mutating func appendText(_ text: String, thinking: Bool, entry: TimelineEntry) {
+            let index = openAssistant(entry)
             switch (document.messages[index].blocks.last, thinking) {
             case (.text(let previous)?, false):
                 document.messages[index].blocks[document.messages[index].blocks.count - 1] = .text(previous + text)

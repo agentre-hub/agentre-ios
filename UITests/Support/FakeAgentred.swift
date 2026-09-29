@@ -33,6 +33,8 @@ final class FakeAgentred: @unchecked Sendable {
     static let protocolVersion = "0.3.0"
     static let boxName = "uitest-box"
     static let boxFingerprint = "fp-uitest-box"
+    /// 一轮收场时执行端报的模型（Done.model / RunResultDone.model）。
+    static let model = "opus-5"
 
     enum Reply {
         case result(any SwiftProtobuf.Message)
@@ -110,6 +112,53 @@ final class FakeAgentred: @unchecked Sendable {
             record(conversationID, .userMessage(Self.userMessage(turn.user, source: peerFingerprint)))
             record(conversationID, .textDelta(Self.text(turn.reply)))
         }
+    }
+
+    /// 在 `seed` 过的会话上再落一轮已收场的活动（02 / 02C 屏的形状）：一句开场、一个 Subagent、
+    /// 五步活动（搜索、读文件、一条失败的命令、改文件、一条成功的命令）、一句收尾，收场报耗时与模型。
+    func seedActivityTurn(conversationID: String, user: String, opening: String, subagent: String, reply: String) {
+        let source = sessions[conversationID]?.summary.peerFingerprint ?? ""
+        record(conversationID, .userMessage(Self.userMessage(user, source: source)))
+        record(conversationID, .textDelta(Self.text(opening)))
+        let spawn = "call-spawn"
+        record(conversationID, .toolCall(.with {
+            $0.id = spawn
+            $0.name = "Task"
+            $0.input = Data(#"{"prompt":"check coverage"}"#.utf8)
+            $0.canonical = Data(#"{"kind":"agent.spawn","taskDescription":"\#(subagent)"}"#.utf8)
+        }))
+        let info = Agentre_Wire_SubagentInfo.with {
+            $0.taskID = "task-1"
+            $0.kind = "local_agent"
+            $0.taskDescription = subagent
+            $0.toolUses = 18
+            $0.durationMs = 134_000
+            $0.status = "completed"
+        }
+        record(conversationID, .subagentStarted(.with { $0.toolCallID = spawn; $0.info = info }))
+        record(conversationID, .subagentDone(.with { $0.toolCallID = spawn; $0.info = info }))
+        record(conversationID, .toolResult(.with { $0.toolCallID = spawn; $0.content = "covered" }))
+        let lines = (1...412).map { "line \($0)" }.joined(separator: "\n")
+        let steps: [(name: String, input: String, canonical: String, result: String, isError: Bool)] = [
+            ("Grep", #"{"pattern":"seq","path":"Tests/"}"#, "", (1...6).map { "Tests/Relay\($0).swift" }.joined(separator: "\n"), false),
+            ("Read", #"{"file_path":"RelayClient.swift"}"#, "", lines, false),
+            ("Bash", #"{"command":"swift build"}"#, "", #"{"exitCode":1,"output":"error: missing target"}"#, true),
+            ("Edit", #"{"file_path":"RelayClientTests.swift","old_string":"a","new_string":"b"}"#,
+             #"{"kind":"file.edit","files":[{"path":"RelayClientTests.swift","plus":38,"minus":0}]}"#, "ok", false),
+            ("Bash", #"{"command":"swift test --filter RelayClient"}"#, "", #"{"exitCode":0,"output":"12 passed"}"#, false),
+        ]
+        for (index, step) in steps.enumerated() {
+            let id = "call-step-\(index)"
+            record(conversationID, .toolCall(.with {
+                $0.id = id
+                $0.name = step.name
+                $0.input = Data(step.input.utf8)
+                $0.canonical = Data(step.canonical.utf8)
+            }))
+            record(conversationID, .toolResult(.with { $0.toolCallID = id; $0.content = step.result; $0.isError = step.isError }))
+        }
+        record(conversationID, .textDelta(Self.text(reply)))
+        record(conversationID, .done(.with { $0.durationMs = 158_000; $0.model = Self.model }))
     }
 
     func plan(_ plans: TurnPlan...) {
@@ -418,10 +467,11 @@ final class FakeAgentred: @unchecked Sendable {
     /// 一轮收场：先落带号的 done（turnTranscript.finish 的 publishDurable），再发不带号的 run_result_done，
     /// 随后把会话从内存表里摘掉。
     private func finishTurn(_ conversationID: String) {
-        record(conversationID, .done(.with { $0.durationMs = 1_800 }))
+        record(conversationID, .done(.with { $0.durationMs = 1_800; $0.model = Self.model }))
         var done = Agentre_Wire_RunResultDoneNotification()
         done.conversationID = conversationID
         done.durationMs = 1_800
+        done.model = Self.model
         var notification = Agentre_Wire_RpcNotification()
         notification.runResultDone = done
         turnOwners[conversationID] = nil

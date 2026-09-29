@@ -102,8 +102,6 @@ extension ActivityCategory {
 }
 
 extension ActivityStep {
-    /// 行尾预览的长度上限：折叠态就在视图里的文字不能随结果原文无限长。
-    static let previewMaxCharacters = 200
     /// 行首摘要的长度上限。
     static let summaryMaxCharacters = 200
 
@@ -124,26 +122,26 @@ extension ActivityStep {
                 facts.backgroundRunning = true
                 facts.backgroundTaskID = use.subagent?.taskID.isEmpty == false ? use.subagent?.taskID : nil
             }
-            if use.canonical?.kind == Canonical.Kind.fileEdit {
-                let files = use.canonical?.editedFiles ?? []
-                facts.plus = files.reduce(0) { $0 + $1.plus }
-                facts.minus = files.reduce(0) { $0 + $1.minus }
-                return facts
-            }
-            if let lines = use.canonical?.writtenLines {
-                facts.plus = lines
-                return facts
-            }
-            let trimmed = facts.resultText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return facts }
-            let lineCount = trimmed.utf8.reduce(1) { $1 == UInt8(ascii: "\n") ? $0 + 1 : $0 }
-            if lineCount > 1 {
-                facts.lines = lineCount
-            } else {
-                facts.preview = String(trimmed.prefix(Self.previewMaxCharacters))
-            }
+            facts.result = facts.failed ? .failed : Self.result(of: use, text: result.map { _ in facts.resultText })
             return facts
         }
+    }
+
+    /// 没失败的一步在行尾写什么。改文件的规模随调用就有；搜索与读文件要等结果（`text` 为 nil 即还没有）。
+    /// 按后端算好的规范形态、再按入参形状判，不查工具名表；命令与认不出的工具只有原文，不写。
+    private static func result(of use: ToolUse, text: String?) -> StepResult? {
+        if use.canonical?.kind == Canonical.Kind.fileEdit {
+            let files = use.canonical?.editedFiles ?? []
+            return .changed(plus: files.reduce(0) { $0 + $1.plus }, minus: files.reduce(0) { $0 + $1.minus })
+        }
+        if let lines = use.canonical?.writtenLines { return .changed(plus: lines, minus: 0) }
+        guard use.category == .read, let input = use.input, let text else { return nil }
+        if use.isSearch {
+            return .matches(text.split(whereSeparator: \.isNewline).count { !$0.allSatisfy(\.isWhitespace) })
+        }
+        guard ToolUse.hasAnyKey(input, pathKeys) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .lines(trimmed.isEmpty ? 0 : trimmed.utf8.reduce(1) { $1 == UInt8(ascii: "\n") ? $0 + 1 : $0 })
     }
 
     /// 三档视觉权重：思考与只读探查同为「不改变工程」，取最轻一档；出组档兜底按中性。
@@ -167,6 +165,13 @@ extension ActivityStep {
         }
         let summary = summarizeInput(use.input, cwd: cwd)
         return StepLabel(name: name, summary: String(summary.prefix(Self.summaryMaxCharacters)))
+    }
+}
+
+extension ToolUse {
+    /// 只读档里的搜索形状（入参带 pattern / query）：结果按「N 处」报，图标是搜索。不查工具名表。
+    public var isSearch: Bool {
+        category == .read && input.map { Self.hasAnyKey($0, patternKeys) } ?? false
     }
 }
 

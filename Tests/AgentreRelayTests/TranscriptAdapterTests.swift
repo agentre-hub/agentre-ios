@@ -361,6 +361,14 @@ private let key = ConversationKey(machineFingerprint: "origin-fp", conversationI
         autonomousDone.autonomousTurnDone = result
         #expect(try decode(autonomousDone) == DecodedNotification(event: .turnDone(TurnDone(durationMs: 3_000, contextWindow: 200_000, stopError: "stopped"))))
 
+        // 这一轮的模型只在收场时报：两种终态帧都带上它。
+        var withModel = Agentre_Wire_RpcNotification()
+        withModel.runResultDone = Agentre_Wire_RunResultDoneNotification.with { $0.durationMs = 1_000; $0.model = "opus-5" }
+        #expect(try decode(withModel) == DecodedNotification(event: .turnDone(TurnDone(durationMs: 1_000, model: "opus-5"))))
+        #expect(try decode(event(23) {
+            $0.done = Agentre_Wire_Done.with { $0.durationMs = 900; $0.model = "opus-5" }
+        }) == DecodedNotification(event: .turnDone(TurnDone(durationMs: 900, model: "opus-5"))))
+
         var autonomousEvent = Agentre_Wire_RpcNotification()
         autonomousEvent.autonomousTurnEvent = text(22, "auto").runtimeEvent
         #expect(try decode(autonomousEvent) == DecodedNotification(event: .textDelta("auto")))

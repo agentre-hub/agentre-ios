@@ -8,8 +8,8 @@ import UIKit
 /// 活动块不套容器：组头与步骤行都没有底色、边框或圆角。
 ///
 /// 判据落在渲染出来的像素上：把展开的活动块托管进窗口、按两套主题各画一遍，逐个取每个可点行的
-/// 命中区。行里只有文字与图标时，与列表底色不同的像素稀疏、且它们外接框的四条边也稀疏；
-/// 一块底色把外接框整个填满，一圈描边把外接框的四条边描满——两者都判为容器。
+/// 命中区。行里只有文字与图标时，与列表底色不同的像素稀疏、且它们外接框至少有两条边稀疏（线性图标的
+/// 一条竖边可以描满外接框的一侧）；一块底色把外接框整个填满，一圈描边把外接框的四条边描满——两者都判为容器。
 @MainActor
 @Suite("活动块不套容器")
 struct ActivityContainerTests {
@@ -128,6 +128,8 @@ fileprivate struct Snapshot {
         guard count > 0, maxX > minX, maxY > minY else { return (coverage, 0) }
         func rowCoverage(_ y: Int) -> Double { Double((minX...maxX).count { isInk($0, y) }) / Double(maxX - minX + 1) }
         func columnCoverage(_ x: Int) -> Double { Double((minY...maxY).count { isInk(x, $0) }) / Double(maxY - minY + 1) }
-        return (coverage, max(rowCoverage(minY), rowCoverage(maxY), columnCoverage(minX), columnCoverage(maxX)))
+        // 一圈描边或一块底色把四条边都描满；一枚线性图标（文件图标的竖边）只描满一两条。取第三高的那条。
+        let edges = [rowCoverage(minY), rowCoverage(maxY), columnCoverage(minX), columnCoverage(maxX)].sorted()
+        return (coverage, edges[1])
     }
 }

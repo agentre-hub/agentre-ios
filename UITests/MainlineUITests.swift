@@ -20,6 +20,10 @@ final class MainlineUITests: XCTestCase {
 
     private static let savedTitle = "Fix the flaky build"
     private static let savedReply = "The cache key ignores the lockfile."
+    private static let activityMessage = "Add a dedupe case to the reconnect tests"
+    private static let activityOpening = "Let me see what the tests cover first."
+    private static let activitySubagent = "Check test coverage"
+    private static let activityReply = "The build needed a target; all 12 pass now."
     private static let firstMessage = "List the files here"
     private static let command = "ls"
     private static let commandOutput = "README.md\nsrc"
@@ -42,6 +46,10 @@ final class MainlineUITests: XCTestCase {
                 conversationID: "desktop-conv-1", peerFingerprint: "fp-old-desktop", title: Self.savedTitle,
                 cwd: FakeAgentreServer.workingDirectory, history: [("Why is CI flaky?", Self.savedReply)]
             )
+            box.seedActivityTurn(
+                conversationID: "desktop-conv-1", user: Self.activityMessage, opening: Self.activityOpening,
+                subagent: Self.activitySubagent, reply: Self.activityReply
+            )
             box.plan(
                 .askPermission(command: Self.command, output: Self.commandOutput, reply: Self.firstReply),
                 .hold,
@@ -52,6 +60,10 @@ final class MainlineUITests: XCTestCase {
         let app = launch(against: server, language: language, locale: locale)
         let screen = Screen(app: app, test: self, prefix: "\(language)-\(appearance.rawValue)")
         let dark = appearance == .dark
+        /// 标签含 `text` 的任意元素（合并朗读的一行、按钮或静态文字）。
+        func element(containing text: String) -> XCUIElement {
+            app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+        }
         signIn(app, screen, copy, server)
 
         // 「我」：账号、本机、外观（App 自己的外观设置）。
@@ -87,6 +99,33 @@ final class MainlineUITests: XCTestCase {
         screen.expectAppearance(dark: dark, "message list")
         screen.shot("09 messages")
 
+        // 02 / 02C：打开保存下来的那条会话。导航栏是项目字形、标题与承载机器名，右侧 ⓘ；今天的日期胶囊；
+        // 署名是后端显示名加这一轮收场报的模型；组头耗时「分:秒」；Subagent 一行；展开后每步行尾按种类写结果。
+        screen.tap(screen.text(Self.savedTitle), "the saved conversation")
+        screen.expect(screen.text(FakeAgentred.boxName), "carrier machine name as the subtitle")
+        screen.expect(element(containing: String(format: copy("Conversation", "transcript.day.today %@"), "")), "today's date capsule")
+        screen.expect(element(containing: FakeAgentred.model), "the model in the reply signature")
+        screen.expect(element(containing: String(format: copy("Conversation", "subagent.title %@"), Self.activitySubagent)), "one-line Subagent")
+        let header = app.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH %@ AND label CONTAINS %@", String(format: copy("Conversation", "activity.steps %lld"), 5), "2:38"
+        )).firstMatch
+        screen.expect(header, "collapsed activity header with its m:ss duration")
+        screen.expectAppearance(dark: dark, "conversation")
+        screen.shot("02 conversation")
+        screen.tap(header, "activity header")
+        screen.expect(element(containing: String(format: copy("Conversation", "activity.row.matches %lld"), 6)), "search step reports matches")
+        screen.expect(element(containing: String(format: copy("Conversation", "activity.row.lines %lld"), 412)), "read step reports lines")
+        XCTAssertFalse(element(containing: "12 passed").exists, "a raw command output was shown as a step result")
+        screen.shot("02C steps expanded")
+        let info = app.buttons.matching(NSPredicate(format: "label == %@", copy("Composer", "composer.sessionInfo"))).firstMatch
+        screen.tap(info, "session info")
+        screen.expect(screen.text("desktop-conv-1"), "session info page")
+        screen.shot("02 session info")
+        screen.dismissSheet()
+        screen.expectGone(screen.text("desktop-conv-1"), "session info page")
+        screen.tap(screen.back, "back to the message list")
+        screen.expect(screen.tab(.messages), "message list")
+
         // 新建对话：选 Agent（每行给出解析结果）→ 草稿（机器 chip）→ 发出第一条。
         screen.tap(screen.button(copy("NewConversation", "newconv.title")), "new conversation")
         let agentRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", FakeAgentreServer.agentName)).firstMatch
@@ -102,6 +141,8 @@ final class MainlineUITests: XCTestCase {
         // 转录：用户气泡，内联审批卡（工具名、命令），三枚处置同一行、右对齐。
         screen.expectOnScreen(screen.text(Self.firstMessage), "the first message in the transcript")
         screen.expect(screen.text(Self.command), "the command on the approval card")
+        screen.expect(screen.text(copy("Cards", "permission.title.command")), "the approval card's request kind")
+        screen.expect(screen.text(copy("Conversation", "conversation.subtitle.waiting")), "waiting subtitle on the approval")
         let reject = screen.button(copy("Cards", "permission.reject"))
         let forSession = screen.button(copy("Cards", "permission.allowForSession"))
         let once = screen.button(copy("Cards", "permission.allowOnce"))
@@ -167,6 +208,7 @@ final class MainlineUITests: XCTestCase {
         screen.type(Self.secondMessage, into: screen.input(copy("Composer", "composer.message")), "composer field")
         screen.tap(screen.button(copy("Composer", "composer.send")), "send second message")
         screen.expectOnScreen(screen.text(Self.secondMessage), "the second message in the transcript")
+        screen.expect(screen.text(copy("Conversation", "conversation.subtitle.typing")), "typing subtitle while the turn runs")
         screen.expect("the second runtime.run carried the plan mode") {
             server.read { _ in box.runs.count == 2 && box.runs.last?.permissionMode == "plan" }
         }

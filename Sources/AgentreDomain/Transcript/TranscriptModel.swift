@@ -212,8 +212,15 @@ public struct TranscriptMessage: Sendable, Equatable, Identifiable {
     public var totalInputTokens: Int
     /// 这一轮的错误；nil = 没出错，空串 = 出错了但没带原话。
     public var errorText: String?
+    /// 开启这条消息的那一帧的时刻（Unix 毫秒：源端时刻，实时帧取本机收到的时刻）；0 = 不知道。
+    public var time: Int64
+    /// 这一轮收场时执行端报的模型；空 = 没报过。
+    public var model: String
 
-    public init(id: String, role: Role, text: String = "", blocks: [TranscriptBlock] = [], durationMs: Int = 0, totalInputTokens: Int = 0, errorText: String? = nil) {
+    public init(
+        id: String, role: Role, text: String = "", blocks: [TranscriptBlock] = [], durationMs: Int = 0, totalInputTokens: Int = 0,
+        errorText: String? = nil, time: Int64 = 0, model: String = ""
+    ) {
         self.id = id
         self.role = role
         self.text = text
@@ -221,6 +228,8 @@ public struct TranscriptMessage: Sendable, Equatable, Identifiable {
         self.durationMs = durationMs
         self.totalInputTokens = totalInputTokens
         self.errorText = errorText
+        self.time = time
+        self.model = model
     }
 }
 
@@ -250,11 +259,14 @@ public struct TurnDone: Sendable, Equatable {
     public var durationMs: Int
     public var contextWindow: Int
     public var stopError: String
+    /// 这一轮实际用的模型；空 = 没报。
+    public var model: String
 
-    public init(durationMs: Int = 0, contextWindow: Int = 0, stopError: String = "") {
+    public init(durationMs: Int = 0, contextWindow: Int = 0, stopError: String = "", model: String = "") {
         self.durationMs = durationMs
         self.contextWindow = contextWindow
         self.stopError = stopError
+        self.model = model
     }
 }
 
@@ -311,9 +323,12 @@ public struct DecodedNotification: Sendable, Equatable {
 public struct TimelineEntry: Sendable, Equatable {
     public var anchor: String
     public var event: TranscriptEvent
+    /// 这一帧的时刻（Unix 毫秒）；0 = 不知道。
+    public var time: Int64
 
-    public init(anchor: String, event: TranscriptEvent) {
+    public init(anchor: String, event: TranscriptEvent, time: Int64 = 0) {
         self.anchor = anchor
         self.event = event
+        self.time = time
     }
 }

@@ -66,14 +66,12 @@ final class ConversationScreenModel {
     let transcript: TranscriptModel
     let cards: ApprovalCardsModel
     let composer: ComposerModel
-    let agentName: String
 
-    init(conversation: SavedConversation, transcript: TranscriptModel, cards: ApprovalCardsModel, composer: ComposerModel, agentName: String) {
+    init(conversation: SavedConversation, transcript: TranscriptModel, cards: ApprovalCardsModel, composer: ComposerModel) {
         self.conversation = conversation
         self.transcript = transcript
         self.cards = cards
         self.composer = composer
-        self.agentName = agentName
     }
 
     /// 转录实时帧里的回合事件与执行端报的档位递给输入区。
@@ -119,7 +117,6 @@ final class SignedInServices {
     @ObservationIgnored private var conversations: [ConversationKey: ConversationScreenModel] = [:]
     @ObservationIgnored private var details: [String: MachineDetailModel] = [:]
     @ObservationIgnored private var drafts: [NewConversationRoute: DraftConversationModel] = [:]
-    @ObservationIgnored private var agentNames: [String: String] = [:]
     @ObservationIgnored private var syncTask: Task<Void, Never>?
 
     init(environment: AppEnvironment) {
@@ -204,7 +201,6 @@ final class SignedInServices {
             await connection.start()
             await sync.run()
         }
-        Task { [weak self] in await self?.loadAgentNames() }
         let identity = identity
         Task { await identity.load() }
     }
@@ -221,11 +217,6 @@ final class SignedInServices {
         syncTask = nil
         await sync.stop()
         await connection.stop()
-    }
-
-    private func loadAgentNames() async {
-        guard let agents = try? await workspace.agents() else { return }
-        agentNames = Dictionary(agents.map { ($0.syncID, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
     // MARK: 各屏的模型（同一去处只建一次）
@@ -252,8 +243,7 @@ final class SignedInServices {
         let screen = ConversationScreenModel(
             conversation: conversation, transcript: transcript,
             cards: ApprovalCardsModel(conversation: conversation, answering: approvals),
-            composer: composer,
-            agentName: agentNames[conversation.agentSyncID] ?? conversation.backendType
+            composer: composer
         )
         box.screen = screen
         conversations[key] = screen

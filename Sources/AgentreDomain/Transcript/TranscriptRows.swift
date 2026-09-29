@@ -3,11 +3,24 @@ import Foundation
 /// 归约后的转录 → 一行一行。一个可点元素一行（组头、步骤、省略行、Subagent），
 /// 所以列表能把每一个都当作独立的行来虚拟化，折叠态的步骤一行都不产出。
 public enum TranscriptRows {
-    /// - Parameter cwd: 会话的工作目录：步骤标签里它之下的路径写成 `./相对路径`。
-    public static func build(_ document: TranscriptDocument, disclosure: TranscriptDisclosure = TranscriptDisclosure(), cwd: String? = nil) -> [TranscriptRow] {
-        var builder = Builder(disclosure: disclosure, cwd: cwd)
+    /// - Parameters:
+    ///   - cwd: 会话的工作目录：步骤标签里它之下的路径写成 `./相对路径`。
+    ///   - calendar: 日期胶囊按它分自然日。
+    ///   - currentModel: 会话此刻的模型：还在跑、执行端还没报模型的那一轮署它。
+    public static func build(
+        _ document: TranscriptDocument, disclosure: TranscriptDisclosure = TranscriptDisclosure(), cwd: String? = nil,
+        calendar: Calendar = .current, currentModel: String? = nil
+    ) -> [TranscriptRow] {
+        var builder = Builder(disclosure: disclosure, cwd: cwd, currentModel: currentModel?.isEmpty == false ? currentModel : nil)
         let lastAssistant = document.messages.lastIndex { $0.role == .assistant }
+        var lastDay: Date?
         for (index, message) in document.messages.enumerated() {
+            // 时刻不知道的消息不插胶囊，也不换日。
+            if message.time > 0 {
+                let day = calendar.startOfDay(for: Date(timeIntervalSince1970: TimeInterval(message.time) / 1000))
+                if day != lastDay { builder.rows.append(TranscriptRow(id: "message:\(message.id):day", content: .day(message.time))) }
+                lastDay = day
+            }
             switch message.role {
             case .user:
                 builder.rows.append(TranscriptRow(id: "message:\(message.id):user", content: .user(message.text)))
@@ -26,6 +39,7 @@ public enum TranscriptRows {
     private struct Builder {
         let disclosure: TranscriptDisclosure
         let cwd: String?
+        let currentModel: String?
         var rows: [TranscriptRow] = []
 
         mutating func appendAssistant(_ message: TranscriptMessage, document: TranscriptDocument, isLatest: Bool) {
@@ -38,8 +52,10 @@ public enum TranscriptRows {
                 liveText: takesLive ? document.liveText : ""
             )
             guard !items.isEmpty || message.errorText != nil else { return }
-            rows.append(TranscriptRow(id: "message:\(message.id):agent", content: .agentHeader))
             let turnRunning = takesLive && document.running
+            // 模型取这一轮收场时报的；还在跑的这一轮取会话当前的；都没有不写。
+            let model = !message.model.isEmpty ? message.model : turnRunning ? currentModel : nil
+            rows.append(TranscriptRow(id: "message:\(message.id):agent", content: .agentHeader(model: model)))
             for (index, item) in items.enumerated() {
                 let isTail = index == items.count - 1
                 switch item {

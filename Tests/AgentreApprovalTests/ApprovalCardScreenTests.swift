@@ -35,7 +35,10 @@ struct ApprovalCardScreenTests {
         let seen = await labels([.permissionRequest(request)], cards: cards(), language: language)
         let dispositions = try ["permission.reject", "permission.allowForSession", "permission.allowOnce"].map { try text($0, language) }
         #expect(seen.contains("需要你批准。"), "卡片在转录流里，与前文同屏：\(seen)")
-        #expect(inOrder(["Bash", "/Users/dev/agentre", "$", "pnpm test --filter ui"] + dispositions, in: seen), "\(seen)")
+        // 命令类的请求种类写「请求执行命令」，不写工具原名。
+        let kind = try text("permission.title.command", language)
+        #expect(inOrder([kind, "/Users/dev/agentre", "$", "pnpm test --filter ui"] + dispositions, in: seen), "\(seen)")
+        #expect(!seen.contains("Bash"), "\(seen)")
     }
 
     @Test("App 内选的语言与系统不同、再切回：提问卡自定义作答框的占位与读屏标签随之换成那种语言")
@@ -59,11 +62,12 @@ struct ApprovalCardScreenTests {
         #expect(dispositions.allSatisfy(disabled.contains), "\(disabled)")
     }
 
-    @Test("别的工具：输入以缩进 JSON 单独成块")
-    func otherToolInput() async {
+    @Test("别的工具：标题是「请求使用」加工具名，输入以缩进 JSON 单独成块", arguments: ["zh-Hans", "en"])
+    func otherToolInput(language: String) async throws {
         let request = permission(tool: "Write", input: ["path": "/repo/a.txt"])
-        let seen = await labels([.permissionRequest(request)], cards: cards())
-        #expect(seen.contains("Write"))
+        let seen = await labels([.permissionRequest(request)], cards: cards(), language: language)
+        let title = String(format: try text("permission.title.tool %@", language), "Write")
+        #expect(seen.contains(title), "\(seen)")
         #expect(seen.contains("{\n  \"path\": \"/repo/a.txt\"\n}"), "\(seen)")
     }
 

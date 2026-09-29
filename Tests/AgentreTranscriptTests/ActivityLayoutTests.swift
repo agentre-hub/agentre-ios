@@ -91,6 +91,7 @@ struct TranscriptRowsTests {
     func names(_ rows: [TranscriptRow]) -> [String] {
         rows.map { row in
             switch row.content {
+            case .day: "day"
             case .user: "user"
             case .agentHeader: "agent"
             case .text: "text"

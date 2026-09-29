@@ -269,13 +269,14 @@ struct ActivityRulesTests {
 /// 一步的事实：折叠态的组头计数与展开后的行标记用同一判据。
 @Suite("活动行事实")
 struct StepFactsTests {
-    @Test("命令以非零退出码结束而没标 isError：组头计数与行标记都判失败，行尾报 exit N")
+    @Test("命令以非零退出码结束而没标 isError：组头计数与行标记都判失败，行尾写「失败」")
     func sameJudgementFoldedAndExpanded() {
         let step = toolStep("s", use("s", input: ["command": "pnpm exec tsc -b"]), result("s", #"{"exitCode":2,"output":"2 errors","status":"completed"}"#))
         #expect(ActivityRules.summarize([step]).failures == 1)
         let facts = step.facts()
         #expect(facts.failed)
         #expect(facts.exitCode == 2)
+        #expect(facts.result == .failed)
         #expect(facts.resultText == "2 errors")
     }
 
@@ -286,12 +287,13 @@ struct StepFactsTests {
         #expect(step.facts().exitCode == 1)
     }
 
-    @Test("成功的命令不报退出码；退出码为 0 不算失败")
+    @Test("成功的命令不报退出码；退出码为 0 不算失败；输出只是原文，行尾不写")
     func success() {
         let step = toolStep("s", use("s", input: ["command": "pnpm test"]), result("s", #"{"exitCode":0,"output":"13 passed"}"#))
         #expect(!step.facts().failed)
         #expect(step.facts().exitCode == nil)
-        #expect(step.facts().preview == "13 passed")
+        #expect(step.facts().result == nil)
+        #expect(step.facts().resultText == "13 passed")
     }
 
     @Test("没有结果的一步：默认报运行中；调用方声明本轮失败终结则按失败；已终结归属不明报结果未知")
@@ -329,19 +331,17 @@ struct StepFactsTests {
                                        canonical: editCanonical([("/repo/internal/app/chat.go", 1, 1)])))
         let label = step.label(cwd: "/repo")
         #expect(label.summary == "./internal/app/chat.go")
-        #expect(step.facts().plus == 1)
-        #expect(step.facts().minus == 1)
+        #expect(step.facts().result == .changed(plus: 1, minus: 1))
     }
 
-    @Test("超长单行结果：行尾预览封顶 200 字，完整原文仍在结果正文里；多行报行数")
-    func previewIsCapped() {
+    @Test("超长单行结果：行尾不写原文，完整原文仍在结果正文里；读文件报行数")
+    func longResultStaysInBody() {
         let huge = "head " + String(repeating: "x", count: 50_000) + " tail"
         let step = toolStep("h", use("h", input: ["command": "jq -c . big.json"]), result("h", huge))
-        #expect(step.facts().preview?.count == 200)
+        #expect(step.facts().result == nil)
         #expect(step.facts().resultText == huge)
         let multi = toolStep("m", readUse("m"), result("m", "a\nb\nc"))
-        #expect(multi.facts().lines == 3)
-        #expect(multi.facts().preview == nil)
+        #expect(multi.facts().result == .lines(3))
     }
 
     @Test("shell 形态的步骤一律叫 Bash，摘要是命令本身")

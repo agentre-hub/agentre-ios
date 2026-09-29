@@ -14,7 +14,7 @@ public struct WireTranscriptDecoder: TranscriptPayloadDecoding {
             return DecodedNotification(preview: event.preview, event: Self.event(event.event))
         case .runResultDone(let done), .autonomousTurnDone(let done):
             return DecodedNotification(event: .turnDone(TurnDone(
-                durationMs: Int(done.durationMs), contextWindow: Int(done.contextWindow), stopError: done.stopErrorMessage
+                durationMs: Int(done.durationMs), contextWindow: Int(done.contextWindow), stopError: done.stopErrorMessage, model: done.model
             )))
         case .turnStarted, .autonomousTurnStarted:
             return DecodedNotification(event: .turnStarted)
@@ -52,7 +52,7 @@ public struct WireTranscriptDecoder: TranscriptPayloadDecoding {
         case .subagentDone(let update): .subagent(subagent(update, .done))
         case .usageUpdate(let usage): .usage(totalInputTokens: Int(usage.totalInputTokens), contextWindow: Int(usage.contextWindow))
         case .contextWindowUpdated(let window): .contextWindow(Int(window.tokens))
-        case .done(let done): .turnDone(TurnDone(durationMs: Int(done.durationMs)))
+        case .done(let done): .turnDone(TurnDone(durationMs: Int(done.durationMs), model: done.model))
         case .error(let error): .error(error.message)
         default: .ignored
         }

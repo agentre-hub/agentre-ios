@@ -20,7 +20,7 @@ struct TranscriptScrollTests {
             store: FakeStore(frames), relay: FakeRelay(), decoder: decoder
         )
         let host = ScrollHost(TranscriptView(model: model, agentName: "Claude Code"))
-        try await host.settle { model.rows.count == 40 }
+        try await host.settle { contentRows(model.rows).count == 40 }
         try await host.settle { host.scrollView() != nil }
         let scrollView = try #require(host.scrollView(), "转录底下没有 UIScrollView：\(host.describeScrollViews())")
 
@@ -30,7 +30,7 @@ struct TranscriptScrollTests {
 
         // 新内容到达时跟随：仍停在底部，不计数。
         model.merge(live: [liveFrame(decoder, 41, .userMessage("第 41 句"))])
-        try await host.settle { host.isAtBottom(scrollView) && model.rows.count == 41 }
+        try await host.settle { host.isAtBottom(scrollView) && contentRows(model.rows).count == 41 }
         #expect(model.follow.isFollowing)
         #expect(model.follow.unseen == 0)
 
@@ -93,7 +93,7 @@ struct TranscriptScrollTests {
         // 回前台：补回的行、摘要刷新与弹回的键盘在同一轮里到来。
         model.merge(live: [liveFrame(decoder, 41, .userMessage("第 41 句")), liveFrame(decoder, 42, .textDelta("后台里跑完的回复"))])
         host.shrinkViewport(by: 336)
-        try await host.settle("同时到来后没有贴底：\(host.describe(scrollView))") { host.isAtBottom(scrollView) && model.rows.count >= 42 }
+        try await host.settle("同时到来后没有贴底：\(host.describe(scrollView))") { host.isAtBottom(scrollView) && contentRows(model.rows).count >= 42 }
         #expect(model.follow.isFollowing)
         #expect(model.follow.unseen == 0)
         #expect(host.isShowingLastRow(scrollView, model: model))
@@ -347,7 +347,7 @@ struct TranscriptScrollTests {
         let host = composer
             ? ScrollHost(VStack(spacing: 0) { transcript; Color.gray.frame(height: 96) }, size: size)
             : ScrollHost(transcript, size: size)
-        try await host.settle { model.rows.count == count }
+        try await host.settle { contentRows(model.rows).count == count }
         try await host.settle { host.scrollView() != nil }
         let scrollView = try #require(host.scrollView(), "转录底下没有 UIScrollView：\(host.describeScrollViews())")
         try await host.settle { host.isAtBottom(scrollView) }

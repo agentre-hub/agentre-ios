@@ -8,9 +8,9 @@ import Foundation
 ///   （向前补的更早帧不算）。尾巴不进 `entries`：一篇长回复有上万片预览，每次都从头归约一遍，
 ///   一片的代价便随回复变长。
 public struct TranscriptTimeline: Sendable {
-    private var numbered: [Int64: TranscriptEvent] = [:]
+    private var numbered: [Int64: (event: TranscriptEvent, time: Int64)] = [:]
     private var sortedSeqs: [Int64] = []
-    private var unnumbered: [(after: Int64, order: Int, event: TranscriptEvent)] = []
+    private var unnumbered: [(after: Int64, order: Int, event: TranscriptEvent, time: Int64)] = []
     private var nextOrder = 0
     /// 预览尾巴：还在流的正文与思考。
     public private(set) var liveText = ""
@@ -19,8 +19,9 @@ public struct TranscriptTimeline: Sendable {
     public init() {}
 
     /// 放进一帧；这一帧改变了转录时为 true（重复帧号为 false）。
+    /// - Parameter time: 这一帧的时刻（Unix 毫秒）；0 = 不知道。
     @discardableResult
-    public mutating func insert(seq: Int64?, event: TranscriptEvent, preview: Bool = false) -> Bool {
+    public mutating func insert(seq: Int64?, event: TranscriptEvent, preview: Bool = false, time: Int64 = 0) -> Bool {
         if preview {
             switch event {
             case .textDelta(let text): liveText += text
@@ -33,12 +34,12 @@ public struct TranscriptTimeline: Sendable {
             guard numbered[seq] == nil else { return false }
             // 只有比已知最新更新的帧才取代预览尾巴；向前补进来的更早帧与还在流的回复无关。
             let supersedes = seq > (latestSeq ?? 0)
-            numbered[seq] = event
+            numbered[seq] = (event, time)
             let index = sortedSeqs.partitioningIndex { $0 >= seq }
             sortedSeqs.insert(seq, at: index)
             if supersedes { clearPreview() }
         } else {
-            unnumbered.append((latestSeq ?? 0, nextOrder, event))
+            unnumbered.append((latestSeq ?? 0, nextOrder, event, time))
             nextOrder += 1
             clearPreview()
         }
@@ -62,13 +63,14 @@ public struct TranscriptTimeline: Sendable {
         var next = 0
         for seq in sortedSeqs {
             while next < loose.count, loose[next].after < seq {
-                result.append(TimelineEntry(anchor: "u\(loose[next].after).\(loose[next].order)", event: loose[next].event))
+                result.append(TimelineEntry(anchor: "u\(loose[next].after).\(loose[next].order)", event: loose[next].event, time: loose[next].time))
                 next += 1
             }
-            result.append(TimelineEntry(anchor: "s\(seq)", event: numbered[seq]!))
+            let frame = numbered[seq]!
+            result.append(TimelineEntry(anchor: "s\(seq)", event: frame.event, time: frame.time))
         }
         for item in loose[next...] {
-            result.append(TimelineEntry(anchor: "u\(item.after).\(item.order)", event: item.event))
+            result.append(TimelineEntry(anchor: "u\(item.after).\(item.order)", event: item.event, time: item.time))
         }
         return result
     }

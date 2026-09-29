@@ -371,15 +371,34 @@ struct TranscriptModelTests {
         await attach.value
     }
 
+    @Test("日期胶囊的时刻：库里的帧取源端时刻，实时帧取本机收到的时刻；新的一天的胶囊不算进「N 条新内容」")
+    func capsuleTimes() async throws {
+        let received: Int64 = 1_790_000_000_000
+        let conversation = SavedConversation(key: conversationKey, peerFingerprint: "peer-1", lifecycleState: "idle")
+        let model = TranscriptModel(
+            conversation: conversation, store: FakeStore(frames(1...1)), relay: FakeRelay(), decoder: decoder, pageSize: 1,
+            now: { Date(timeIntervalSince1970: TimeInterval(received) / 1000) }
+        )
+        await model.load()
+        model.userScrolledAway()
+        model.merge(live: [liveFrame(decoder, 2, .userMessage("m2"))])
+        let days = model.rows.compactMap { row -> Int64? in
+            if case .day(let time) = row.content { return time }
+            return nil
+        }
+        #expect(days == [1_001, received])
+        #expect(model.follow.unseen == 1)
+    }
+
     @Test("折叠与展开：用户点组头覆盖自动行为")
     func toggles() async {
         let local = [stored(decoder, 1, .toolCall(readUse("a"))), stored(decoder, 2, .toolCall(readUse("b"))), stored(decoder, 3, .turnDone(TurnDone()))]
         let (model, _, _) = model(local: local)
         await model.load()
-        #expect(model.rows.count == 2)
-        guard case .activityHeader(let header) = model.rows[1].content else { Issue.record("no header"); return }
+        #expect(contentRows(model.rows).count == 2)
+        guard case .activityHeader(let header) = contentRows(model.rows)[1].content else { Issue.record("no header"); return }
         model.toggle(header.blockKey, current: header.expanded)
-        #expect(model.rows.count == 4)
+        #expect(contentRows(model.rows).count == 4)
     }
 }
 
