@@ -29,6 +29,11 @@ struct HardCodedColorTests {
         "Text(\"a\").foregroundStyle(.blue)",
         "Text(\"a\").tint(.green)",
         "Text(\"a\").foregroundStyle(.secondary)",
+        "Text(\"a\").foregroundStyle(.primary)",
+        "Text(\"a\").foregroundColor(.primary)",
+        "Rectangle().fill(.primary)",
+        "Text(\"a\").tint(.primary)",
+        "Text(\"a\").foregroundStyle(Color.primary)",
         "Rectangle().fill(Color.black.opacity(0.2))",
         "let c = UIColor(red: 1, green: 0, blue: 0, alpha: 1)",
         "let c = UIColor.systemBlue",
@@ -41,7 +46,11 @@ struct HardCodedColorTests {
     }
 
     @Test("token 取色、注释与非颜色的点语法不算违规", arguments: [
-        "Text(\"a\").foregroundStyle(.token(.accent))",
+        "Text(\"a\").foregroundStyle(.token(.primary))",
+        "Rectangle().fill(.token(selected ? .primary : .ink2))",
+        "cell(counts.total, \"machines.detail.count.total\", .primary)",
+        "case .ok: .primary",
+        "let tone: ColorToken = .primary",
         "Rectangle().fill(.token(.surface2))",
         "// 这里不能写 Color.red",
         "/* UIColor(red: 1) */ Text(\"a\")",
@@ -66,6 +75,10 @@ enum HardCodedColorScanner {
     }
 
     private static let namedColors = "red|orange|yellow|green|mint|teal|cyan|blue|indigo|purple|pink|brown|white|gray|black|primary|secondary|accentColor"
+    /// `primary` 也是 token 名：简写 `.primary` 在取色修饰符的直接参数里才是系统色，别处（`.token(.primary)`、
+    /// 返回 ColorToken 的 switch、函数参数）都是 token。
+    private static let shorthandColors = namedColors.replacingOccurrences(of: "|primary|", with: "|")
+    private static let styleModifiers = "foregroundStyle|foregroundColor|tint|fill|stroke|strokeBorder|background|border|shadow"
 
     /// 每一条都是一种绕过 token 的取色写法。
     private static var patterns: [NSRegularExpression] { [
@@ -74,7 +87,9 @@ enum HardCodedColorScanner {
         // Color.red / Color.secondary
         try! NSRegularExpression(pattern: #"\bColor\s*\.\s*(\#(namedColors))\b"#),
         // 简写 .red / .secondary（前面不是标识符或点，排除 view.blueprint 之类）
-        try! NSRegularExpression(pattern: #"(?<![\w.])\.(\#(namedColors))\b"#),
+        try! NSRegularExpression(pattern: #"(?<![\w.])\.(\#(shorthandColors))\b"#),
+        // 取色修饰符的直接参数写成 .primary：.foregroundStyle(.primary) / .fill(.primary, …)
+        try! NSRegularExpression(pattern: #"\.(\#(styleModifiers))\(\s*\.primary\b"#),
         try! NSRegularExpression(pattern: #"\b(UIColor|CGColor|NSColor)\b"#),
         try! NSRegularExpression(pattern: #"#colorLiteral"#),
         // 十六进制色值："#1A5CD0" 或 0x1A5CD0

@@ -48,7 +48,7 @@ private struct ApprovalPermissionCard: View {
                 // 工具名是机器产出的：等宽（规格「设计语言」），与提问卡的标题同一呈现。
                 Text(verbatim: request.toolName)
                     .font(.subheadline.monospaced().weight(.semibold))
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                 Spacer(minLength: 8)
                 if let settled = state.settledKey {
                     ApprovalPill(key: settled, tone: state.tone)
@@ -61,7 +61,7 @@ private struct ApprovalPermissionCard: View {
                 } label: {
                     Text(expanded ? "input.collapse" : "input.expand", tableName: "Cards", bundle: .module)
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.token(.accent))
+                        .foregroundStyle(.token(.primary))
                 }
                 .hitTarget()
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -70,7 +70,7 @@ private struct ApprovalPermissionCard: View {
                 if failed {
                     Text("permission.submitFailed", tableName: "Cards", bundle: .module)
                         .font(.footnote)
-                        .foregroundStyle(.token(.failure))
+                        .foregroundStyle(.token(.coral))
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 ApprovalButtonRow {
@@ -97,18 +97,18 @@ private struct ApprovalMachineBlock: View {
             VStack(alignment: .leading, spacing: 4) {
                 if !input.cwd.isEmpty {
                     Text(verbatim: input.cwd)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                 }
                 if input.command != nil {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(verbatim: "$")
-                            .foregroundStyle(.token(.textSecondary))
+                            .foregroundStyle(.token(.ink2))
                         Text(verbatim: shown)
-                            .foregroundStyle(.token(.textPrimary))
+                            .foregroundStyle(.token(.ink))
                     }
                 } else if !shown.isEmpty {
                     Text(verbatim: shown)
-                        .foregroundStyle(.token(.textPrimary))
+                        .foregroundStyle(.token(.ink))
                 }
             }
             .font(.footnote.monospaced())
@@ -136,7 +136,7 @@ private struct ApprovalQuestionCard: View {
                     .accessibilityHidden(true)
                 Text(verbatim: "user_ask")
                     .font(.subheadline.weight(.semibold).monospaced())
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                 Spacer(minLength: 8)
                 if let settled = state.settledKey {
                     ApprovalPill(key: settled, tone: state.tone)
@@ -146,16 +146,16 @@ private struct ApprovalQuestionCard: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(verbatim: question.question)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.token(.textPrimary))
+                        .foregroundStyle(.token(.ink))
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if !question.header.isEmpty {
                         Text(verbatim: question.header)
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(.token(.accent))
+                            .foregroundStyle(.token(.primary))
                     }
                     Text(question.multiSelect ? "question.multi" : "question.single", tableName: "Cards", bundle: .module)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                 }
                 if case .open(let submitting) = state {
                     let selected = model.selectedLabels(index, of: request)
@@ -174,20 +174,20 @@ private struct ApprovalQuestionCard: View {
                     .background(.token(.surface2), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(.token(.accent).opacity(selected.contains(QuestionAnswer.otherLabel) ? 0.6 : 0), lineWidth: 1)
+                            .strokeBorder(.token(.primary).opacity(selected.contains(QuestionAnswer.otherLabel) ? 0.6 : 0), lineWidth: 1)
                     }
                 }
             }
             if case .open = state, let error = model.inputError(of: request) {
                 Text(error.messageKey, tableName: "Cards", bundle: .module)
                     .font(.footnote)
-                    .foregroundStyle(.token(.failure))
+                    .foregroundStyle(.token(.coral))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if state == .expired {
                 Text("question.expiredDetail", tableName: "Cards", bundle: .module)
                     .font(.footnote)
-                    .foregroundStyle(.token(.failure))
+                    .foregroundStyle(.token(.coral))
             }
             if case .open(let submitting) = state {
                 ApprovalButtonRow {
@@ -226,25 +226,25 @@ private struct ApprovalOptionButton: View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: symbol)
-                    .foregroundStyle(.token(selected ? .accent : .textSecondary))
+                    .foregroundStyle(.token(selected ? .primary : .ink2))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: option.label)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.token(selected ? .accent : .textPrimary))
+                        .foregroundStyle(.token(selected ? .primary : .ink))
                     if !option.description.isEmpty {
                         Text(verbatim: option.description)
                             .font(.footnote)
-                            .foregroundStyle(.token(.textSecondary))
+                            .foregroundStyle(.token(.ink2))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(.token(selected ? .accent : .surface2).opacity(selected ? 0.14 : 1), in: RoundedRectangle(cornerRadius: 8))
+            .background(.token(selected ? .primary : .surface2).opacity(selected ? 0.14 : 1), in: RoundedRectangle(cornerRadius: 8))
             .overlay {
-                RoundedRectangle(cornerRadius: 8).strokeBorder(.token(selected ? .accent : .textSecondary).opacity(selected ? 0.6 : 0.25), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 8).strokeBorder(.token(selected ? .primary : .ink2).opacity(selected ? 0.6 : 0.25), lineWidth: 1)
             }
         }
         .hitTarget()
@@ -264,8 +264,8 @@ private struct ApprovalAnswerField: UIViewRepresentable {
         field.isSecureTextEntry = isSecure
         field.font = .preferredFont(forTextStyle: .subheadline)
         field.adjustsFontForContentSizeCategory = true
-        field.textColor = ColorToken.textPrimary.uiColor
-        field.tintColor = ColorToken.accent.uiColor
+        field.textColor = ColorToken.ink.uiColor
+        field.tintColor = ColorToken.primary.uiColor
         field.showPlaceholder(placeholder, in: context.environment.locale)
         field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -349,11 +349,11 @@ private struct ApprovalButton: View {
                 .background {
                     switch weight {
                     case .outline:
-                        RoundedRectangle(cornerRadius: 8).strokeBorder(.token(.textSecondary).opacity(0.5), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 8).strokeBorder(.token(.ink2).opacity(0.5), lineWidth: 1)
                     case .tinted:
-                        RoundedRectangle(cornerRadius: 8).fill(.token(.accent).opacity(0.14))
+                        RoundedRectangle(cornerRadius: 8).fill(.token(.primary).opacity(0.14))
                     case .solid:
-                        RoundedRectangle(cornerRadius: 8).fill(.token(.accent))
+                        RoundedRectangle(cornerRadius: 8).fill(.token(.primary))
                     }
                 }
         }
@@ -382,9 +382,9 @@ enum ApprovalButtonWeight: Equatable {
 
     fileprivate var foreground: ColorToken {
         switch self {
-        case .outline: .textPrimary
-        case .tinted: .accent
-        case .solid: .onAccent
+        case .outline: .ink
+        case .tinted: .primary
+        case .solid: .primaryInk
         }
     }
 }
@@ -413,9 +413,9 @@ extension ApprovalPermissionState {
     /// 边框与盾牌的颜色：等你处理为琥珀，允许为绿，拒绝为红。
     fileprivate var tone: ColorToken {
         switch self {
-        case .open: .waiting
-        case .allowed, .allowedForSession: .running
-        case .denied: .failure
+        case .open: .amber
+        case .allowed, .allowedForSession: .run
+        case .denied: .coral
         }
     }
 
@@ -442,9 +442,9 @@ extension QuestionInputError {
 extension ApprovalQuestionState {
     fileprivate var tone: ColorToken {
         switch self {
-        case .open: .waiting
-        case .answered: .running
-        case .skipped, .expired: .textSecondary
+        case .open: .amber
+        case .answered: .run
+        case .skipped, .expired: .ink2
         }
     }
 

@@ -20,7 +20,7 @@ struct TranscriptRowView<Card: View>: View {
         case .thinking(let text):
             Text(verbatim: text)
                 .font(.subheadline.italic())
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
         case .activityHeader(let header):
@@ -44,7 +44,7 @@ struct TranscriptRowView<Card: View>: View {
                 }
             }
                 .font(.footnote)
-                .foregroundStyle(.token(.failure))
+                .foregroundStyle(.token(.coral))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
         }
@@ -60,7 +60,7 @@ private struct UserBubble: View {
             Spacer(minLength: 48)
             Text(verbatim: text)
                 .font(.body)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(.token(.surface2), in: RoundedRectangle(cornerRadius: 18))
@@ -77,13 +77,13 @@ private struct AgentSignature: View {
         HStack(spacing: 8) {
             Image(systemName: "sparkle")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.token(.onAccent))
+                .foregroundStyle(.token(.primaryInk))
                 .frame(width: 24, height: 24)
-                .background(.token(.accent), in: Circle())
+                .background(.token(.primary), in: Circle())
                 .accessibilityHidden(true)
             Text(verbatim: name)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 12)
@@ -107,7 +107,7 @@ struct AgentText: View, Equatable {
     var body: some View {
         Text(Self.rendered(segment.text))
             .font(.body)
-            .foregroundStyle(.token(.textPrimary))
+            .foregroundStyle(.token(.ink))
             .modifier(ReplyCopy(copyReply: copyReply))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, segment.first ? 4 : lineGap)

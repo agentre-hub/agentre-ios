@@ -19,7 +19,7 @@ struct ActivityHeaderView: View {
                 Chevron(expanded: header.expanded)
                 Image(systemName: "square.stack.3d.up")
                     .font(.caption2)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .accessibilityHidden(true)
                 if header.running {
                     RunningDot()
@@ -37,7 +37,7 @@ struct ActivityHeaderView: View {
                 }
             }
             .font(.footnote)
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, CGFloat(header.depth) * indentPerDepth)
@@ -65,7 +65,7 @@ struct ElidedStepsView: View {
                 Counts(summary: elided.summary)
             }
             .font(.footnote.monospaced())
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -88,15 +88,15 @@ struct ActivityStepView: View {
                     .opacity(step.standalone || step.expanded ? 1 : 0)
                 Image(systemName: icon)
                     .font(.caption2)
-                    .foregroundStyle(.token(step.facts.failed ? .failure : iconToken))
+                    .foregroundStyle(.token(step.facts.failed ? .coral : iconToken))
                     .accessibilityHidden(true)
                 name
                     .font(.footnote.monospaced().weight(nameWeight))
-                    .foregroundStyle(.token(step.facts.failed ? .failure : nameToken))
+                    .foregroundStyle(.token(step.facts.failed ? .coral : nameToken))
                     .layoutPriority(1)
                 summary
                     .font(.footnote.monospaced())
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 StepTrailing(facts: step.facts)
@@ -146,8 +146,8 @@ struct ActivityStepView: View {
         }
     }
 
-    private var nameToken: ColorToken { step.weight == .read ? .textSecondary : .textPrimary }
-    private var iconToken: ColorToken { step.weight == .write ? .textPrimary : .textSecondary }
+    private var nameToken: ColorToken { step.weight == .read ? .ink2 : .ink }
+    private var iconToken: ColorToken { step.weight == .write ? .ink : .ink2 }
 }
 
 /// 行尾的实义信息：写操作报增删行，失败报 exit N，未落定报状态标记，其余报结果规模或预览。
@@ -159,21 +159,21 @@ private struct StepTrailing: View {
             if let plus = facts.plus, plus > 0 {
                 Text("activity.plus \(plus)", tableName: "Conversation", bundle: .module)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.token(.running))
+                    .foregroundStyle(.token(.run))
             }
             if let minus = facts.minus, minus > 0 {
                 Text("activity.minus \(minus)", tableName: "Conversation", bundle: .module)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.token(.failure))
+                    .foregroundStyle(.token(.coral))
             }
             if let pending = facts.pending {
                 PendingMarker(outcome: pending)
             } else if let exitCode = facts.exitCode {
                 Text("activity.row.exit \(exitCode)", tableName: "Conversation", bundle: .module)
-                    .foregroundStyle(.token(facts.failed ? .failure : .textSecondary))
+                    .foregroundStyle(.token(facts.failed ? .coral : .ink2))
             } else if facts.failed {
                 Text("activity.row.failed", tableName: "Conversation", bundle: .module)
-                    .foregroundStyle(.token(.failure))
+                    .foregroundStyle(.token(.coral))
             }
             if facts.pending == nil, facts.backgroundRunning {
                 HStack(spacing: 4) {
@@ -184,14 +184,14 @@ private struct StepTrailing: View {
                         Text("activity.row.background", tableName: "Conversation", bundle: .module)
                     }
                 }
-                .foregroundStyle(.token(.running))
+                .foregroundStyle(.token(.run))
             } else if facts.pending == nil, !facts.failed {
                 if let lines = facts.lines {
                     Text("activity.row.lines \(lines)", tableName: "Conversation", bundle: .module)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                 } else if let preview = facts.preview {
                     Text(verbatim: preview)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                         .frame(maxWidth: 120, alignment: .trailing)
                 }
             }
@@ -212,16 +212,16 @@ private struct PendingMarker: View {
                 RunningDot()
                 Text("activity.row.running", tableName: "Conversation", bundle: .module)
             }
-            .foregroundStyle(.token(.running))
+            .foregroundStyle(.token(.run))
         case .failed:
             Text("activity.row.failed", tableName: "Conversation", bundle: .module)
-                .foregroundStyle(.token(.failure))
+                .foregroundStyle(.token(.coral))
         case .canceled:
             Text("activity.row.canceled", tableName: "Conversation", bundle: .module)
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
         case .unknown:
             Text("activity.row.unknown", tableName: "Conversation", bundle: .module)
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
         }
     }
 }
@@ -237,14 +237,14 @@ struct ActivityStepDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(input.keys.sorted(), id: \.self) { key in
                         Text(verbatim: "\(key): \(Self.display(input[key]!))")
-                            .foregroundStyle(.token(.textSecondary))
+                            .foregroundStyle(.token(.ink2))
                     }
                 }
             }
             let result = step.facts.resultText
             if !result.isEmpty {
                 Text(verbatim: String(result.prefix(Self.maxCharacters)))
-                    .foregroundStyle(.token(step.facts.failed ? .failure : .textPrimary))
+                    .foregroundStyle(.token(step.facts.failed ? .coral : .ink))
             }
         }
         .font(.caption.monospaced())
@@ -274,12 +274,12 @@ struct SubagentLineView: View {
                     // 失败不只靠红色（规格「状态不得仅以颜色区分」）：与失败步同一枚图标、同一句「失败」。
                     Image(systemName: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(.token(.failure))
+                        .foregroundStyle(.token(.coral))
                         .accessibilityLabel(Text("activity.row.failed", tableName: "Conversation", bundle: .module))
                 }
                 Text("subagent.title \(subagent.name)", tableName: "Conversation", bundle: .module)
                     .font(.footnote.weight(.medium))
-                    .foregroundStyle(.token(subagent.failed ? .failure : .textPrimary))
+                    .foregroundStyle(.token(subagent.failed ? .coral : .ink))
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if subagent.running { RunningDot() }
@@ -290,7 +290,7 @@ struct SubagentLineView: View {
                         .font(.caption.monospaced())
                 }
             }
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
             .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -337,10 +337,10 @@ private struct SummaryPart: View {
             HStack(spacing: 3) {
                 Text("activity.summary.edit \(part.files ?? part.count)", tableName: "Conversation", bundle: .module)
                 if let plus = part.plus, plus > 0 {
-                    Text("activity.plus \(plus)", tableName: "Conversation", bundle: .module).foregroundStyle(.token(.running))
+                    Text("activity.plus \(plus)", tableName: "Conversation", bundle: .module).foregroundStyle(.token(.run))
                 }
                 if let minus = part.minus, minus > 0 {
-                    Text("activity.minus \(minus)", tableName: "Conversation", bundle: .module).foregroundStyle(.token(.failure))
+                    Text("activity.minus \(minus)", tableName: "Conversation", bundle: .module).foregroundStyle(.token(.coral))
                 }
             }
         case .write: Text("activity.summary.write \(part.count)", tableName: "Conversation", bundle: .module)
@@ -361,13 +361,13 @@ private struct Counts: View {
                 Text("activity.summary.background \(summary.backgroundRunning)", tableName: "Conversation", bundle: .module)
             }
             .font(.footnote.monospaced())
-            .foregroundStyle(.token(.running))
+            .foregroundStyle(.token(.run))
             .layoutPriority(2)
         }
         if summary.failures > 0 {
             Text("activity.summary.failures \(summary.failures)", tableName: "Conversation", bundle: .module)
                 .font(.footnote.monospaced().weight(.semibold))
-                .foregroundStyle(.token(.failure))
+                .foregroundStyle(.token(.coral))
                 .layoutPriority(2)
         }
     }
@@ -395,7 +395,7 @@ private struct Chevron: View {
     var body: some View {
         Image(systemName: "chevron.right")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
             .rotationEffect(.degrees(expanded ? 90 : 0))
             .accessibilityHidden(true)
     }
@@ -407,7 +407,7 @@ private struct RunningDot: View {
 
     var body: some View {
         Circle()
-            .fill(.token(.running))
+            .fill(.token(.run))
             .frame(width: 6, height: 6)
             .opacity(dim ? 0.35 : 1)
             .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dim)

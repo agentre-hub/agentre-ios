@@ -31,6 +31,6 @@ public struct ShellView<Messages: View, Machines: View, Me: View>: View {
                 Label { Text("shell.tab.me", tableName: "Shell", bundle: .module) } icon: { Image(systemName: "person.crop.circle") }
             }
         }
-        .tint(.token(.accent))
+        .tint(.token(.primary))
     }
 }

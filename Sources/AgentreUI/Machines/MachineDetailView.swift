@@ -47,19 +47,19 @@ public struct MachineDetailView: View {
                         Image(systemName: "wifi.slash")
                     }
                     .font(.subheadline)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 } else if model.updateRequired {
                     Text(LocalizedStringKey(failureKey(.updateRequired)), tableName: "Me", bundle: .module)
                         .font(.subheadline)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 } else if model.unreachable {
                     Text("machines.detail.unreachable", tableName: "Machines", bundle: .module)
                         .font(.subheadline)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
@@ -85,7 +85,7 @@ public struct MachineDetailView: View {
             VStack(spacing: 8) {
                 Image(systemName: "desktopcomputer")
                     .font(.largeTitle)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .accessibilityHidden(true)
                 MachinePresenceLine(machine: model.machine)
             }
@@ -100,9 +100,9 @@ private struct MachineCountsHeader: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            cell(counts.total, "machines.detail.count.total", .textPrimary)
-            cell(counts.running, "machines.detail.count.running", .running)
-            cell(counts.waiting, "machines.detail.count.waiting", .waiting)
+            cell(counts.total, "machines.detail.count.total", .ink)
+            cell(counts.running, "machines.detail.count.running", .run)
+            cell(counts.waiting, "machines.detail.count.waiting", .amber)
         }
     }
 
@@ -113,7 +113,7 @@ private struct MachineCountsHeader: View {
                 .foregroundStyle(.token(token))
             Text(label, tableName: "Machines", bundle: .module)
                 .font(.caption)
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
@@ -137,7 +137,7 @@ private struct MachineSessionRowView: View {
             } label: {
                 card {
                     Image(systemName: "iphone")
-                        .foregroundStyle(.token(.accent))
+                        .foregroundStyle(.token(.primary))
                         .accessibilityLabel(Text("machines.detail.saved", tableName: "Machines", bundle: .module))
                 }
             }
@@ -150,7 +150,7 @@ private struct MachineSessionRowView: View {
                 } else {
                     Button(action: onSave) {
                         Image(systemName: row.saveFailed ? "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90" : "square.and.arrow.down")
-                            .foregroundStyle(.token(row.saveFailed ? .failure : .accent))
+                            .foregroundStyle(.token(row.saveFailed ? .coral : .primary))
                             .accessibilityLabel(Text("machines.detail.save", tableName: "Machines", bundle: .module))
                     }
                     .hitTarget()
@@ -168,7 +168,7 @@ private struct MachineSessionRowView: View {
                 if row.session.lastMessageAt > 0 {
                     Text(Date(timeIntervalSince1970: TimeInterval(row.session.lastMessageAt) / 1000), format: .relative(presentation: .named))
                         .font(.caption)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                 }
             }
             Spacer(minLength: 0)
@@ -184,13 +184,13 @@ private struct MachineSessionRowView: View {
         if row.session.title.isEmpty {
             Text(verbatim: row.session.conversationID)
                 .font(.body.monospaced())
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .lineLimit(1)
                 .truncationMode(.middle)
         } else {
             Text(verbatim: row.session.title)
                 .font(.body)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .lineLimit(1)
         }
     }

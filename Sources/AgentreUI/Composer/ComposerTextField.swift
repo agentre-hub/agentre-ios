@@ -16,8 +16,8 @@ struct ComposerTextField: UIViewRepresentable {
         let view = UITextView()
         view.font = .preferredFont(forTextStyle: .body)
         view.adjustsFontForContentSizeCategory = true
-        view.textColor = ColorToken.textPrimary.uiColor
-        view.tintColor = ColorToken.accent.uiColor
+        view.textColor = ColorToken.ink.uiColor
+        view.tintColor = ColorToken.primary.uiColor
         view.backgroundColor = nil
         view.textContainerInset = UIEdgeInsets(top: 11, left: 8, bottom: 11, right: 8)
         view.showPlaceholder(placeholder, in: context.environment.locale)

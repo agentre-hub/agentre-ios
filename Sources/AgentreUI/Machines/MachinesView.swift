@@ -57,12 +57,12 @@ private struct MachineRosterRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(.token(machine.online ? .running : .textSecondary))
+                .fill(.token(machine.online ? .run : .ink2))
                 .frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: machine.name)
                     .font(.body.monospaced())
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 MachinePresenceLine(machine: machine)
@@ -84,16 +84,16 @@ struct MachinePresenceLine: View {
         if machine.online {
             Text("machines.online", tableName: "Machines", bundle: .module)
                 .font(.subheadline)
-                .foregroundStyle(.token(.running))
+                .foregroundStyle(.token(.run))
         } else {
             VStack(alignment: .leading, spacing: 2) {
                 Text("machines.offline", tableName: "Machines", bundle: .module)
                     .font(.subheadline)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                 if machine.lastSeenAt > 0 {
                     Text("machines.lastSeen \(Text(Date(timeIntervalSince1970: TimeInterval(machine.lastSeenAt) / 1000), format: .relative(presentation: .named)))", tableName: "Machines", bundle: .module)
                         .font(.caption)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                 }
             }
         }

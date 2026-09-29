@@ -28,7 +28,7 @@ public struct LoginView: View {
             Spacer()
             Text(verbatim: "Agentre")
                 .font(.largeTitle.bold())
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
             server
             Spacer()
             outcome
@@ -46,7 +46,7 @@ public struct LoginView: View {
             HStack(spacing: 8) {
                 Text("login.server", tableName: "Login", bundle: .module)
                     .font(.footnote)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !isEditingServer {
                     Button {
@@ -55,7 +55,7 @@ public struct LoginView: View {
                         isEditingServer = true
                     } label: {
                         Image(systemName: "pencil")
-                            .foregroundStyle(.token(.accent))
+                            .foregroundStyle(.token(.primary))
                     }
                     .hitTarget()
                     .disabled(isAwaiting)
@@ -67,7 +67,7 @@ public struct LoginView: View {
             } else {
                 Text(verbatim: flow.serverAddress.url.absoluteString)
                     .font(.body.monospaced())
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -83,10 +83,10 @@ public struct LoginView: View {
                 Text("login.server.invalid", tableName: "Login", bundle: .module)
             } icon: {
                 Image(systemName: "exclamationmark.circle")
-                    .foregroundStyle(.token(.failure))
+                    .foregroundStyle(.token(.coral))
             }
             .font(.footnote)
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
         }
         HStack(spacing: 8) {
             Spacer()
@@ -94,14 +94,14 @@ public struct LoginView: View {
                 isEditingServer = false
             } label: {
                 Text("login.server.cancel", tableName: "Login", bundle: .module)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .padding(.horizontal, 8)
             }
             .hitTarget()
             Button(action: save) {
                 Text("login.server.save", tableName: "Login", bundle: .module)
                     .fontWeight(.semibold)
-                    .foregroundStyle(.token(.accent))
+                    .foregroundStyle(.token(.primary))
                     .padding(.horizontal, 8)
             }
             .hitTarget()
@@ -115,10 +115,10 @@ public struct LoginView: View {
             // 本机没网：如实说是离线，登录点不动——而不是让人点下去再读到「连不上服务器」。
             Label {
                 Text("login.deviceOffline", tableName: "Login", bundle: .module)
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
             } icon: {
                 Image(systemName: "wifi.slash")
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
             }
             .font(.callout)
         } else {
@@ -143,10 +143,10 @@ public struct LoginView: View {
     private func status(_ key: LocalizedStringKey, systemImage: String) -> some View {
         Label {
             Text(key, tableName: "Login", bundle: .module)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(.token(.failure))
+                .foregroundStyle(.token(.coral))
         }
         .font(.callout)
     }
@@ -158,7 +158,7 @@ public struct LoginView: View {
             HStack(spacing: 8) {
                 if isAwaiting {
                     ProgressView()
-                        .tint(.token(.onAccent))
+                        .tint(.token(.primaryInk))
                     Text("login.awaiting", tableName: "Login", bundle: .module)
                 } else if flow.state == .idle {
                     Text("login.signIn", tableName: "Login", bundle: .module)
@@ -167,9 +167,9 @@ public struct LoginView: View {
                 }
             }
             .font(.headline)
-            .foregroundStyle(.token(.onAccent))
+            .foregroundStyle(.token(.primaryInk))
             .frame(maxWidth: .infinity, minHeight: 52)
-            .background(.token(.accent), in: Capsule())
+            .background(.token(.primary), in: Capsule())
             .opacity(isAwaiting || isOffline ? 0.7 : 1)
         }
         .hitTarget()

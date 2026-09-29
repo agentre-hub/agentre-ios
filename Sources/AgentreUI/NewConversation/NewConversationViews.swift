@@ -30,10 +30,10 @@ private struct AgentRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: agent.name)
                     .font(.body)
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                 summary
                     .font(.subheadline)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
@@ -78,7 +78,7 @@ private struct SectionTitle: View {
     var body: some View {
         Text(key, tableName: table, bundle: .module)
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -121,13 +121,13 @@ public struct NewConversationView: View {
             if model.loadFailed {
                 HStack {
                     Text("newconv.loadFailed", tableName: table, bundle: .module)
-                        .foregroundStyle(.token(.failure))
+                        .foregroundStyle(.token(.coral))
                     Spacer()
                     Button {
                         Task { await model.load() }
                     } label: {
                         Text("newconv.retry", tableName: table, bundle: .module)
-                            .foregroundStyle(.token(.accent))
+                            .foregroundStyle(.token(.primary))
                     }
                     .hitTarget()
                 }
@@ -143,7 +143,7 @@ public struct NewConversationView: View {
                     } icon: {
                         Image(systemName: "folder")
                     }
-                    .foregroundStyle(.token(.accent))
+                    .foregroundStyle(.token(.primary))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
@@ -183,7 +183,7 @@ public struct NewConversationProjectList: View {
         List {
             if model.projectRows.isEmpty {
                 Text("newconv.noProjects", tableName: table, bundle: .module)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .newConversationRow()
             }
             ForEach(model.projectRows) { row in
@@ -191,9 +191,9 @@ public struct NewConversationProjectList: View {
                     onPick(row.project)
                 } label: {
                     Label {
-                        Text(verbatim: row.project.name).foregroundStyle(.token(.textPrimary))
+                        Text(verbatim: row.project.name).foregroundStyle(.token(.ink))
                     } icon: {
-                        Image(systemName: "folder").foregroundStyle(.token(.textSecondary))
+                        Image(systemName: "folder").foregroundStyle(.token(.ink2))
                     }
                     .padding(.leading, CGFloat(row.depth) * 20)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -225,7 +225,7 @@ public struct NewConversationProjectAgents: View {
         List {
             if membership.direct.isEmpty && membership.inherited.isEmpty {
                 Text("newconv.noAgentsInProject", tableName: table, bundle: .module)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .newConversationRow()
             }
             if !membership.direct.isEmpty {

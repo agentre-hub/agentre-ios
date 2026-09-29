@@ -16,17 +16,17 @@ public struct FailureNotice: View {
     public var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
-                .foregroundStyle(.token(.failure))
+                .foregroundStyle(.token(.coral))
                 .accessibilityHidden(true)
             Text(LocalizedStringKey(failureKey(fact)), tableName: "Me", bundle: .module)
                 .font(.subheadline)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .frame(maxWidth: .infinity, alignment: .leading)
             if fact.exit == .retry {
                 Button(action: onRetry) {
                     Text("me.retry", tableName: "Me", bundle: .module)
                         .fontWeight(.semibold)
-                        .foregroundStyle(.token(.accent))
+                        .foregroundStyle(.token(.primary))
                         .padding(.horizontal, 8)
                 }
                 .hitTarget()

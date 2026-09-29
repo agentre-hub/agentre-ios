@@ -30,7 +30,7 @@ public struct ContextRingView: View {
                     .accessibilityHidden(true)
                     Text("context.percent \(usage.percent)", tableName: "Conversation", bundle: .module)
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.token(usage.level == .ok ? .textSecondary : Self.token(for: usage.level)))
+                        .foregroundStyle(.token(usage.level == .ok ? .ink2 : Self.token(for: usage.level)))
                 }
             }
             .hitTarget()
@@ -41,12 +41,12 @@ public struct ContextRingView: View {
         }
     }
 
-    /// 三档：正常取 accent、告警取 waiting、危急取 failure。
+    /// 三档：正常取 primary、告警取 amber、危急取 coral。
     static func token(for level: UsageLevel) -> ColorToken {
         switch level {
-        case .ok: .accent
-        case .warn: .waiting
-        case .danger: .failure
+        case .ok: .primary
+        case .warn: .amber
+        case .danger: .coral
         }
     }
 }
@@ -63,18 +63,18 @@ public struct ContextUsageDetail: View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
             GridRow {
                 Text("context.used", tableName: "Conversation", bundle: .module)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                 Text(verbatim: usage.used.formatted())
                     .monospacedDigit()
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                     .gridColumnAlignment(.trailing)
             }
             GridRow {
                 Text("context.max", tableName: "Conversation", bundle: .module)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                 Text(verbatim: usage.max.formatted())
                     .monospacedDigit()
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
             }
         }
         .font(.footnote)

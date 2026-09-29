@@ -78,7 +78,7 @@ public struct ComposerPanel: View {
             confirmsDelete = true
         } label: {
             Text("composer.delete", tableName: composerTable, bundle: .module)
-                .foregroundStyle(.token(.failure))
+                .foregroundStyle(.token(.coral))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .hitTarget()
@@ -108,7 +108,7 @@ public struct ComposerPanel: View {
         ForEach(Self.providerGroups(model.settings?.models ?? []), id: \.providerKey) { group in
             Text(verbatim: group.title)
                 .font(.footnote)
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
                 .composerRow()
             ForEach(group.models, id: \.self) { choice in
                 ComposerOptionRow(selected: choice == current) {
@@ -119,7 +119,7 @@ public struct ComposerPanel: View {
                         if !choice.modelId.isEmpty, choice.modelId != choice.displayName {
                             Text(verbatim: choice.modelId)
                                 .font(.caption.monospaced())
-                                .foregroundStyle(.token(.textSecondary))
+                                .foregroundStyle(.token(.ink2))
                         }
                     }
                 }
@@ -182,7 +182,7 @@ public struct ComposerPanel: View {
                     .accessibilityLabel(Text("composer.back", tableName: composerTable, bundle: .module))
                 Text(title, tableName: composerTable, bundle: .module).font(.headline)
             }
-            .foregroundStyle(.token(.textPrimary))
+            .foregroundStyle(.token(.ink))
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .hitTarget()
@@ -206,15 +206,15 @@ private struct ComposerPanelRow<Value: View>: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text(title, tableName: composerTable, bundle: .module)
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                 Spacer(minLength: 8)
                 value
                     .font(.subheadline)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
             }
             .frame(maxWidth: .infinity)
         }
@@ -233,10 +233,10 @@ private struct ComposerOptionRow<Label: View>: View {
     var body: some View {
         Button(action: action) {
             HStack {
-                label.foregroundStyle(.token(.textPrimary))
+                label.foregroundStyle(.token(.ink))
                 Spacer(minLength: 8)
                 if selected {
-                    Image(systemName: "checkmark").foregroundStyle(.token(.accent))
+                    Image(systemName: "checkmark").foregroundStyle(.token(.primary))
                 }
             }
             .frame(maxWidth: .infinity)
@@ -261,10 +261,10 @@ private struct ComposerFactRow: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(title, tableName: composerTable, bundle: .module)
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
             Spacer(minLength: 8)
             value
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
         }

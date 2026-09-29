@@ -55,13 +55,13 @@ public struct ComposerView: View {
                 Image(systemName: "hourglass")
             }
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
             .padding(.vertical, 6)
             ForEach(model.queue.items) { item in
                 HStack(spacing: 8) {
                     Text(verbatim: ComposerMentions.displayText(item.text))
                         .font(.subheadline)
-                        .foregroundStyle(.token(.textPrimary))
+                        .foregroundStyle(.token(.ink))
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if item.cancellable {
@@ -70,14 +70,14 @@ public struct ComposerView: View {
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.footnote)
-                                .foregroundStyle(.token(.textSecondary))
+                                .foregroundStyle(.token(.ink2))
                                 .accessibilityLabel(Text("composer.cancelQueued", tableName: composerTable, bundle: .module))
                         }
                         .hitTarget()
                     } else {
                         Image(systemName: "lock")
                             .font(.footnote)
-                            .foregroundStyle(.token(.textSecondary))
+                            .foregroundStyle(.token(.ink2))
                             .frame(width: minimumHitTargetSide, height: minimumHitTargetSide)
                             .accessibilityLabel(Text("composer.notCancellable", tableName: composerTable, bundle: .module))
                     }
@@ -93,19 +93,19 @@ public struct ComposerView: View {
             HStack(spacing: 8) {
                 Text("composer.dropped \(model.queue.dropped.count)", tableName: composerTable, bundle: .module)
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.token(.failure))
+                    .foregroundStyle(.token(.coral))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: model.discardDropped) {
                     Text("composer.discard", tableName: composerTable, bundle: .module)
                         .font(.footnote)
-                        .foregroundStyle(.token(.failure))
+                        .foregroundStyle(.token(.coral))
                         .padding(.horizontal, 8)
                 }
                 .hitTarget()
                 Button(action: model.restoreDropped) {
                     Text("composer.restore", tableName: composerTable, bundle: .module)
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.token(.accent))
+                        .foregroundStyle(.token(.primary))
                         .padding(.horizontal, 8)
                 }
                 .hitTarget()
@@ -113,7 +113,7 @@ public struct ComposerView: View {
             ForEach(model.queue.dropped) { item in
                 Text(verbatim: ComposerMentions.displayText(item.text))
                     .font(.subheadline)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .lineLimit(1)
             }
         }
@@ -152,7 +152,7 @@ public struct ComposerView: View {
             .overlay(alignment: .leading) {
                 if model.text.isEmpty {
                     Text("composer.message", tableName: composerTable, bundle: .module)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                         .padding(.leading, 13)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -166,7 +166,7 @@ public struct ComposerView: View {
                 } label: {
                     Image(systemName: "stop.circle")
                         .font(.title)
-                        .foregroundStyle(.token(model.canStop ? .textPrimary : .textSecondary))
+                        .foregroundStyle(.token(model.canStop ? .ink : .ink2))
                         .accessibilityLabel(Text("composer.stop", tableName: composerTable, bundle: .module))
                 }
                 .hitTarget()
@@ -177,7 +177,7 @@ public struct ComposerView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title)
-                    .foregroundStyle(.token(model.canSend && !isOffline ? .accent : .textSecondary))
+                    .foregroundStyle(.token(model.canSend && !isOffline ? .primary : .ink2))
                     .accessibilityLabel(Text("composer.send", tableName: composerTable, bundle: .module))
             }
             .hitTarget()
@@ -205,7 +205,7 @@ public struct ComposerView: View {
         } label: {
             Image(systemName: systemImage)
                 .font(.body)
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
                 .accessibilityLabel(Text(label, tableName: composerTable, bundle: .module))
         }
         .hitTarget()
@@ -220,18 +220,18 @@ private struct ComposerCandidateRow: View {
         HStack(spacing: 10) {
             Text(verbatim: candidate.title)
                 .font(.subheadline.monospaced())
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
             switch candidate.kind {
             case .slash(let command):
                 Text(verbatim: command.description)
                     .font(.footnote)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .lineLimit(1)
             case .mention(let mention):
                 if mention.online == false {
                     Text("composer.offline", tableName: composerTable, bundle: .module)
                         .font(.footnote)
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                 }
             }
             Spacer(minLength: 0)
@@ -250,7 +250,7 @@ struct ComposerOfflineText: View {
             Image(systemName: "wifi.slash")
         }
         .font(.footnote)
-        .foregroundStyle(.token(.textSecondary))
+        .foregroundStyle(.token(.ink2))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -268,7 +268,7 @@ struct ComposerFailureText: View {
             }
         }
         .font(.footnote)
-        .foregroundStyle(.token(.failure))
+        .foregroundStyle(.token(.coral))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

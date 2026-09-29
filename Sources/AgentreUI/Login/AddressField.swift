@@ -14,8 +14,8 @@ struct AddressField: UIViewRepresentable {
         let field = UITextField()
         field.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 17, weight: .regular))
         field.adjustsFontForContentSizeCategory = true
-        field.textColor = ColorToken.textPrimary.uiColor
-        field.tintColor = ColorToken.accent.uiColor
+        field.textColor = ColorToken.ink.uiColor
+        field.tintColor = ColorToken.primary.uiColor
         field.keyboardType = .URL
         field.autocapitalizationType = .none
         field.autocorrectionType = .no

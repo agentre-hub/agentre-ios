@@ -168,10 +168,10 @@ private struct JumpToLatestButton: View {
                 }
             }
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(.token(.onAccent))
+            .foregroundStyle(.token(.primaryInk))
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(.token(.accent), in: Capsule())
+            .background(.token(.primary), in: Capsule())
         }
         .hitTarget()
     }

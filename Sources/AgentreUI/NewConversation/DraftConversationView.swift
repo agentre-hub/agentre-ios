@@ -54,7 +54,7 @@ public struct DraftConversationView: View {
                 HStack {
                     Spacer(minLength: 48)
                     Text(verbatim: sent)
-                        .foregroundStyle(.token(.textPrimary))
+                        .foregroundStyle(.token(.ink))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(.token(.surface2), in: RoundedRectangle(cornerRadius: 16))
@@ -66,13 +66,13 @@ public struct DraftConversationView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("newconv.notListed \(Text(verbatim: started.machineName).font(.subheadline.monospaced()))", tableName: table, bundle: .module)
                         .font(.subheadline)
-                        .foregroundStyle(.token(.waiting))
+                        .foregroundStyle(.token(.amber))
                     Button {
                         Task { await model.retryRecording() }
                     } label: {
                         Text("newconv.retry", tableName: table, bundle: .module)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.token(.accent))
+                            .foregroundStyle(.token(.primary))
                     }
                     .hitTarget()
                 }
@@ -80,7 +80,7 @@ public struct DraftConversationView: View {
             case .dispatchFailed(let failure, let machine):
                 failureText(failure, machine: machine)
                     .font(.subheadline)
-                    .foregroundStyle(.token(.failure))
+                    .foregroundStyle(.token(.coral))
                     .row()
             case .draft, .sending, .started:
                 EmptyView()
@@ -92,7 +92,7 @@ public struct DraftConversationView: View {
                     Image(systemName: "wifi.slash")
                 }
                 .font(.subheadline)
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
                 .row()
             }
         }
@@ -134,9 +134,9 @@ public struct DraftConversationView: View {
         switch model.machineChip {
         case .resolving: ProgressView()
         case .machine(let name): Text(verbatim: name).monospaced()
-        case .unavailable(let reason): NewConversationReasonText(availability: reason).foregroundStyle(.token(.failure))
-        case .noTarget: Text("newconv.noAvailableTarget", tableName: table, bundle: .module).foregroundStyle(.token(.failure))
-        case .planFailed: Text("newconv.planFailed", tableName: table, bundle: .module).foregroundStyle(.token(.failure))
+        case .unavailable(let reason): NewConversationReasonText(availability: reason).foregroundStyle(.token(.coral))
+        case .noTarget: Text("newconv.noAvailableTarget", tableName: table, bundle: .module).foregroundStyle(.token(.coral))
+        case .planFailed: Text("newconv.planFailed", tableName: table, bundle: .module).foregroundStyle(.token(.coral))
         }
     }
 
@@ -146,7 +146,7 @@ public struct DraftConversationView: View {
                 .overlay(alignment: .leading) {
                     if model.text.isEmpty {
                         Text("newconv.message", tableName: table, bundle: .module)
-                            .foregroundStyle(.token(.textSecondary))
+                            .foregroundStyle(.token(.ink2))
                             .padding(.leading, 13)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
@@ -158,7 +158,7 @@ public struct DraftConversationView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title)
-                    .foregroundStyle(.token(model.canSend && !isOffline ? .accent : .textSecondary))
+                    .foregroundStyle(.token(model.canSend && !isOffline ? .primary : .ink2))
                     .accessibilityLabel(Text("newconv.send", tableName: table, bundle: .module))
             }
             .hitTarget()
@@ -183,7 +183,7 @@ private struct Chip<Content: View>: View {
                 Image(systemName: "chevron.down").font(.caption2)
             }
             .font(.footnote)
-            .foregroundStyle(.token(.textPrimary))
+            .foregroundStyle(.token(.ink))
             .padding(.horizontal, 12)
             .frame(height: 32)
             .background(.token(.surface2), in: Capsule())
@@ -216,7 +216,7 @@ public struct NewConversationMachinePanel: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("newconv.pickTargetTitle", tableName: table, bundle: .module)
                 .font(.headline)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .padding(16)
             List {
                 ForEach(model.plan?.tiers ?? []) { tier in
@@ -245,7 +245,7 @@ public struct NewConversationMachinePanel: View {
                         }
                     } label: {
                         Text("newconv.useAutoTarget", tableName: table, bundle: .module)
-                            .foregroundStyle(.token(.accent))
+                            .foregroundStyle(.token(.primary))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                     }
@@ -268,29 +268,29 @@ private struct TierRow: View {
         HStack(spacing: 12) {
             Text(verbatim: String(tier.rank))
                 .font(.subheadline.monospaced())
-                .foregroundStyle(.token(.textSecondary))
+                .foregroundStyle(.token(.ink2))
                 .frame(minWidth: 16)
             VStack(alignment: .leading, spacing: 2) {
                 if !tier.deviceName.isEmpty {
                     Text(verbatim: tier.deviceName)
                         .font(.body.monospaced())
-                        .foregroundStyle(.token(.textPrimary))
+                        .foregroundStyle(.token(.ink))
                 }
                 if !tier.backendType.isEmpty {
                     Text(verbatim: tier.backendType)
                         .font(.caption.monospaced())
-                        .foregroundStyle(.token(.textSecondary))
+                        .foregroundStyle(.token(.ink2))
                 }
             }
             Spacer(minLength: 8)
             if !tier.availability.isAvailable {
                 NewConversationReasonText(availability: tier.availability)
                     .font(.footnote)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
             }
             if chosen {
                 Image(systemName: "checkmark")
-                    .foregroundStyle(.token(.accent))
+                    .foregroundStyle(.token(.primary))
                     .accessibilityHidden(true)
             }
         }
@@ -313,7 +313,7 @@ public struct NewConversationProjectPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             Text("newconv.pickProjectTitle", tableName: table, bundle: .module)
                 .font(.headline)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .padding(16)
             List {
                 option(nil, depth: 0) {
@@ -339,11 +339,11 @@ public struct NewConversationProjectPanel: View {
             }
         } label: {
             HStack {
-                label().foregroundStyle(.token(.textPrimary))
+                label().foregroundStyle(.token(.ink))
                 Spacer()
                 if model.project?.syncID == project?.syncID {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(.token(.accent))
+                        .foregroundStyle(.token(.primary))
                         .accessibilityHidden(true)
                 }
             }

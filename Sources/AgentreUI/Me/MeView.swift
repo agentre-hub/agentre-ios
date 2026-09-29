@@ -51,7 +51,7 @@ public struct MeView: View {
                     Task { await model.signOut() }
                 } label: {
                     Text("me.signOut", tableName: "Me", bundle: .module)
-                        .foregroundStyle(.token(.failure))
+                        .foregroundStyle(.token(.coral))
                         .frame(maxWidth: .infinity)
                 }
                 .hitTarget()
@@ -82,18 +82,18 @@ public struct MeView: View {
 
     private func header(_ key: LocalizedStringKey) -> some View {
         Text(key, tableName: "Me", bundle: .module)
-            .foregroundStyle(.token(.textSecondary))
+            .foregroundStyle(.token(.ink2))
     }
 
     @ViewBuilder private func account(_ profile: AccountProfile) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(verbatim: profile.shownName)
                 .font(.headline)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
             if !profile.email.isEmpty, profile.email != profile.shownName {
                 Text(verbatim: profile.email)
                     .font(.subheadline)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
             }
         }
         .padding(.vertical, 4)
@@ -109,10 +109,10 @@ public struct MeView: View {
                         Text("me.server.invalid", tableName: "Me", bundle: .module)
                     } icon: {
                         Image(systemName: "exclamationmark.circle")
-                            .foregroundStyle(.token(.failure))
+                            .foregroundStyle(.token(.coral))
                     }
                     .font(.footnote)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                 }
                 HStack(spacing: 8) {
                     Spacer()
@@ -120,14 +120,14 @@ public struct MeView: View {
                         isEditingServer = false
                     } label: {
                         Text("me.server.cancel", tableName: "Me", bundle: .module)
-                            .foregroundStyle(.token(.textSecondary))
+                            .foregroundStyle(.token(.ink2))
                             .padding(.horizontal, 8)
                     }
                     .hitTarget()
                     Button(action: saveServer) {
                         Text("me.server.save", tableName: "Me", bundle: .module)
                             .fontWeight(.semibold)
-                            .foregroundStyle(.token(.accent))
+                            .foregroundStyle(.token(.primary))
                             .padding(.horizontal, 8)
                     }
                     .hitTarget()
@@ -139,7 +139,7 @@ public struct MeView: View {
                 // 机器产出的内容用等宽字体。
                 Text(verbatim: model.serverAddress.url.absoluteString)
                     .font(.body.monospaced())
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -149,7 +149,7 @@ public struct MeView: View {
                     isEditingServer = true
                 } label: {
                     Image(systemName: "pencil")
-                        .foregroundStyle(.token(.accent))
+                        .foregroundStyle(.token(.primary))
                 }
                 .hitTarget()
                 .accessibilityLabel(Text("me.server.edit", tableName: "Me", bundle: .module))
@@ -175,10 +175,10 @@ public struct MeView: View {
         Button(action: action) {
             HStack {
                 Text(key, tableName: "Me", bundle: .module)
-                    .foregroundStyle(.token(.textPrimary))
+                    .foregroundStyle(.token(.ink))
                 Spacer()
                 Image(systemName: "checkmark")
-                    .foregroundStyle(.token(.accent))
+                    .foregroundStyle(.token(.primary))
                     .opacity(selected ? 1 : 0)
                     .accessibilityHidden(true)
             }
@@ -208,29 +208,29 @@ struct DeviceRow: View {
         row {
             HStack(spacing: 12) {
                 Circle()
-                    .fill(.token(device.online ? .running : .textSecondary))
+                    .fill(.token(device.online ? .run : .ink2))
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: device.shownName)
                         .font(.body.monospaced())
-                        .foregroundStyle(.token(.textPrimary))
+                        .foregroundStyle(.token(.ink))
                         .lineLimit(stacked ? nil : 1)
                         .truncationMode(.middle)
                     facts {
                         // 在线与否写出来：状态不只靠那枚点的颜色。
                         Text(device.online ? "me.devices.online" : "me.devices.offline", tableName: "Me", bundle: .module)
                             .font(.caption)
-                            .foregroundStyle(.token(device.online ? .running : .textSecondary))
+                            .foregroundStyle(.token(device.online ? .run : .ink2))
                         if !device.platform.isEmpty {
                             Text(verbatim: device.platform)
                                 .font(.caption.monospaced())
-                                .foregroundStyle(.token(.textSecondary))
+                                .foregroundStyle(.token(.ink2))
                         }
                         if device.isThisDevice {
                             Text("me.devices.thisDevice", tableName: "Me", bundle: .module)
                                 .font(.caption)
-                                .foregroundStyle(.token(.accent))
+                                .foregroundStyle(.token(.primary))
                         }
                     }
                 }
@@ -240,14 +240,14 @@ struct DeviceRow: View {
             if device.isThisDevice {
                 Button(action: onRevoke) {
                     Text("me.devices.revoke", tableName: "Me", bundle: .module)
-                        .foregroundStyle(.token(.failure))
+                        .foregroundStyle(.token(.coral))
                         .padding(.horizontal, 8)
                 }
                 .hitTarget()
             } else {
                 Text("me.devices.revokeInConsole", tableName: "Me", bundle: .module)
                     .font(.caption)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .multilineTextAlignment(stacked ? .leading : .trailing)
             }
         }

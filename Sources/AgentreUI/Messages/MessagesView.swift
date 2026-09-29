@@ -55,11 +55,11 @@ struct MessageRow: View {
                     if conversation.lastMessageAt > 0 {
                         Text(Date(timeIntervalSince1970: TimeInterval(conversation.lastMessageAt) / 1000), format: .relative(presentation: .named))
                             .font(.caption)
-                            .foregroundStyle(.token(.textSecondary))
+                            .foregroundStyle(.token(.ink2))
                     }
                     if conversation.isUnread {
                         Circle()
-                            .fill(.token(.accent))
+                            .fill(.token(.primary))
                             .frame(width: 8, height: 8)
                             .accessibilityLabel(Text("messages.unread", tableName: "Messages", bundle: .module))
                     }
@@ -72,7 +72,7 @@ struct MessageRow: View {
         .background(.token(isWaiting ? .surface2 : .surface), in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             if isWaiting {
-                RoundedRectangle(cornerRadius: 12).strokeBorder(.token(.waiting), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 12).strokeBorder(.token(.amber), lineWidth: 1.5)
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 12))
@@ -83,13 +83,13 @@ struct MessageRow: View {
             // 没有标题时以会话 ID 认出：机器产出的内容用等宽字体。
             Text(verbatim: conversation.key.conversationID)
                 .font(.body.monospaced().weight(isWaiting ? .semibold : .regular))
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .lineLimit(1)
                 .truncationMode(.middle)
         } else {
             Text(verbatim: conversation.title)
                 .font(isWaiting ? .headline : .body)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .lineLimit(1)
         }
     }
@@ -101,12 +101,12 @@ struct MessageRow: View {
         case .typing:
             Text("messages.typing", tableName: "Messages", bundle: .module)
                 .font(.subheadline)
-                .foregroundStyle(.token(.running))
+                .foregroundStyle(.token(.run))
         case .failed, .idle:
             if !conversation.lastText.isEmpty {
                 Text(verbatim: conversation.lastText)
                     .font(.subheadline)
-                    .foregroundStyle(.token(.textSecondary))
+                    .foregroundStyle(.token(.ink2))
                     .lineLimit(2)
             }
         }
@@ -118,18 +118,18 @@ struct MessageRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: tool)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.token(.waiting))
+                    .foregroundStyle(.token(.amber))
                 if let detail {
                     Text(verbatim: detail)
                         .font(.subheadline.monospaced())
-                        .foregroundStyle(.token(.textPrimary))
+                        .foregroundStyle(.token(.ink))
                         .lineLimit(3)
                 }
             }
         case .question(let question):
             Text(verbatim: question)
                 .font(.subheadline)
-                .foregroundStyle(.token(.textPrimary))
+                .foregroundStyle(.token(.ink))
                 .lineLimit(3)
         case nil:
             EmptyView()
@@ -165,9 +165,9 @@ extension ConversationActivity {
     /// 状态的图标、颜色与读屏名；闲着时为 nil。
     var statusPresentation: (symbol: String, token: ColorToken, label: LocalizedStringKey)? {
         switch self {
-        case .waiting: ("hand.raised.fill", .waiting, "messages.status.waiting")
-        case .typing: ("ellipsis.circle.fill", .running, "messages.status.running")
-        case .failed: ("exclamationmark.triangle.fill", .failure, "messages.status.failed")
+        case .waiting: ("hand.raised.fill", .amber, "messages.status.waiting")
+        case .typing: ("ellipsis.circle.fill", .run, "messages.status.running")
+        case .failed: ("exclamationmark.triangle.fill", .coral, "messages.status.failed")
         case .idle: nil
         }
     }
