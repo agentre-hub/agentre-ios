@@ -19,7 +19,7 @@ struct ComposerTextField: UIViewRepresentable {
         view.textColor = ColorToken.ink.uiColor
         view.tintColor = ColorToken.primary.uiColor
         view.backgroundColor = nil
-        view.textContainerInset = UIEdgeInsets(top: 11, left: 8, bottom: 11, right: 8)
+        view.textContainerInset = UIEdgeInsets(top: 11, left: 14, bottom: 11, right: 14)
         view.showPlaceholder(placeholder, in: context.environment.locale)
         view.delegate = context.coordinator
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -37,11 +37,15 @@ struct ComposerTextField: UIViewRepresentable {
         view.selectedRange = NSRange(location: location, length: 0)
     }
 
+    /// UIKit 控件的命中区靠窗口逐点量出（不像 Button 经 `hitTarget()` 直接读登记的几何），
+    /// 逐点步进对半开区间的取整敏感，紧贴 44 的下限会被量成 43——多留 2pt 富余，绘制上看不出来。
+    private static let minimumHeight: CGFloat = minimumHitTargetSide + 2
+
     func sizeThatFits(_ proposal: ProposedViewSize, uiView view: UITextView, context: Context) -> CGSize? {
         let width = proposal.width ?? 200
         let fitting = view.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         view.isScrollEnabled = fitting > Self.maximumHeight
-        return CGSize(width: width, height: min(Self.maximumHeight, max(minimumHitTargetSide, fitting)))
+        return CGSize(width: width, height: min(Self.maximumHeight, max(Self.minimumHeight, fitting)))
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }

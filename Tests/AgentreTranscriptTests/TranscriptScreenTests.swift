@@ -166,6 +166,13 @@ struct TranscriptScreenTests {
         #expect(labels.contains("45%"))
     }
 
+    @Test("上下文环按用量三档着色：正常/告警/危急分别取 ctx-ok/ctx-warn/ctx-danger，而不是 primary/amber/coral")
+    func contextRingColorTiers() {
+        guard case .ctxOk = ContextRingView.token(for: .ok) else { Issue.record("正常档应取 ctxOk"); return }
+        guard case .ctxWarn = ContextRingView.token(for: .warn) else { Issue.record("告警档应取 ctxWarn"); return }
+        guard case .ctxDanger = ContextRingView.token(for: .danger) else { Issue.record("危急档应取 ctxDanger"); return }
+    }
+
     @Test("上下文浮层只读：只给已用与上限的绝对值，没有任何可点元素")
     func contextDetailIsReadOnly() async throws {
         let detail = ContextUsageDetail(usage: ContextUsage(used: 45_000, max: 200_000))

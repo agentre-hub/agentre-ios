@@ -266,6 +266,13 @@ struct RowSettingsSource: ComposerSettingsSource {
     }
 }
 
+/// 固定答一个机器名（或查不到）的替身，供「会话信息」行的机器名断言用。
+struct StubIdentityDirectory: IdentityDirectory {
+    var name: String?
+    func projects() async -> [WorkspaceProject]? { nil }
+    func machineName(fingerprint: String) async -> String? { name }
+}
+
 struct FakeMentionSource: ComposerMentionSource {
     var sources = ComposerMentionSources(
         agents: [ComposerMentionAgent(id: 7, name: "reviewer"), ComposerMentionAgent(id: 8, name: "writer")],
@@ -301,11 +308,13 @@ func composer(
     relay: FakeComposerRelay = FakeComposerRelay(),
     store: FakeConversationStore = FakeConversationStore(),
     settings: any ComposerSettingsSource = FakeSettingsSource(),
-    mentions: FakeMentionSource = FakeMentionSource()
+    mentions: FakeMentionSource = FakeMentionSource(),
+    identity: any IdentityDirectory = StubIdentityDirectory()
 ) -> ComposerModel {
     var counter = 0
     return ComposerModel(
         conversation: saved ?? conversation(backend: backend), relay: relay, settingsSource: settings, mentionSource: mentions, store: store,
+        identity: identity,
         mintID: { counter += 1; return "local-\(counter)" }
     )
 }

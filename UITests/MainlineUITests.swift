@@ -112,6 +112,24 @@ final class MainlineUITests: XCTestCase {
         screen.expect(header, "collapsed activity header with its m:ss duration")
         screen.expectAppearance(dark: dark, "conversation")
         screen.shot("02 conversation")
+
+        // 02B：上下文环点开是一枚只读浮层，只给已用与上限的绝对值。
+        let contextRing = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "%")).firstMatch
+        screen.tap(contextRing, "context ring")
+        screen.expect(screen.text(copy("Conversation", "context.used")), "context popover's used label")
+        screen.shot("02B context popover")
+        screen.dismissSheet()
+        screen.expectGone(screen.text(copy("Conversation", "context.used")), "context popover dismissed")
+
+        // 04：更多面板两组卡片——权限模式 / 模型 / 思考档位一组；会话信息 / 上下文 / 删除会话一组。
+        // 每行是一整块按钮，标题与取值合朗读成一句：按标题开头找。
+        screen.tap(screen.button(copy("Composer", "composer.more")), "more panel")
+        screen.expect(screen.button(startingWith: copy("Composer", "composer.permissionMode")), "permission mode row")
+        screen.expect(screen.button(copy("Composer", "composer.delete")), "delete row")
+        screen.shot("04 more panel")
+        screen.dismissSheet()
+        screen.expectGone(screen.button(copy("Composer", "composer.delete")), "more panel dismissed")
+
         screen.tap(header, "activity header")
         screen.expect(element(containing: String(format: copy("Conversation", "activity.row.matches %lld"), 6)), "search step reports matches")
         screen.expect(element(containing: String(format: copy("Conversation", "activity.row.lines %lld"), 412)), "read step reports lines")
@@ -167,9 +185,12 @@ final class MainlineUITests: XCTestCase {
         let conversationID = server.read { _ in box.runs.last?.conversationID ?? "" }
         XCTAssertEqual(server.read { _ in box.effectivePermissionMode(conversationID) }, "default", "the first turn's executor mode")
         screen.tap(screen.button(copy("Composer", "composer.permissionMode")), "permission mode")
-        let plan = screen.button(startingWith: "plan")
+        // 表内已知档位的朗读是「人话、原串」（原串在后，规格「04 更多面板」）：按原串找，语言无关。
+        let plan = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "plan")).firstMatch
         screen.expect(plan, "plan mode option")
-        screen.expectSelected(screen.button(startingWith: "default"), "default mode (the executor's default)")
+        screen.expectSelected(
+            app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "default")).firstMatch, "default mode (the executor's default)"
+        )
         screen.tap(plan, "plan mode")
         screen.expectSelected(plan, "plan mode")
         // 失败是改档调用应答之后才出现的：等一会儿再断言它没出现，而不是点完当场看。

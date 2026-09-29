@@ -51,6 +51,8 @@ public final class ComposerModel {
     public private(set) var settings: ComposerSettings?
     public private(set) var candidates: [Candidate] = []
     public private(set) var failure: Failure?
+    /// 更多面板「会话信息」行的取值：承载机器此刻的呈现名（规格「04 更多面板」）；查不到时为 nil，行不写值。
+    public private(set) var machineName: String?
     /// 候选说明所用的语言：输入区视图按它所在环境的 `\.locale`（「我」里选的语言）递进来；一变就按新语言重排候选。
     @ObservationIgnored public var locale: Locale = .autoupdatingCurrent {
         didSet { if locale != oldValue { refreshCandidates() } }
@@ -60,6 +62,7 @@ public final class ComposerModel {
     private let settingsSource: any ComposerSettingsSource
     private let mentionSource: any ComposerMentionSource
     private let store: any ConversationSettingsRecording
+    private let identity: any IdentityDirectory
     private let mintID: @MainActor () -> String
 
     /// 开新一轮的调用在飞：连点不重复开。
@@ -104,6 +107,7 @@ public final class ComposerModel {
     public init(
         conversation: SavedConversation, relay: any ComposerRelay, settingsSource: any ComposerSettingsSource,
         mentionSource: any ComposerMentionSource, store: any ConversationSettingsRecording,
+        identity: any IdentityDirectory = NullIdentityDirectory(),
         mintID: @escaping @MainActor () -> String = { UUID().uuidString.lowercased() }
     ) {
         self.conversation = conversation
@@ -112,6 +116,7 @@ public final class ComposerModel {
         self.settingsSource = settingsSource
         self.mentionSource = mentionSource
         self.store = store
+        self.identity = identity
         self.mintID = mintID
     }
 
@@ -162,6 +167,7 @@ public final class ComposerModel {
     public func load() async {
         if let row = try? await store.conversation(key) { savedRow = row }
         settings = try? await settingsSource.settings(for: savedRow)
+        machineName = await identity.machineName(fingerprint: conversation.carrierFingerprint)
     }
 
     // MARK: 发送与排队

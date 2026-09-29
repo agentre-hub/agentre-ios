@@ -40,9 +40,8 @@ struct ConversationScreen: View {
                 .onChange(of: model.composer.settings?.model, initial: true) { _, choice in
                     model.transcript.currentModel = choice.map { $0.modelId.isEmpty ? $0.displayName : $0.modelId }
                 }
-                .sheet(isPresented: $showsInfo) {
+                .fittedSheet(isPresented: $showsInfo) {
                     ComposerPanel(model: model.composer, contextUsage: model.transcript.contextUsage, initialPage: .sessionInfo, onDeleted: deleted)
-                        .presentationDetents([.medium, .large])
                 }
             } else {
                 Rectangle().fill(.token(.bg))

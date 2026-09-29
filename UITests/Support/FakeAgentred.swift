@@ -158,6 +158,11 @@ final class FakeAgentred: @unchecked Sendable {
             record(conversationID, .toolResult(.with { $0.toolCallID = id; $0.content = step.result; $0.isError = step.isError }))
         }
         record(conversationID, .textDelta(Self.text(reply)))
+        // 上下文用量（02B 浮层与工具行的环）：数字取自稿子的示例，40%。
+        record(conversationID, .usageUpdate(.with {
+            $0.totalInputTokens = 79_312
+            $0.contextWindow = 200_000
+        }))
         record(conversationID, .done(.with { $0.durationMs = 158_000; $0.model = Self.model }))
     }
 

@@ -237,7 +237,8 @@ final class SignedInServices {
             decoder: WireTranscriptDecoder()
         )
         let composer = ComposerModel(
-            conversation: conversation, relay: composerRelay, settingsSource: settings, mentionSource: mentions, store: store
+            conversation: conversation, relay: composerRelay, settingsSource: settings, mentionSource: mentions, store: store,
+            identity: identity
         )
         if conversation.lifecycleState == SavedConversation.Lifecycle.running { composer.turnStarted() }
         let screen = ConversationScreenModel(

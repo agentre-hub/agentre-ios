@@ -24,8 +24,9 @@ struct ComposerScreenTests {
         let report = await hitTargetReport(of: view)
         #expect(report.targets.count == 7, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
-        // 上下文环在最右端。
-        let ring = try #require(report.targets.max { $0.maxX < $1.maxX })
+        // 上下文环在常驻行（工具行）：命中区补满 44 后，图标窄的按钮会比宽的环多探进两侧的留白，
+        // 挑最靠右的那块未必是环——常驻行是这一屏最下面一行，挑最靠下的那块才稳。
+        let ring = try #require(report.targets.max { $0.midY < $1.midY })
         #expect(report.targets.filter { abs($0.midY - ring.midY) < 1 }.count == 5)
     }
 
@@ -159,7 +160,7 @@ struct ComposerScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
-    @Test("更多面板：权限模式、模型、思考档位逐行标注当前取值，另有会话信息、上下文、删除会话；6 块命中区")
+    @Test("更多面板：权限模式、模型、思考档位逐行标注人话取值，另有会话信息、上下文、删除会话；两组卡片共 6 块命中区")
     func panel() async throws {
         let model = composer()
         await model.load()
@@ -169,14 +170,36 @@ struct ComposerScreenTests {
         func row(_ title: String, _ value: String? = nil) -> Bool {
             labels.contains { $0.hasPrefix(text(title)) && (value.map($0.contains) ?? true) }
         }
-        #expect(row("composer.permissionMode", "acceptEdits"), "\(labels)")
+        // 权限模式与思考档位以人话呈现，不显示原串（规格「04 更多面板」）。
+        #expect(row("composer.permissionMode", text("composer.permissionMode.acceptEdits")), "\(labels)")
+        #expect(!labels.contains { $0.hasPrefix(text("composer.permissionMode")) && $0.contains("acceptEdits") }, "\(labels)")
+        // 模型只写模型名，不带供应商前缀。
         #expect(row("composer.model", "claude-sonnet"), "\(labels)")
-        #expect(row("composer.effort", "high"), "\(labels)")
-        #expect(row("composer.context", text("composer.contextPercent %lld", 40)), "\(labels)")
+        #expect(row("composer.effort", text("composer.effort.high")), "\(labels)")
+        // 上下文写「已用k/上限k」，不再是百分比。
+        #expect(row("composer.context", "40k/100k"), "\(labels)")
         #expect(row("composer.sessionInfo") && row("composer.delete"), "\(labels)")
         let report = await hitTargetReport(of: view)
         #expect(report.targets.count == 6, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
+    }
+
+    @Test("更多面板会话信息行：写承载机器此刻的呈现名")
+    func panelSessionInfoMachineName() async throws {
+        let model = composer(identity: StubIdentityDirectory(name: "mac-studio"))
+        await model.load()
+        let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, onDeleted: {})).labels()
+        #expect(labels.contains { $0.hasPrefix(text("composer.sessionInfo")) && $0.contains("mac-studio") }, "\(labels)")
+    }
+
+    @Test("更多面板思考档位：低/中/高换成人话，执行端报出的更高档原样等宽")
+    func panelReasoningEffortDisplay() async throws {
+        var settings = FakeSettingsSource()
+        settings.settings.reasoningEffort = "xhigh"
+        let model = composer(settings: settings)
+        await model.load()
+        let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, onDeleted: {})).labels()
+        #expect(labels.contains { $0.hasPrefix(text("composer.effort")) && $0.contains("xhigh") }, "\(labels)")
     }
 
     @Test("模型一页：每行是可读名（name → modelId → modelKey），同名的按供应商分组、副行是模型 ID；UUID 形的键不上脸")
@@ -211,7 +234,9 @@ struct ComposerScreenTests {
         let model = composer(settings: settings)
         await model.load()
         let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, onDeleted: {})).labels()
-        #expect(labels.contains { $0.hasPrefix(text("composer.model")) && $0.contains("Anthropic · Opus") }, "\(labels)")
+        // 只写模型名，不带供应商前缀（规格「04 更多面板」）。
+        #expect(labels.contains { $0.hasPrefix(text("composer.model")) && $0.contains("Opus") }, "\(labels)")
+        #expect(!labels.contains { $0.hasPrefix(text("composer.model")) && $0.contains("Anthropic") }, "\(labels)")
         #expect(!labels.contains { $0.contains("9f1c2e7a") }, "\(labels)")
     }
 
@@ -232,6 +257,8 @@ struct ComposerScreenTests {
         let view = ComposerPanel(model: model, contextUsage: usage, initialPage: .permissionMode, onDeleted: {})
         let labels = await HostedScreen(view).labels()
         for mode in ["default", "acceptEdits", "plan"] { #expect(labels.contains { $0.contains(mode) }, "\(mode)") }
+        // 每一档同时给出人话名（表内已知档位，规格「04 更多面板」）。
+        #expect(labels.contains { $0.contains(text("composer.permissionMode.acceptEdits")) }, "\(labels)")
         let report = await hitTargetReport(of: view)
         #expect(report.targets.count == 4, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
