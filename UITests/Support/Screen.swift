@@ -39,8 +39,24 @@ struct Screen {
             .matching(NSPredicate(format: "label == %@ OR placeholderValue == %@", label, label)).firstMatch
     }
 
-    func tab(_ label: String) -> XCUIElement {
-        app.tabBars.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
+    /// 自绘 tab 栏上的一枚按钮，按无障碍标识找（与文案、语言无关）。
+    func tab(_ tab: ShellTab) -> XCUIElement {
+        app.buttons.matching(identifier: tab.rawValue).firstMatch
+    }
+
+    /// 自绘 tab 栏本身：不在界面上时它整个不在无障碍树里。
+    var tabBar: XCUIElement {
+        app.descendants(matching: .any).matching(identifier: "shell.tabBar").firstMatch
+    }
+
+    /// 二级页紧凑导航栏上的返回箭头。
+    var back: XCUIElement {
+        app.buttons.matching(identifier: "shell.back").firstMatch
+    }
+
+    /// 模态导航栏左上的「取消」。
+    var cancel: XCUIElement {
+        app.buttons.matching(identifier: "shell.cancel").firstMatch
     }
 
     // MARK: 等与断言
@@ -119,6 +135,30 @@ struct Screen {
         expect(element, what, file: file, line: line)
     }
 
+    /// tab 栏在界面上：栏本身与三枚按钮都在。
+    func expectTabBar(_ step: String, file: StaticString = #filePath, line: UInt = #line) {
+        expect(tabBar, "tab bar on \(step)", file: file, line: line)
+        for item in ShellTab.allCases {
+            expect(tab(item), "\(item.rawValue) on \(step)", timeout: 2, file: file, line: line)
+        }
+    }
+
+    /// 界面上不存在任何 tab 栏元素（不是被盖住，是不在）。
+    func expectNoTabBar(_ step: String, file: StaticString = #filePath, line: UInt = #line) {
+        expectGone(tabBar, "tab bar on \(step)", timeout: 5, file: file, line: line)
+        for item in ShellTab.allCases where tab(item).exists {
+            attachState("tab button on \(step)")
+            XCTFail("\(prefix): \(item.rawValue) is on \(step)", file: file, line: line)
+        }
+    }
+
+    /// 系统的边缘右滑返回：从屏幕左缘按下，往右拖过大半屏。
+    func swipeBackFromEdge() {
+        let window = app.windows.firstMatch
+        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
+    }
+
     /// 在输入框里打字。
     func type(_ text: String, into field: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line) {
         tap(field, what, file: file, line: line)
@@ -178,11 +218,18 @@ struct Screen {
         test.add(attachment)
     }
 
-    private func attachState(_ reason: String) {
+    func attachState(_ reason: String) {
         shot("FAILED \(reason)")
         let tree = XCTAttachment(string: app.debugDescription)
         tree.name = "\(prefix) FAILED \(reason) accessibility tree"
         tree.lifetime = .keepAlways
         test.add(tree)
     }
+}
+
+/// 三个顶层页的 tab 按钮标识（与 App 的 `ShellTab.identifier` 同值；UI 测试不链接 App 的模块）。
+enum ShellTab: String, CaseIterable {
+    case messages = "shell.tab.messages"
+    case machines = "shell.tab.machines"
+    case me = "shell.tab.me"
 }

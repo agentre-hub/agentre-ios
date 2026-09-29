@@ -55,7 +55,7 @@ final class MainlineUITests: XCTestCase {
         signIn(app, screen, copy, server)
 
         // 「我」：账号、本机、外观（App 自己的外观设置）。
-        screen.tap(screen.tab(copy("Shell", "shell.tab.me")), "Me tab")
+        screen.tap(screen.tab(.me), "Me tab")
         screen.expect(screen.text("UI Tester"), "account name")
         screen.expect(screen.text(copy("Me", "me.devices.thisDevice")), "this-device label")
         let option = screen.button(startingWith: copy("Me", dark ? "me.appearance.dark" : "me.appearance.light"))
@@ -66,7 +66,7 @@ final class MainlineUITests: XCTestCase {
         screen.shot("05 me appearance")
 
         // 机器名册 → 机器详情：三个计数、别处发起的那条会话，保存到手机。
-        screen.tap(screen.tab(copy("Shell", "shell.tab.machines")), "Machines tab")
+        screen.tap(screen.tab(.machines), "Machines tab")
         let machineRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", FakeAgentred.boxName)).firstMatch
         screen.expect(machineRow, "roster row for \(FakeAgentred.boxName)")
         screen.expect(screen.text(copy("Machines", "machines.online")), "online state")
@@ -80,8 +80,9 @@ final class MainlineUITests: XCTestCase {
                       "row marked as on this phone")
         screen.shot("08 saved to phone")
 
-        // 消息列表读本地库：刚保存的那条在。
-        screen.tap(screen.tab(copy("Shell", "shell.tab.messages")), "Messages tab")
+        // 消息列表读本地库：刚保存的那条在。tab 栏只在顶层页上：先退回机器名册。
+        screen.tap(screen.back, "back to the machine roster")
+        screen.tap(screen.tab(.messages), "Messages tab")
         screen.expect(screen.text(Self.savedTitle), "saved conversation in the message list")
         screen.expectAppearance(dark: dark, "message list")
         screen.shot("09 messages")
@@ -262,9 +263,9 @@ final class MainlineUITests: XCTestCase {
         )
         screen.shot("17a lost answer resumed")
 
-        // 撤销本机 → 回到登录屏。先退回消息列表：键盘随对话屏收起，标签栏才露出来。
-        screen.tap(app.navigationBars.buttons["BackButton"], "back to the message list")
-        screen.tap(screen.tab(copy("Shell", "shell.tab.me")), "Me tab")
+        // 撤销本机 → 回到登录屏。先退回消息列表：tab 栏只在顶层页上。
+        screen.tap(screen.back, "back to the message list")
+        screen.tap(screen.tab(.me), "Me tab")
         let revoke = screen.button(copy("Me", "me.devices.revoke"))
         screen.reveal(revoke, "revoke this device")
         screen.tap(revoke, "revoke this device")
@@ -300,41 +301,9 @@ final class MainlineUITests: XCTestCase {
         let next = Screen(app: launch(against: server, language: "en", locale: "en_US"), test: self, prefix: "leftover-next")
         next.expect(next.button(copy("Login", "login.signIn")), "login screen although the previous flow stayed signed in")
         next.expect(next.text(server.baseURL), "server address of the new flow")
-        XCTAssertFalse(next.tab(copy("Shell", "shell.tab.messages")).exists, "the previous flow's sign-in carried over")
+        XCTAssertFalse(next.tab(.messages).exists, "the previous flow's sign-in carried over")
         XCTAssertEqual(server.unhandledRequests, [], "the app called REST endpoints the fake server does not know")
         next.shot("leftover signed out")
-    }
-
-    /// 经启动参数指向伪服务端：`-serverAddress` 落进 UserDefaults 的参数域，App 读服务器地址就读到它。
-    /// 「我」里存下的语言与外观（手动跑过的 App 留在模拟器上）会盖过 `-AppleLanguages`：同样经参数域重置为跟随系统。
-    /// 钥匙串里的登录态与本地库不随 App 清掉：经启动环境让 App 从登出状态起步。
-    private func launch(against server: FakeAgentreServer, language: String, locale: String) -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-AppleLanguages", "(\(language))", "-AppleLocale", locale, "-serverAddress", server.baseURL,
-            "-displayLanguage", "system", "-displayAppearance", "system",
-        ]
-        app.launchEnvironment["AGENTRE_START_SIGNED_OUT"] = "1"
-        app.launch()
-        return app
-    }
-
-    /// 登录屏：当前服务器地址（启动参数给的伪服务端）与一个主操作。设备流：App 直接打开带确认码的验证地址；
-    /// 浏览器取到那一页即批准，轮询换得令牌落到三标签。
-    private func signIn(_ app: XCUIApplication, _ screen: Screen, _ copy: Copy, _ server: FakeAgentreServer) {
-        screen.expect(screen.button(copy("Login", "login.signIn")), "sign-in button")
-        screen.expect(screen.text(server.baseURL), "server address from the launch argument")
-        screen.shot("01 login")
-
-        screen.tap(screen.button(copy("Login", "login.signIn")), "sign in")
-        screen.expect("the browser opened the verification address with the user code", timeout: 60) {
-            server.verificationPageVisits.contains(FakeAgentreServer.userCode)
-        }
-        screen.shot("03 verification page")
-        app.activate()
-        screen.expect(screen.tab(copy("Shell", "shell.tab.messages")), "Messages tab after sign-in", timeout: 30)
-        XCTAssertFalse(server.signedInFingerprint.isEmpty, "authorize carried no device fingerprint")
-        screen.shot("04 signed in")
     }
 
     /// 三枚处置同处一行（竖直中线对齐）、按次序从左到右互不重叠，且整行贴着卡片右缘（最右一枚靠近屏幕右边）。

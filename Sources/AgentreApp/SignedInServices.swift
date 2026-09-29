@@ -5,11 +5,15 @@ import AgentreStore
 import AgentreUI
 import Foundation
 import Observation
+import SwiftUI
 
 /// 消息标签里的去处。
 enum MessagesRoute: Hashable {
     case conversation(ConversationKey)
-    case newConversation
+}
+
+/// 新建对话模态自己的栈里的去处（根屏是 Agent 列表）。
+enum NewConversationRoute: Hashable {
     case projects
     case project(String)
     case draft(agent: String, project: String?)
@@ -21,16 +25,38 @@ enum MachinesRoute: Hashable {
     case conversation(ConversationKey)
 }
 
-/// 两个导航栈的路径。
+/// 选中的顶层页、三个导航栈的路径与新建对话模态。
 @MainActor
 @Observable
 final class Router {
-    var messages: [MessagesRoute] = [] {
-        didSet { onMessagesChange?(messages) }
-    }
+    var tab: ShellTab = .messages
+    var messages: [MessagesRoute] = []
     var machines: [MachinesRoute] = []
-    /// 消息栈变了：离开栈的草稿随之作废。
-    @ObservationIgnored var onMessagesChange: (([MessagesRoute]) -> Void)?
+    /// 「我」的二级页须以值入栈（`NavigationLink(value:)`），栈深才看得见、tab 栏才会随之退场。
+    var me = NavigationPath()
+    /// 新建对话模态的栈；nil 即模态没开，`[]` 是开在 Agent 列表上。
+    var newConversation: [NewConversationRoute]? {
+        didSet { onNewConversationChange?(newConversation ?? []) }
+    }
+    /// 新建对话的栈变了：离开栈的草稿随之作废。
+    @ObservationIgnored var onNewConversationChange: (([NewConversationRoute]) -> Void)?
+
+    /// tab 栏只在当前顶层页的栈空、且没有模态时出现（决策 23；键盘由外壳自己看）。
+    var showsTabBar: Bool {
+        guard newConversation == nil else { return false }
+        switch tab {
+        case .messages: return messages.isEmpty
+        case .machines: return machines.isEmpty
+        case .me: return me.isEmpty
+        }
+    }
+
+    /// 草稿的第一条发出去了：模态收起，这条对话在消息页的栈上打开，返回即回到消息列表。
+    func open(started key: ConversationKey) {
+        newConversation = nil
+        tab = .messages
+        messages = [.conversation(key)]
+    }
 }
 
 /// 一条会话打开后的全部状态：转录、这条会话唯一的一份卡片状态、输入区。
@@ -92,7 +118,7 @@ final class SignedInServices {
 
     @ObservationIgnored private var conversations: [ConversationKey: ConversationScreenModel] = [:]
     @ObservationIgnored private var details: [String: MachineDetailModel] = [:]
-    @ObservationIgnored private var drafts: [MessagesRoute: DraftConversationModel] = [:]
+    @ObservationIgnored private var drafts: [NewConversationRoute: DraftConversationModel] = [:]
     @ObservationIgnored private var agentNames: [String: String] = [:]
     @ObservationIgnored private var syncTask: Task<Void, Never>?
 
@@ -165,7 +191,7 @@ final class SignedInServices {
         }
         // 草稿只活在它那一次新建里：发出去换成了对话、或者退出了新建那几屏，再选同一个 Agent 是一张新草稿，
         // 机器覆盖也随之作废（规格「覆盖只对这一次生效」）。
-        router.onMessagesChange = { [weak self] path in
+        router.onNewConversationChange = { [weak self] path in
             self?.drafts = self?.drafts.filter { path.contains($0.key) } ?? [:]
         }
     }
@@ -250,7 +276,7 @@ final class SignedInServices {
         return model
     }
 
-    func draftModel(for route: MessagesRoute) -> DraftConversationModel? {
+    func draftModel(for route: NewConversationRoute) -> DraftConversationModel? {
         guard case .draft(let agentID, let projectID) = route else { return nil }
         if let cached = drafts[route] { return cached }
         guard let agent = newConversation.agents.first(where: { $0.syncID == agentID }) else { return nil }
@@ -260,7 +286,7 @@ final class SignedInServices {
             workspace: workspace, dispatcher: dispatcher, recorder: startedRecorder
         )
         // 已经退出栈的去处（退场动画里再求一次值）不留：否则下一次进来拿到的是它。
-        if router.messages.contains(route) { drafts[route] = model }
+        if router.newConversation?.contains(route) == true { drafts[route] = model }
         return model
     }
 

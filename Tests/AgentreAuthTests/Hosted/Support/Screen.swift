@@ -28,8 +28,8 @@ final class Screen {
     /// 屏上此刻看得见的文字。
     func labels() async -> [String] {
         await settle()
-        guard let root = window.rootViewController?.view else { return [] }
-        return elements(in: root).compactMap(\.accessibilityLabel) + visibleLabels(in: root)
+        // 从窗口起读：模态（新建对话）与底部面板是呈现出来的控制器，不在根控制器的视图里。
+        return elements(in: window).compactMap(\.accessibilityLabel) + visibleLabels(in: window)
     }
 
     /// 等到屏上出现某段文字（子串匹配）。
@@ -49,8 +49,7 @@ final class Screen {
     func tap(_ label: String, exact: Bool = true, seconds: Double = 10) async throws {
         let element = try await eventually("tappable “\(label)”", seconds: seconds) { () -> NSObject? in
             await settle()
-            guard let root = window.rootViewController?.view else { return nil }
-            let matches = elements(in: root).filter { element in
+            let matches = elements(in: window).filter { element in
                 guard let text = element.accessibilityLabel else { return false }
                 return exact ? text == label : text.contains(label)
             }
@@ -60,39 +59,55 @@ final class Screen {
         await settle()
     }
 
-    /// 切到第 `index` 个标签页（系统标签栏是 UIKit 控件，不在 SwiftUI 的无障碍树里）。
+    /// 切到第 `index` 个标签页：点自绘 tab 栏上按标识找到的那枚（0 消息、1 机器、2 我）。
     func selectTab(_ index: Int) async throws {
-        let bar = try await eventually("tab bar") { tabBarController(in: window.rootViewController) ?? tabBarController(near: window.rootViewController?.view) }
-        bar.selectedIndex = index
-        if let selected = bar.viewControllers?[index] {
-            _ = bar.delegate?.tabBarController?(bar, shouldSelect: selected)
-            bar.delegate?.tabBarController?(bar, didSelect: selected)
+        let id = Self.tabIdentifiers[index]
+        let tab: NSObject
+        do {
+            tab = try await eventually("tab \(id)") { () -> NSObject? in
+                await settle()
+                return elements(in: window).first { identifier(of: $0) == id }
+            }
+        } catch {
+            throw WaitTimeout(what: "tab \(id); saw identifiers \(elements(in: window).compactMap { identifier(of: $0) })")
         }
+        guard tab.accessibilityActivate() else { throw WaitTimeout(what: "activating \(id)") }
         await settle()
     }
 
-    /// SwiftUI 的 TabView 把 UITabBarController 的视图挂进无障碍树而不是子视图里：顺着它找控制器。
-    private func tabBarController(near root: UIView?) -> UITabBarController? {
-        guard let root else { return nil }
-        var queue: [NSObject] = [root]
-        while !queue.isEmpty {
-            let node = queue.removeFirst()
-            if let view = node as? UIView {
-                if let bar = view.next as? UITabBarController { return bar }
-                queue += view.subviews
-            }
-            queue += node.accessibilityElements?.compactMap { $0 as? NSObject } ?? []
-        }
-        return nil
+    private static let tabIdentifiers = ["shell.tab.messages", "shell.tab.machines", "shell.tab.me"]
+
+    /// 界面上此刻有没有 tab 栏元素（任何一枚 tab 按钮）。
+    func hasTabBar() async -> Bool {
+        await settle()
+        return elements(in: window).contains { identifier(of: $0).map(Self.tabIdentifiers.contains) ?? false }
     }
 
-    private func tabBarController(in controller: UIViewController?) -> UITabBarController? {
-        guard let controller else { return nil }
-        if let bar = controller as? UITabBarController { return bar }
-        for child in controller.children {
-            if let found = tabBarController(in: child) { return found }
+    /// 等到 tab 栏在（或不在）界面上。
+    func expectTabBar(_ present: Bool, _ step: String) async throws {
+        do {
+            _ = try await eventually("tab bar \(present ? "shown" : "gone") at \(step)", seconds: 5) {
+                await hasTabBar() == present ? true : nil
+            }
+        } catch {
+            throw WaitTimeout(what: "tab bar \(present ? "shown" : "gone") at \(step); saw \(await labels())")
         }
-        return nil
+    }
+
+    /// 屏上的 UIKit 文本框。
+    func textFields() async -> [UITextField] {
+        await settle()
+        func fields(in view: UIView) -> [UITextField] {
+            guard !view.isHidden, view.alpha > 0 else { return [] }
+            return ((view as? UITextField).map { [$0] } ?? []) + view.subviews.flatMap(fields(in:))
+        }
+        return fields(in: window)
+    }
+
+    /// SwiftUI 的无障碍节点答得出标识，却不在类型上声明 `UIAccessibilityIdentification`：按选择子问。
+    fileprivate func identifier(of element: NSObject) -> String? {
+        guard element.responds(to: NSSelectorFromString("accessibilityIdentifier")) else { return nil }
+        return element.value(forKey: "accessibilityIdentifier") as? String
     }
 
     fileprivate func settle() async {
@@ -105,7 +120,7 @@ final class Screen {
     fileprivate func elements(in root: NSObject) -> [NSObject] {
         var found: [NSObject] = []
         func visit(_ node: NSObject) {
-            if let view = node as? UIView, view.isHidden || view.alpha == 0 { return }
+            if let view = node as? UIView, view.isHidden || view.alpha == 0 || view.accessibilityElementsHidden { return }
             if node.isAccessibilityElement {
                 found.append(node)
                 return
@@ -148,18 +163,13 @@ func copy(_ key: String, table: String) -> String {
 }
 
 extension Screen {
-    /// 屏上此刻看得见的导航栏标题（大标题或行内标题），按用户看到的文字读出，不读环境。
+    /// 屏上此刻看得见的导航栏文字：顶层页的大字标题与行内动作、二级页紧凑导航栏的标题——
+    /// 都是自绘的外壳部件，按无障碍标识找，按用户看到的文字读出，不读环境。
     func navigationTitles() async -> [String] {
         await settle()
-        return navigationBars(in: window).flatMap { bar in
-            visibleLabels(in: bar) + elements(in: bar).compactMap(\.accessibilityLabel)
-        }
-    }
-
-    private func navigationBars(in view: UIView) -> [UINavigationBar] {
-        guard !view.isHidden, view.alpha > 0 else { return [] }
-        if let bar = view as? UINavigationBar { return [bar] }
-        return view.subviews.flatMap { navigationBars(in: $0) }
+        return elements(in: window)
+            .filter { ["shell.title", "shell.action"].contains(identifier(of: $0)) }
+            .compactMap(\.accessibilityLabel)
     }
 }
 

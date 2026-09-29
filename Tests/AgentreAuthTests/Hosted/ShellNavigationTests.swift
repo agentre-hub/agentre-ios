@@ -41,19 +41,27 @@ struct ShellNavigationTests {
         let key = ConversationKey(machineFingerprint: phone, conversationID: conversationID)
         #expect(try await environment.store.conversation(key)?.title == "Tidy the README")
         #expect(try await environment.store.carrier(of: key) == "machine-a")
-        _ = try await eventually("conversation opened") {
-            services.router.messages == [.conversation(key)] ? true : nil
+        // 首条发出：模态收起，这条对话在消息页的栈上打开；从对话返回回到消息列表。
+        _ = try await eventually("conversation opened on the messages stack") {
+            services.router.newConversation == nil && services.router.messages == [.conversation(key)] ? true : nil
         }
+        #expect(services.router.tab == .messages)
         try await screen.waitFor("Tidy the README")
+        _ = try await eventually("modal gone") {
+            await screen.labels().contains(copy("shell.cancel", table: "Shell")) ? nil : true
+        }
+        try await screen.tap(copy("shell.back", table: "Shell"))
+        _ = try await eventually("back on the message list") { services.router.messages.isEmpty ? true : nil }
+        try await screen.expectTabBar(true, "message list after the new conversation")
 
-        // 回到新建对话、再选同一个 Agent：进的是一张新草稿，而不是刚才那条已经开起来的对话。
-        services.router.messages = [.newConversation, .draft(agent: "agent-1", project: nil)]
+        // 再开新建对话、再选同一个 Agent：进的是一张新草稿，而不是刚才那条已经开起来的对话。
+        services.router.newConversation = [.draft(agent: "agent-1", project: nil)]
         let again = try #require(services.draftModel(for: .draft(agent: "agent-1", project: nil)))
         #expect(again !== draft)
         #expect(again.phase == .draft)
         #expect(again.sentText == nil)
         try await Task.sleep(for: .milliseconds(300))
-        #expect(services.router.messages.last == .draft(agent: "agent-1", project: nil))
+        #expect(services.router.newConversation?.last == .draft(agent: "agent-1", project: nil))
         await environment.tearDown()
     }
 

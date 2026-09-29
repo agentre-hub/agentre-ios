@@ -8,7 +8,7 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct LanguageSwitchTests {
-    /// 每个标签页根屏导航栏上由本地化文案给出的文字：标题，以及消息页的「新对话」按钮（工具栏项的读屏标签）。
+    /// 每个标签页根屏顶部由本地化文案给出的文字：大字标题，以及消息页的「新对话」行内动作（读屏标签）。
     private static let roots: [(tab: Int, copy: [(key: String, table: String)])] = [
         (0, [("messages.title", "Messages"), ("newconv.title", "NewConversation")]),
         (1, [("machines.title", "Machines")]),
@@ -29,16 +29,16 @@ struct LanguageSwitchTests {
         environment.me.setLanguage(.simplifiedChinese)
         try await expectRootTitles(on: screen, language: "zh-Hans")
 
-        // 机器栈里打开一台机器的详情，停在「我」页上切语言：切换不应把用户的导航位置清掉。
+        // 机器栈里打开一台机器的详情时切语言：切换不应把用户的导航位置清掉。二级页上没有 tab 栏，
+        // 所以停在详情上切（真实用户从「我」切完再回来，也是回到这个栈）。
         try await screen.selectTab(1)
         try await screen.waitFor("mac-studio")
         services.router.machines = [.machine("machine-a")]
         _ = try await eventually("machine detail open") { await screen.navigationTitles().contains("mac-studio") ? true : nil }
-        try await screen.selectTab(2)
 
         environment.me.setLanguage(.english)
-        try await screen.selectTab(1)
         #expect(services.router.machines == [.machine("machine-a")])
+        #expect(services.router.tab == .machines)
         _ = try await eventually("machine detail still open") { await screen.navigationTitles().contains("mac-studio") ? true : nil }
         services.router.machines = []
         try await expectRootTitles(on: screen, language: "en")

@@ -11,6 +11,12 @@ struct ConversationScreen: View {
     @State private var model: ConversationScreenModel?
     @Environment(\.isOffline) private var isOffline
 
+    /// 没有标题的会话以会话 ID 认出；模型还没建好时标题留空（这一瞬间导航栏照样在，返回照样可用）。
+    private var title: String {
+        guard let model else { return "" }
+        return model.conversation.title.isEmpty ? key.conversationID : model.conversation.title
+    }
+
     var body: some View {
         Group {
             if let model {
@@ -28,13 +34,12 @@ struct ConversationScreen: View {
                         onDeleted()
                     }
                 }
-                .navigationTitle(Text(verbatim: model.conversation.title.isEmpty ? key.conversationID : model.conversation.title))
-                .navigationBarTitleDisplayMode(.inline)
             } else {
                 Rectangle().fill(.token(.bg))
             }
         }
         .background(.token(.bg))
+        .compactNavigationBar(title: Text(verbatim: title))
         .task {
             if model == nil { model = await services.conversationModel(for: key) }
             // 进来就是读过了（不论从消息列表还是机器详情进来）；离开时把开着期间到的活动一并记成已读。

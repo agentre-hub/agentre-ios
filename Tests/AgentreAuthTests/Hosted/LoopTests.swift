@@ -46,7 +46,8 @@ struct LoopTests {
         try await screen!.tap(copy("machines.detail.save", table: "Machines"))
         try await screen!.waitFor(copy("machines.detail.saved", table: "Machines"))
 
-        // 3. 消息列表：这一条在列，等你处理，待批准的命令不进对话就读得到。
+        // 3. 消息列表：这一条在列，等你处理，待批准的命令不进对话就读得到。二级页上没有 tab 栏，先退回机器名册。
+        try await screen!.tap(copy("shell.back", table: "Shell"))
         try await screen!.selectTab(0)
         try await screen!.waitFor("Fix flaky test")
         try await screen!.waitFor("make test")

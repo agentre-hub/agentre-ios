@@ -3,7 +3,7 @@ import AgentreDomain
 import AgentreUI
 import SwiftUI
 
-/// 应用根：未登录是登录屏；登录态里是三标签骨架。显示偏好（语言、外观）两边都生效。
+/// 应用根：未登录是登录屏；登录态里是三个顶层页的外壳。显示偏好（语言、外观）两边都生效。
 struct AppRootView: View {
     let environment: AppEnvironment
 
@@ -55,7 +55,7 @@ private struct SignedInRoot: View {
     }
 }
 
-/// 三个顶层目的地：消息、机器、我，各自一个导航栈。
+/// 三个顶层目的地：消息、机器、我，各自一个导航栈；新建对话是盖在上面、自带栈的模态。
 private struct AppShell: View {
     let services: SignedInServices
     @Bindable private var router: Router
@@ -66,18 +66,12 @@ private struct AppShell: View {
     }
 
     var body: some View {
-        ShellView {
+        ShellView(selection: $router.tab, showsTabBar: router.showsTabBar) {
             NavigationStack(path: $router.messages) {
                 MessagesView(model: services.messages) { key in router.messages.append(.conversation(key)) }
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                router.messages.append(.newConversation)
-                            } label: {
-                                Image(systemName: "square.and.pencil")
-                                    .accessibilityLabel(Text("newconv.title", tableName: "NewConversation", bundle: AgentreUIResources.bundle))
-                            }
-                            .hitTarget()
+                    .topLevelHeader(Text("messages.title", tableName: "Messages", bundle: AgentreUIResources.bundle)) {
+                        ChromeIconButton(.squarePen, label: Text("newconv.title", tableName: "NewConversation", bundle: AgentreUIResources.bundle)) {
+                            router.newConversation = []
                         }
                     }
                     .navigationDestination(for: MessagesRoute.self) { route in
@@ -87,19 +81,27 @@ private struct AppShell: View {
         } machines: {
             NavigationStack(path: $router.machines) {
                 MachinesView(model: services.machines) { machine in router.machines.append(.machine(machine.fingerprint)) }
+                    .topLevelHeader(Text("machines.title", tableName: "Machines", bundle: AgentreUIResources.bundle))
                     .navigationDestination(for: MachinesRoute.self) { route in
                         MachinesDestination(services: services, route: route)
                     }
             }
         } me: {
-            NavigationStack {
+            NavigationStack(path: $router.me) {
                 MeView(model: services.me)
+                    .topLevelHeader(Text("me.title", tableName: "Me", bundle: AgentreUIResources.bundle))
             }
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { router.newConversation != nil },
+            set: { presented in if !presented { router.newConversation = nil } }
+        )) {
+            NewConversationFlow(services: services)
         }
     }
 }
 
-/// 消息栈里的各屏：对话、新建对话（Agent 列表、按项目挑）与草稿。
+/// 消息栈里的各屏：对话。
 private struct MessagesDestination: View {
     let services: SignedInServices
     let route: MessagesRoute
@@ -110,29 +112,68 @@ private struct MessagesDestination: View {
             ConversationScreen(services: services, key: key) {
                 services.router.messages.removeAll { $0 == route }
             }
-        case .newConversation:
+        }
+    }
+}
+
+/// 新建对话模态：根屏是 Agent 列表（左上「取消」），其后是按项目挑与草稿。草稿的第一条发出去即收起模态，
+/// 在消息页的栈上打开这条对话。
+private struct NewConversationFlow: View {
+    let services: SignedInServices
+    @Bindable private var router: Router
+
+    init(services: SignedInServices) {
+        self.services = services
+        router = services.router
+    }
+
+    var body: some View {
+        NavigationStack(path: Binding(
+            get: { router.newConversation ?? [] },
+            // 收起的动画里栈还会回写一次：模态已关就不再打开它。
+            set: { path in if router.newConversation != nil { router.newConversation = path } }
+        )) {
             NewConversationView(model: services.newConversation) { agent in
-                services.router.messages.append(.draft(agent: agent.syncID, project: nil))
+                router.newConversation?.append(.draft(agent: agent.syncID, project: nil))
             } onBrowseProjects: {
-                services.router.messages.append(.projects)
+                router.newConversation?.append(.projects)
+            }
+            .modalNavigationBar(title: Text("shell.newConversation", tableName: "Shell", bundle: AgentreUIResources.bundle)) {
+                router.newConversation = nil
             }
             .task { await services.newConversation.load() }
+            .navigationDestination(for: NewConversationRoute.self) { route in
+                NewConversationDestination(services: services, route: route)
+            }
+        }
+    }
+}
+
+/// 新建对话模态栈里的各屏：按项目挑（项目列表、项目下的 Agent）与草稿。
+private struct NewConversationDestination: View {
+    let services: SignedInServices
+    let route: NewConversationRoute
+
+    var body: some View {
+        switch route {
         case .projects:
             NewConversationProjectList(model: services.newConversation) { project in
-                services.router.messages.append(.project(project.syncID))
+                services.router.newConversation?.append(.project(project.syncID))
             }
+            .compactNavigationBar(title: Text("newconv.projects", tableName: "NewConversation", bundle: AgentreUIResources.bundle))
         case .project(let syncID):
             if let project = services.project(syncID) {
                 NewConversationProjectAgents(model: services.newConversation, project: project) { agent in
-                    services.router.messages.append(.draft(agent: agent.syncID, project: syncID))
+                    services.router.newConversation?.append(.draft(agent: agent.syncID, project: syncID))
                 }
+                .compactNavigationBar(title: Text(verbatim: project.name))
             }
         case .draft:
             if let draft = services.draftModel(for: route) {
                 DraftConversationView(model: draft) { key in
-                    // 对话跑起来了：新建那几屏退场，换成这条对话。
-                    services.router.messages = [.conversation(key)]
+                    services.router.open(started: key)
                 }
+                .compactNavigationBar(title: Text(verbatim: draft.agent.name))
             }
         }
     }
@@ -150,6 +191,7 @@ private struct MachinesDestination: View {
                 MachineDetailView(model: services.detailModel(for: machine)) { key in
                     services.router.machines.append(.conversation(key))
                 }
+                .compactNavigationBar(title: Text(verbatim: machine.name))
             }
         case .conversation(let key):
             ConversationScreen(services: services, key: key) {
