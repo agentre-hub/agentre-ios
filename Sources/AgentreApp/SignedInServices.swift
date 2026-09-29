@@ -77,6 +77,8 @@ final class SignedInServices {
     /// 新建的对话落库：发起端是本机（与机器报的 peer_fingerprint 同一个指纹，也是派单时的来源设备）。
     @ObservationIgnored let startedRecorder: StartedConversationRecorder
     @ObservationIgnored let workspace: WorkspaceClient
+    /// 会话头像字形与副标题据此解出所属项目与承载机器名（规格「全局框架」头像字形一条）。
+    @ObservationIgnored let identity: WorkspaceIdentityDirectory
     @ObservationIgnored let mentions: RESTMentionSource
     @ObservationIgnored let settings: ComposerSettingsAdapter
     @ObservationIgnored let sync: ConversationSync
@@ -130,6 +132,7 @@ final class SignedInServices {
         dispatcher = RelayDispatcher(connection: connection, source: source)
         startedRecorder = StartedConversationRecorder(store: store, origin: source.fingerprint)
         workspace = WorkspaceClient(transport: environment.transport, server: server)
+        identity = WorkspaceIdentityDirectory(workspace: workspace, roster: roster)
         mentions = RESTMentionSource(workspace: workspace, machines: directory)
         settings = ComposerSettingsAdapter(
             catalog: EngineCatalogClient(transport: environment.transport, server: server), connection: connection, carrier: carrier,
@@ -176,6 +179,8 @@ final class SignedInServices {
             await sync.run()
         }
         Task { [weak self] in await self?.loadAgentNames() }
+        let identity = identity
+        Task { await identity.load() }
     }
 
     /// 回到前台、网络恢复、或用户点了重试：补上没在跟随的会话（连接自己会重拨），

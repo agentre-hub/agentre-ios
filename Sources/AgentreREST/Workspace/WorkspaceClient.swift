@@ -48,11 +48,13 @@ private struct AgentsBody: Decodable {
         let projectSyncIds: [String]?
         let execTargets: [Target]?
         let hasAvailableTarget: Bool
+        let avatarColor: String?
 
         var domain: WorkspaceAgent {
             WorkspaceAgent(
                 syncID: syncId, name: name, projectSyncIDs: projectSyncIds ?? [],
-                execTargets: (execTargets ?? []).map(\.domain), hasAvailableTarget: hasAvailableTarget
+                execTargets: (execTargets ?? []).map(\.domain), hasAvailableTarget: hasAvailableTarget,
+                avatarColor: IdentityColor(wireToken: avatarColor)
             )
         }
     }
@@ -84,10 +86,12 @@ private struct ProjectsBody: Decodable {
         let name: String
         let parentSyncId: String?
         let sortOrder: Int?
+        let color: String?
 
         var domain: WorkspaceProject {
             WorkspaceProject(
-                syncID: syncId, name: name, parentSyncID: parentSyncId.flatMap { $0.isEmpty ? nil : $0 }, sortOrder: sortOrder ?? 0
+                syncID: syncId, name: name, parentSyncID: parentSyncId.flatMap { $0.isEmpty ? nil : $0 }, sortOrder: sortOrder ?? 0,
+                color: IdentityColor(wireToken: color)
             )
         }
     }

@@ -60,15 +60,21 @@ public struct WorkspaceAgent: Sendable, Equatable, Identifiable {
     public var projectSyncIDs: [String]
     public var execTargets: [ExecTarget]
     public var hasAvailableTarget: Bool
+    /// 头像字形的身份色（服务端 `avatar_color`）；缺失或不在 `agent-1…agent-16` 之内即中性。
+    public var avatarColor: IdentityColor
 
     public var id: String { syncID }
 
-    public init(syncID: String, name: String, projectSyncIDs: [String] = [], execTargets: [ExecTarget] = [], hasAvailableTarget: Bool) {
+    public init(
+        syncID: String, name: String, projectSyncIDs: [String] = [], execTargets: [ExecTarget] = [], hasAvailableTarget: Bool,
+        avatarColor: IdentityColor = .neutral
+    ) {
         self.syncID = syncID
         self.name = name
         self.projectSyncIDs = projectSyncIDs
         self.execTargets = execTargets
         self.hasAvailableTarget = hasAvailableTarget
+        self.avatarColor = avatarColor
     }
 }
 
@@ -79,14 +85,17 @@ public struct WorkspaceProject: Sendable, Equatable, Identifiable {
     /// nil 即根项目。
     public var parentSyncID: String?
     public var sortOrder: Int
+    /// 头像字形的身份色（服务端 `color`）；缺失或不在 `agent-1…agent-16` 之内即中性。
+    public var color: IdentityColor
 
     public var id: String { syncID }
 
-    public init(syncID: String, name: String, parentSyncID: String? = nil, sortOrder: Int = 0) {
+    public init(syncID: String, name: String, parentSyncID: String? = nil, sortOrder: Int = 0, color: IdentityColor = .neutral) {
         self.syncID = syncID
         self.name = name
         self.parentSyncID = parentSyncID
         self.sortOrder = sortOrder
+        self.color = color
     }
 }
 

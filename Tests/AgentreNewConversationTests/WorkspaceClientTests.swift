@@ -9,14 +9,14 @@ import Testing
 struct WorkspaceClientTests {
     let server = ServerAddress(string: "https://agentre.test")!
 
-    @Test("Agent 清单：执行目标链逐档解开；没加入项目时那个键缺席即空")
+    @Test("Agent 清单：执行目标链逐档解开；没加入项目时那个键缺席即空；avatar_color 解成身份色，缺失或越界即中性")
     func decodesAgents() async throws {
         let transport = FakeHTTPTransport { _ in .cagoData(#"""
         {"agents":[
-          {"sync_id":"ag-1","name":"coder","project_sync_ids":["p1"],"has_available_target":true,
+          {"sync_id":"ag-1","name":"coder","project_sync_ids":["p1"],"has_available_target":true,"avatar_color":"agent-9",
            "exec_targets":[{"rank":1,"backend_sync_id":"b1","device_unspecified":false,"device_id":3,"device_name":"mini","backend_type":"codex","availability":"available","current":true},
                            {"rank":2,"device_unspecified":true,"availability":"no_device","current":false}]},
-          {"sync_id":"ag-2","name":"reviewer","has_available_target":false,"exec_targets":[]}
+          {"sync_id":"ag-2","name":"reviewer","has_available_target":false,"exec_targets":[],"avatar_color":"#3B6896"}
         ]}
         """#) }
         let agents = try await WorkspaceClient(transport: transport, server: server).agents()
@@ -24,24 +24,24 @@ struct WorkspaceClientTests {
             WorkspaceAgent(syncID: "ag-1", name: "coder", projectSyncIDs: ["p1"], execTargets: [
                 ExecTarget(rank: 1, backendSyncID: "b1", deviceName: "mini", backendType: "codex", availability: .available, current: true),
                 ExecTarget(rank: 2, deviceUnspecified: true, availability: .noDevice),
-            ], hasAvailableTarget: true),
-            WorkspaceAgent(syncID: "ag-2", name: "reviewer", hasAvailableTarget: false),
+            ], hasAvailableTarget: true, avatarColor: .slot(9)),
+            WorkspaceAgent(syncID: "ag-2", name: "reviewer", hasAvailableTarget: false, avatarColor: .neutral),
         ])
         let request = try #require(await transport.requests.first)
         #expect(request.method == "GET")
         #expect(request.url.absoluteString == "https://agentre.test/v1/workspace/agents")
     }
 
-    @Test("项目树：父节点缺席即根")
+    @Test("项目树：父节点缺席即根；color 解成身份色，缺失即中性")
     func decodesProjects() async throws {
         let transport = FakeHTTPTransport { _ in .cagoData(#"""
-        {"projects":[{"sync_id":"root","name":"server","sort_order":1,"configured":true},
+        {"projects":[{"sync_id":"root","name":"server","sort_order":1,"configured":true,"color":"agent-4"},
                      {"sync_id":"fe","name":"frontend","parent_sync_id":"root","sort_order":0,"configured":false,"members":[{"sync_id":"m","agent_sync_id":"ag"}]}]}
         """#) }
         let projects = try await WorkspaceClient(transport: transport, server: server).projects()
         #expect(projects == [
-            WorkspaceProject(syncID: "root", name: "server", sortOrder: 1),
-            WorkspaceProject(syncID: "fe", name: "frontend", parentSyncID: "root"),
+            WorkspaceProject(syncID: "root", name: "server", sortOrder: 1, color: .slot(4)),
+            WorkspaceProject(syncID: "fe", name: "frontend", parentSyncID: "root", color: .neutral),
         ])
         #expect(await transport.requests.first?.url.absoluteString == "https://agentre.test/v1/workspace/projects")
     }

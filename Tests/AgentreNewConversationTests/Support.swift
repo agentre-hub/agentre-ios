@@ -48,6 +48,7 @@ actor FakeWorkspace: WorkspaceService {
     private(set) var planQueries: [DispatchPlanQuery] = []
     var failAgents = false
     var failPlans = false
+    var failProjects = false
     /// 挂住下一次取计划，直到 `releasePlan()`：用来验证在飞与过时的应答。
     var holdNextPlan = false
     private var planGate: CheckedContinuation<Void, Never>?
@@ -58,9 +59,10 @@ actor FakeWorkspace: WorkspaceService {
         self.planner = planner
     }
 
-    func configure(failAgents: Bool = false, failPlans: Bool = false, holdNextPlan: Bool = false) {
+    func configure(failAgents: Bool = false, failPlans: Bool = false, failProjects: Bool = false, holdNextPlan: Bool = false) {
         self.failAgents = failAgents
         self.failPlans = failPlans
+        self.failProjects = failProjects
         self.holdNextPlan = holdNextPlan
     }
 
@@ -72,7 +74,10 @@ actor FakeWorkspace: WorkspaceService {
         return agentList
     }
 
-    func projects() -> [WorkspaceProject] { projectList }
+    func projects() throws -> [WorkspaceProject] {
+        if failProjects { throw AuthError.unexpectedResponse(status: 500) }
+        return projectList
+    }
 
     func dispatchPlan(_ query: DispatchPlanQuery) async throws -> DispatchPlan {
         planQueries.append(query)
