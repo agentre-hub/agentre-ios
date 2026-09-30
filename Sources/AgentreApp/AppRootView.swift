@@ -191,7 +191,7 @@ private struct MachinesDestination: View {
                 MachineDetailView(model: services.detailModel(for: machine)) { key in
                     services.router.machines.append(.conversation(key))
                 }
-                .compactNavigationBar(title: Text(verbatim: machine.name))
+                .compactNavigationBar(title: Text(verbatim: machine.name), subtitle: machine.reportedSummary.map { Text(verbatim: $0) })
             }
         case .conversation(let key):
             ConversationScreen(services: services, key: key) {

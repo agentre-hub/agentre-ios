@@ -22,12 +22,17 @@ public struct MachinesView: View {
             } else if let reason = model.unavailable {
                 FailureNotice(fact: .noMachineAvailable(reason)) {}
                     .machinesRow()
+            } else if !model.machines.isEmpty {
+                Text("machines.subtitle \(model.machines.count) \(model.machines.filter(\.online).count)", tableName: "Machines", bundle: .module)
+                    .font(.subheadline)
+                    .foregroundStyle(.token(.ink2))
+                    .machinesRow()
             }
             ForEach(model.machines) { machine in
                 Button {
                     onOpen(machine)
                 } label: {
-                    MachineRosterRow(machine: machine)
+                    MachineRosterRow(machine: machine, counts: model.counts[machine.fingerprint])
                 }
                 .hitTarget()
                 .machinesRow()
@@ -50,51 +55,82 @@ private extension View {
     }
 }
 
-/// 一行：在线点、机器名（等宽：机器产出的内容），在线态与最后在线时刻。
+/// 一张卡：状态点、等宽机器名、展开指示；等宽的「平台 · 种类 版本」一行；分隔线下是在线时现算的会话计数，
+/// 离线时只写最后在线时刻、整卡压暗（规格「08」：离线机器的会话数没有来源，见 Out of scope）。
 private struct MachineRosterRow: View {
     let machine: Machine
+    /// 那台机器现算的会话计数；只在线且已答过时才有（决策 19：机器离线时这三个数一个都没有）。
+    let counts: MachineSessionCounts?
 
     var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(.token(machine.online ? .run : .ink2))
-                .frame(width: 10, height: 10)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(verbatim: machine.name)
-                    .font(.body.monospaced())
-                    .foregroundStyle(.token(.ink))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                MachinePresenceLine(machine: machine)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                // 纯装饰：在线态由下面分隔线以下的文字块（会话计数 或 最后在线时刻）写出来，不只靠这枚点的颜色。
+                Circle()
+                    .fill(.token(machine.online ? .run : .ink2))
+                    .frame(width: 10, height: 10)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(verbatim: machine.name)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.token(.ink))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let summary = machine.reportedSummary {
+                        Text(verbatim: summary)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.token(.ink2))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(.chevronRight)
+                    .foregroundStyle(.token(.ink2))
+                    .accessibilityHidden(true)
             }
-            Spacer(minLength: 0)
+            if machine.online {
+                if let counts, counts.total > 0 {
+                    Divider().overlay(.token(.line))
+                    MachineActivitySummary(counts: counts)
+                }
+            } else if machine.lastSeenAt > 0 {
+                Divider().overlay(.token(.line))
+                Text("machines.lastSeen \(Text(Date(timeIntervalSince1970: TimeInterval(machine.lastSeenAt) / 1000), format: .relative(presentation: .named)))", tableName: "Machines", bundle: .module)
+                    .font(.caption)
+                    .foregroundStyle(.token(.ink2))
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.token(.surface), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(RoundedRectangle(cornerRadius: 12))
+        .opacity(machine.online ? 1 : 0.45)
     }
 }
 
-/// 在线，或「不在线」加最后在线的时刻。
-struct MachinePresenceLine: View {
-    let machine: Machine
+/// 「N 个会话」与「N 运行中 · N 等你处理」：为零的项不写（决策 19）。
+private struct MachineActivitySummary: View {
+    let counts: MachineSessionCounts
 
     var body: some View {
-        if machine.online {
-            Text("machines.online", tableName: "Machines", bundle: .module)
-                .font(.subheadline)
+        VStack(alignment: .leading, spacing: 2) {
+            Text("machines.count.sessions \(counts.total)", tableName: "Machines", bundle: .module)
+                .font(.caption.weight(.medium))
                 .foregroundStyle(.token(.run))
-        } else {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("machines.offline", tableName: "Machines", bundle: .module)
-                    .font(.subheadline)
-                    .foregroundStyle(.token(.ink2))
-                if machine.lastSeenAt > 0 {
-                    Text("machines.lastSeen \(Text(Date(timeIntervalSince1970: TimeInterval(machine.lastSeenAt) / 1000), format: .relative(presentation: .named)))", tableName: "Machines", bundle: .module)
-                        .font(.caption)
-                        .foregroundStyle(.token(.ink2))
+            if counts.running > 0 || counts.waiting > 0 {
+                HStack(spacing: 4) {
+                    if counts.running > 0 {
+                        Text("machines.count.running \(counts.running)", tableName: "Machines", bundle: .module)
+                    }
+                    if counts.running > 0, counts.waiting > 0 {
+                        Text(verbatim: "·").accessibilityHidden(true)
+                    }
+                    if counts.waiting > 0 {
+                        Text("machines.count.waiting \(counts.waiting)", tableName: "Machines", bundle: .module)
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(.token(.ink2))
             }
         }
     }

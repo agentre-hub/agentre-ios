@@ -17,13 +17,20 @@ struct MachineScreensTests {
         struct Roster: MachineRoster {
             func machines() -> [Machine] {
                 [
-                    Machine(id: 1, fingerprint: "fp-1", name: "studio-mac", online: true),
-                    Machine(id: 2, fingerprint: "fp-2", name: "build-box", online: false, lastSeenAt: 1_800_000_000_000),
-                    Machine(id: 3, fingerprint: "fp-3", name: "laptop", online: true),
+                    Machine(id: 1, fingerprint: "fp-1", name: "studio-mac", kind: "desktop", platform: "darwin/arm64", version: "0.9.2", online: true),
+                    Machine(
+                        id: 2, fingerprint: "fp-2", name: "build-box", kind: "agentred", platform: "linux", version: "0.8.7",
+                        online: false, lastSeenAt: 1_800_000_000_000
+                    ),
+                    Machine(id: 3, fingerprint: "fp-3", name: "laptop", kind: "agentred", platform: "darwin", version: "0.9.2", online: true),
                 ]
             }
         }
-        let model = MachinesModel(roster: Roster())
+        let sessions = FakeSessionSource([])
+        await sessions.setCounts(MachineSessionCounts(total: 12, running: 2, waiting: 1), for: "fp-1")
+        // laptop（fp-3）在线但没有任何会话：为零的项不写，整块计数都不出现。
+        await sessions.setCounts(MachineSessionCounts(total: 0, running: 0, waiting: 0), for: "fp-3")
+        let model = MachinesModel(roster: Roster(), sessions: sessions)
         await model.load()
         #expect(model.machines.count == 3)
         return MachinesView(model: model, onOpen: { _ in })
@@ -54,7 +61,7 @@ struct MachineScreensTests {
     }
 
     func rosterScreen(_ result: Result<[Machine], any Error>) async -> MachinesView {
-        let model = MachinesModel(roster: ScriptedRoster(result))
+        let model = MachinesModel(roster: ScriptedRoster(result), sessions: FakeSessionSource([]))
         await model.load()
         return MachinesView(model: model, onOpen: { _ in })
     }
@@ -110,13 +117,34 @@ struct MachineScreensTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
-    @Test("名册：机器名与在线态在行上")
+    @Test("名册：机器名在行上；副标题写已配对与在线的台数")
     func rosterRows() async throws {
-        let labels = await HostedScreen(await roster()).labels().joined(separator: "\n")
-        #expect(labels.contains("studio-mac"))
-        #expect(labels.contains("build-box"))
-        #expect(labels.contains(Self.text("machines.offline")))
-        #expect(labels.contains(Self.text("machines.online")))
+        let labels = await HostedScreen(await roster()).labels()
+        let joined = labels.joined(separator: "\n")
+        #expect(joined.contains("studio-mac"))
+        #expect(joined.contains("build-box"))
+        // 3 台已配对（studio-mac、build-box、laptop），2 台在线（studio-mac、laptop）。
+        #expect(labels.contains(String(format: Self.text("machines.subtitle %lld %lld"), 3, 2)), "\(labels)")
+    }
+
+    @Test("名册：等宽「平台 · 种类 版本」按上报原样；在线机器现算的会话计数，为零的项不写；离线机器没有会话数、只写最后在线")
+    func rosterCards() async throws {
+        let labels = await HostedScreen(await roster()).labels()
+        let joined = labels.joined(separator: "\n")
+        #expect(joined.contains("darwin/arm64 · desktop 0.9.2"), "\(labels)")
+        #expect(joined.contains("linux · agentred 0.8.7"), "\(labels)")
+        let studio = try #require(labels.first { $0.contains("studio-mac") }, "\(labels)")
+        #expect(studio.contains(String(format: Self.text("machines.count.sessions %lld"), 12)), "\(studio)")
+        #expect(studio.contains(String(format: Self.text("machines.count.running %lld"), 2)), "\(studio)")
+        #expect(studio.contains(String(format: Self.text("machines.count.waiting %lld"), 1)), "\(studio)")
+        // laptop（在线，0 个会话）：为零的项不写，整块计数都不出现。
+        let laptop = try #require(labels.first { $0.contains("laptop") }, "\(labels)")
+        #expect(!laptop.localizedCaseInsensitiveContains("session") && !laptop.contains("个会话"), "\(laptop)")
+        // build-box（离线）：没有会话数，只写最后在线时刻（决策 19：离线机器的会话数没有来源）。
+        let buildBox = try #require(labels.first { $0.contains("build-box") }, "\(labels)")
+        #expect(!buildBox.localizedCaseInsensitiveContains("session") && !buildBox.contains("个会话"), "\(buildBox)")
+        let lastSeenPrefix = Self.text("machines.lastSeen %@").replacingOccurrences(of: "%@", with: "").trimmingCharacters(in: .whitespaces)
+        #expect(buildBox.contains(lastSeenPrefix), "\(buildBox)")
     }
 
     @Test("详情：搜索框、已保存的两行各一个进入按钮、未保存的两行各一个「保存到手机」；发现数 = 5")
@@ -167,16 +195,50 @@ struct MachineScreensTests {
         #expect(labels.filter { $0 == status("messages.status.waiting") }.count == 2, "\(labels)")
     }
 
-    @Test("详情离线：呈现「不在线」，没有计数也没有会话")
+    @Test("详情离线：呈现「这台机器不在线」，没有计数也没有会话")
     func detailOffline() async throws {
         let model = await detail(machine: offlineMachine())
         let labels = await HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) }).labels()
         let joined = labels.joined(separator: "\n")
-        #expect(joined.contains(Self.text("machines.offline")))
+        #expect(joined.contains(Self.text("machines.detail.offline")), "\(labels)")
         #expect(!joined.contains("17"))
         #expect(!joined.contains(Self.text("machines.detail.count.total")))
         #expect(!joined.contains("Fix build"))
         #expect(!labels.contains(Self.text("machines.detail.save")))
+    }
+
+    @Test("详情：每行的等宽工作目录与标题、相对时间同在，没有路径的行不留空白")
+    func detailRowsShowCwd() async throws {
+        let source = FakeSessionSource([session("c1", title: "Fix build", cwd: "~/Code/agentre/agentre-ios"), session("c2", title: "No path")])
+        let model = MachineDetailModel(machine: onlineMachine(), sessions: source, store: FakeSavingStore(), transfer: FakeTransfer(), pageSize: 10)
+        await model.load()
+        let labels = await HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) }).labels()
+        let joined = labels.joined(separator: "\n")
+        #expect(joined.contains("~/Code/agentre/agentre-ios"), "\(labels)")
+    }
+
+    @Test("详情：「再加载 N 条」取代自动翻页，N = 总数减已列出、以一页为上限；点它接着翻页；没有更多时不出现")
+    func reloadMoreButtonReplacesAutomaticPaging() async throws {
+        let source = FakeSessionSource((0..<5).map { session("c\($0)", title: "task \($0)", at: Int64(10_000 - $0)) })
+        let model = MachineDetailModel(machine: onlineMachine(), sessions: source, store: FakeSavingStore(), transfer: FakeTransfer(), pageSize: 2)
+        await model.load()
+        let screen = HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) })
+        let reloadLabel = String(format: Self.text("machines.detail.reloadMore %lld"), 2)
+        let firstPageLabels = await screen.labels()
+        #expect(firstPageLabels.contains(reloadLabel), "\(firstPageLabels)")
+        // 只是滚到底不该自动翻页：没有点按钮之前，清单不变。
+        #expect(model.rows.count == 2)
+        let button = try #require(await screen.frame(of: reloadLabel), "找不到「再加载」按钮")
+        #expect(button.height >= 44, "\(button)")
+        await model.loadMore()
+        #expect(model.rows.count == 4)
+        await model.loadMore()
+        #expect(model.rows.count == 5)
+        #expect(model.reloadCount == nil, "列全了，没有更多")
+        let finalScreen = HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) })
+        let fragment = Self.text("machines.detail.reloadMore %lld").replacingOccurrences(of: "%lld", with: "").trimmingCharacters(in: .whitespaces)
+        let finalLabels = await finalScreen.labels()
+        #expect(!finalLabels.joined(separator: "\n").contains(fragment), "\(finalLabels)")
     }
 
     @Test("会话行的标题从行首起排、占去行宽的大半：闲着的行与等你处理 / 运行中 / 失败的行都一样（iPhone 17 宽度）")

@@ -11,6 +11,9 @@ public final class MachinesModel {
     public private(set) var loadFailed = false
     /// 名册没取到时的事实（屏上以用户语言重述）；取到了、或手上有旧的可显示时为 nil。
     public private(set) var failure: FailureFact?
+    /// 在线机器现算的会话计数（`sessionCounts`），按指纹存放；离线或还没问到的机器没有这一项——不是零
+    /// （规格「08」）。
+    public private(set) var counts: [String: MachineSessionCounts] = [:]
 
     /// 名册取到了而没有一台在线：没有可用的机器，及其原因（一台都没有即还没配对）。
     public var unavailable: MachineUnavailableReason? {
@@ -19,13 +22,16 @@ public final class MachinesModel {
     }
 
     private let roster: any MachineRoster
+    private let sessions: any MachineSessionSource
     private var hasLoaded = false
 
-    public init(roster: any MachineRoster) {
+    public init(roster: any MachineRoster, sessions: any MachineSessionSource) {
         self.roster = roster
+        self.sessions = sessions
     }
 
     /// 取一遍名册：在线的在前，同档按名字。取失败时保留已有的名册，从没取到过才算失败。
+    /// 名册取到后，各在线机器再各问一次它现算的会话计数。
     public func load() async {
         do {
             machines = try await roster.machines().sorted { lhs, rhs in
@@ -35,9 +41,25 @@ public final class MachinesModel {
             hasLoaded = true
             loadFailed = false
             failure = nil
+            await loadCounts()
         } catch {
             loadFailed = !hasLoaded
             failure = hasLoaded ? nil : FailureFact(presenting: error)
         }
+    }
+
+    private func loadCounts() async {
+        let online = machines.filter(\.online)
+        let sessions = sessions
+        var updated: [String: MachineSessionCounts] = [:]
+        await withTaskGroup(of: (String, MachineSessionCounts?).self) { group in
+            for machine in online {
+                group.addTask { (machine.fingerprint, try? await sessions.counts(on: machine.fingerprint)) }
+            }
+            for await (fingerprint, counts) in group where counts != nil {
+                updated[fingerprint] = counts
+            }
+        }
+        counts = updated
     }
 }

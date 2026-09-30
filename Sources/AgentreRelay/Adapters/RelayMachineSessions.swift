@@ -22,7 +22,9 @@ public actor RelayMachineSessions: MachineSessionSource, MachineSessionTransfer 
         request.cursor = cursor
         request.limit = Int32(clamping: limit)
         let response: Agentre_Wire_SessionListResponse = try await connection.call(machine: machineFingerprint, .sessionList, request)
-        return MachineSessionPage(sessions: response.sessions.map(domainSession), cursor: response.cursor, hasMore: response.hasMore_p)
+        return MachineSessionPage(
+            sessions: response.sessions.map(domainSession), cursor: response.cursor, hasMore: response.hasMore_p, total: response.total
+        )
     }
 
     public func counts(on machineFingerprint: String) async throws -> MachineSessionCounts {

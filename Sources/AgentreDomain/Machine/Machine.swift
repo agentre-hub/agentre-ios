@@ -32,6 +32,13 @@ public struct Machine: Sendable, Equatable, Identifiable {
     public func key(of session: MachineSession) -> ConversationKey {
         ConversationKey(conversationID: session.conversationID, peerFingerprint: session.peerFingerprint, via: fingerprint)
     }
+
+    /// 「平台 · 种类 版本」，按上报原样；缺哪项不写哪项（导航栏副标题与机器卡片共用，规格「06」「08」）。
+    public var reportedSummary: String? {
+        let right = [kind, version].filter { !$0.isEmpty }.joined(separator: " ")
+        let parts = [platform, right].filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 }
 
 /// 机器名册（REST）。

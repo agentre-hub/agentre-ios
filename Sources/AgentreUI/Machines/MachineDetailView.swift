@@ -70,9 +70,20 @@ public struct MachineDetailView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                    .onAppear {
-                        if row.id == model.rows.last?.id { Task { await model.loadMore() } }
+                }
+                if let reloadCount = model.reloadCount {
+                    Button {
+                        Task { await model.loadMore() }
+                    } label: {
+                        Text("machines.detail.reloadMore \(reloadCount)", tableName: "Machines", bundle: .module)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.token(.primary))
+                            .frame(maxWidth: .infinity)
                     }
+                    .hitTarget()
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
             .listStyle(.plain)
@@ -87,7 +98,17 @@ public struct MachineDetailView: View {
                     .font(.largeTitle)
                     .foregroundStyle(.token(.ink2))
                     .accessibilityHidden(true)
-                MachinePresenceLine(machine: model.machine)
+                Text("machines.detail.offline", tableName: "Machines", bundle: .module)
+                    .font(.subheadline)
+                    .foregroundStyle(.token(.ink2))
+                if model.machine.lastSeenAt > 0 {
+                    Text(
+                        "machines.lastSeen \(Text(Date(timeIntervalSince1970: TimeInterval(model.machine.lastSeenAt) / 1000), format: .relative(presentation: .named)))",
+                        tableName: "Machines", bundle: .module
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.token(.ink2))
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -132,12 +153,13 @@ private struct MachineSessionRowView: View {
 
     var body: some View {
         if row.isSaved {
+            // 已保存：整行是进入对话的按钮，行尾是进入的展开指示（规格「06」：「已保存的是进入对话的展开指示」）。
             Button {
                 onOpen(row.key)
             } label: {
                 card {
-                    Image(systemName: "iphone")
-                        .foregroundStyle(.token(.primary))
+                    Image(.chevronRight)
+                        .foregroundStyle(.token(.ink2))
                         .accessibilityLabel(Text("machines.detail.saved", tableName: "Machines", bundle: .module))
                 }
             }
@@ -165,6 +187,13 @@ private struct MachineSessionRowView: View {
             ConversationStatusGlyph(activity: row.session.activity)
             VStack(alignment: .leading, spacing: 4) {
                 title
+                if !row.session.cwd.isEmpty {
+                    Text(verbatim: row.session.cwd)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.token(.ink2))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 if row.session.lastMessageAt > 0 {
                     Text(Date(timeIntervalSince1970: TimeInterval(row.session.lastMessageAt) / 1000), format: .relative(presentation: .named))
                         .font(.caption)

@@ -14,8 +14,10 @@ func offlineMachine(_ fingerprint: String = machineFingerprint) -> Machine {
     Machine(id: 1, fingerprint: fingerprint, name: "studio-mac", kind: "desktop", online: false, lastSeenAt: 1_800_000_000_000)
 }
 
-func session(_ id: String, title: String = "", peer: String = "", lifecycle: String = "idle", waiting: Bool = false, at: Int64 = 1_000) -> MachineSession {
-    MachineSession(conversationID: id, peerFingerprint: peer, title: title, lifecycleState: lifecycle, waitingForInput: waiting, lastMessageAt: at)
+func session(
+    _ id: String, title: String = "", peer: String = "", cwd: String = "", lifecycle: String = "idle", waiting: Bool = false, at: Int64 = 1_000
+) -> MachineSession {
+    MachineSession(conversationID: id, peerFingerprint: peer, title: title, cwd: cwd, lifecycleState: lifecycle, waitingForInput: waiting, lastMessageAt: at)
 }
 
 func key(_ id: String, machine: String = machineFingerprint) -> ConversationKey {
@@ -35,6 +37,8 @@ actor FakeSessionSource: MachineSessionSource {
 
     var all: [MachineSession]
     var counts = MachineSessionCounts(total: 0, running: 0, waiting: 0)
+    /// 按机器指纹分开的计数：名册屏同时问好几台机器，各自要各自的答复。没配的那台落回 `counts`。
+    var countsByMachine: [String: MachineSessionCounts] = [:]
     var failing = false
     /// 请求随所在任务被取消而收场（中继调用对取消的应答）。
     var cancelling = false
@@ -47,6 +51,7 @@ actor FakeSessionSource: MachineSessionSource {
     init(_ all: [MachineSession]) { self.all = all }
 
     func setCounts(_ counts: MachineSessionCounts) { self.counts = counts }
+    func setCounts(_ counts: MachineSessionCounts, for machine: String) { countsByMachine[machine] = counts }
     func setFailing(_ failing: Bool) { self.failing = failing }
     func setCancelling(_ cancelling: Bool) { self.cancelling = cancelling }
     func setSessions(_ all: [MachineSession]) { self.all = all }
@@ -67,14 +72,14 @@ actor FakeSessionSource: MachineSessionSource {
         let end = min(start + limit, matching.count)
         let page = Array(matching[min(start, end)..<end])
         let more = end < matching.count
-        return MachineSessionPage(sessions: page, cursor: more ? String(end) : "", hasMore: more)
+        return MachineSessionPage(sessions: page, cursor: more ? String(end) : "", hasMore: more, total: Int64(matching.count))
     }
 
     func counts(on machine: String) async throws -> MachineSessionCounts {
         countRequests += 1
         if cancelling { throw CancellationError() }
         if failing { throw URLError(.timedOut) }
-        return counts
+        return countsByMachine[machine] ?? counts
     }
 }
 

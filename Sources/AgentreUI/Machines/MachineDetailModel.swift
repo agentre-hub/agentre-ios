@@ -23,6 +23,8 @@ public final class MachineDetailModel {
     public private(set) var counts: MachineSessionCounts?
     public private(set) var hasMore = false
     public private(set) var keyword = ""
+    /// 这个关键词范围下机器报的会话总数，随每一页刷新（规格「06」的「再加载 N 条」）。
+    private var total: Int64 = 0
     /// 名册说它在线，中继上却没问到。
     public private(set) var unreachable = false
     /// 没问到的原因是那台机器的协议版本与本 App 不等：要更新 App（此时 `unreachable` 也为真）。
@@ -57,6 +59,7 @@ public final class MachineDetailModel {
             rows = []
             counts = nil
             hasMore = false
+            total = 0
             return
         }
         await refreshSaved()
@@ -104,6 +107,19 @@ public final class MachineDetailModel {
         }
     }
 
+    /// 「再加载 N 条」的 N：机器报的总数减去已列出的条数，以一页为上限；已经列全或没答过总数时为 nil。
+    public static func reloadCount(total: Int64, listed: Int, pageSize: Int) -> Int? {
+        let remaining = total - Int64(listed)
+        guard remaining > 0 else { return nil }
+        return Int(min(remaining, Int64(pageSize)))
+    }
+
+    /// 列表底部按钮上的 N；没有更多（含机器离线、还没打开过）时为 nil，替代原先的滚到底自动翻页。
+    public var reloadCount: Int? {
+        guard machine.online, hasMore else { return nil }
+        return Self.reloadCount(total: total, listed: rows.count, pageSize: pageSize)
+    }
+
     /// 跟着本地库的变动更新每行的已保存状态，直到所在任务被取消。
     public func follow() async {
         for await _ in await store.changes() {
@@ -131,6 +147,7 @@ public final class MachineDetailModel {
             rows = []
             hasMore = false
             counts = nil
+            total = 0
             unreachable = true
             updateRequired = FailureFact(presenting: error) == .updateRequired
         }
@@ -145,6 +162,7 @@ public final class MachineDetailModel {
         }.filter { !listed.contains($0.id) }
         cursor = page.cursor
         hasMore = page.hasMore && !page.cursor.isEmpty
+        total = page.total
     }
 
     private func refreshSaved() async {

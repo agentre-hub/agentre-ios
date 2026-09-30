@@ -81,16 +81,17 @@ final class MainlineUITests: XCTestCase {
         screen.tap(screen.tab(.machines), "Machines tab")
         let machineRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", FakeAgentred.boxName)).firstMatch
         screen.expect(machineRow, "roster row for \(FakeAgentred.boxName)")
-        screen.expect(screen.text(copy("Machines", "machines.online")), "online state")
-        screen.shot("06 machines")
+        // 副标题「N 台已配对 · M 台在线」：这台伪机器（agentred）加伪服务端固定携带的离线 old-desktop，2 台已配对、1 台在线。
+        screen.expect(screen.text(String(format: copy("Machines", "machines.subtitle %lld %lld"), 2, 1)), "roster subtitle")
+        screen.shot("08 machines")
         screen.tap(machineRow, "machine row")
         screen.expect(screen.text(copy("Machines", "machines.detail.count.total")), "total count")
         screen.expect(screen.text(Self.savedTitle), "the machine's conversation")
-        screen.shot("07 machine detail")
+        screen.shot("06 machine detail")
         screen.tap(screen.button(copy("Machines", "machines.detail.save")), "save to phone")
         screen.expect(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", copy("Machines", "machines.detail.saved"))).firstMatch,
                       "row marked as on this phone")
-        screen.shot("08 saved to phone")
+        screen.shot("06 machine detail saved")
 
         // 消息列表读本地库：刚保存的那条在。tab 栏只在顶层页上：先退回机器名册。
         screen.tap(screen.back, "back to the machine roster")

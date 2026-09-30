@@ -52,6 +52,57 @@
         }
       }
     },
+    "machines.count.running %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld running"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 运行中"
+          }
+        }
+      }
+    },
+    "machines.count.sessions %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sessions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个会话"
+          }
+        }
+      }
+    },
+    "machines.count.waiting %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld waiting for you"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 等你处理"
+          }
+        }
+      }
+    },
     "machines.detail.deviceOffline": {
       "extractionState": "manual",
       "localizations": {
@@ -65,6 +116,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "这台设备没有联网"
+          }
+        }
+      }
+    },
+    "machines.detail.offline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This machine isn't online"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台机器不在线"
+          }
+        }
+      }
+    },
+    "machines.detail.reloadMore %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Load %lld more"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "再加载 %lld 条"
           }
         }
       }
@@ -154,36 +239,19 @@
         }
       }
     },
-    "machines.offline": {
+    "machines.subtitle %lld %lld": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Not online"
+            "value": "%lld paired · %lld online"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "不在线"
-          }
-        }
-      }
-    },
-    "machines.online": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Online"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在线"
+            "value": "%lld 台已配对 · %lld 台在线"
           }
         }
       }

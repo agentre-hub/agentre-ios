@@ -162,7 +162,7 @@ final class SignedInServices {
             store: store
         )
         messages = MessagesModel(store: store, identity: identity)
-        machines = MachinesModel(roster: roster)
+        machines = MachinesModel(roster: roster, sessions: machineSessions)
         newConversation = NewConversationModel(workspace: workspace, store: store)
         let failures = SyncFailures()
         self.failures = failures

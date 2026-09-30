@@ -57,11 +57,14 @@ public struct MachineSessionPage: Sendable, Equatable {
     /// 下一页从这里接着要；空 = 这是最后一页。对调用方不透明。
     public let cursor: String
     public let hasMore: Bool
+    /// 这个关键词范围下机器报的会话总数：「再加载 N 条」据此算还剩多少条（规格「06」）。
+    public let total: Int64
 
-    public init(sessions: [MachineSession], cursor: String, hasMore: Bool) {
+    public init(sessions: [MachineSession], cursor: String, hasMore: Bool, total: Int64 = 0) {
         self.sessions = sessions
         self.cursor = cursor
         self.hasMore = hasMore
+        self.total = total
     }
 }
 

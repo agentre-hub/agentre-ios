@@ -132,6 +132,30 @@ struct MachineDetailModelTests {
         #expect(detail.rows.map(\.session.conversationID) == ["c0", "c1"])
     }
 
+    @Test("「再加载 N 条」的 N：机器报的总数减去已列出的条数，以一页为上限；列全了没有")
+    func reloadCountCapsAtOnePage() throws {
+        #expect(MachineDetailModel.reloadCount(total: 17, listed: 4, pageSize: 10) == 10)
+        #expect(MachineDetailModel.reloadCount(total: 8, listed: 4, pageSize: 10) == 4)
+        #expect(MachineDetailModel.reloadCount(total: 4, listed: 4, pageSize: 10) == nil)
+        #expect(MachineDetailModel.reloadCount(total: 0, listed: 0, pageSize: 10) == nil)
+    }
+
+    @Test("接上 sessionList 的 total：列表底部按钮的 N 随翻页与改搜索词一起更新，机器离线时没有这个按钮")
+    func reloadCountTracksTheServerTotal() async throws {
+        let source = FakeSessionSource(sessions(5))
+        let detail = model(source, pageSize: 2)
+        await detail.load()
+        #expect(detail.reloadCount == 2, "还剩 5-2=3 条，以一页（2）为上限")
+        await detail.loadMore()
+        #expect(detail.reloadCount == 1)
+        await detail.loadMore()
+        #expect(detail.reloadCount == nil, "列全了")
+
+        let offline = model(FakeSessionSource(sessions(5)), machine: offlineMachine(), pageSize: 2)
+        await offline.load()
+        #expect(offline.reloadCount == nil, "机器离线：不问，也没有这个按钮")
+    }
+
     @Test("重新载入被取消（点进一行、屏上的任务随之取消）：不是没连上，已列出的行照旧")
     func cancelledReloadIsNotUnreachable() async throws {
         let source = FakeSessionSource(sessions(3))

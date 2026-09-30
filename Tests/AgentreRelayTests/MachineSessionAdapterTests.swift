@@ -51,11 +51,13 @@ private func durableFrame(_ seq: Int64, createtime: Int64) -> Agentre_Wire_Durab
         response.sessions = [summary("conv-1", peer: "peer-1", latest: 42), summary("conv-2")]
         response.cursor = "c-3"
         response.hasMore_p = true
+        response.total = 9
         socket.respond(id, to: request, with: response)
 
         let result = try await page
         #expect(result.cursor == "c-3")
         #expect(result.hasMore)
+        #expect(result.total == 9)
         #expect(result.sessions.map(\.conversationID) == ["conv-1", "conv-2"])
         #expect(result.sessions[0] == MachineSession(
             conversationID: "conv-1", peerFingerprint: "peer-1", title: "Fix login", agentSyncID: "agent-1", cwd: "/repo",
