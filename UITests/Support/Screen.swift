@@ -71,12 +71,22 @@ struct Screen {
         return element
     }
 
+    /// 等元素不在。判它「还在」要亲眼看见：过了 `timeout`，且最近连着两次查询都看见了它。
+    /// 不用挂钟窗口（XCTWaiter）：机器一忙，查一次整棵无障碍树就要好几秒（满载下实测 4.3 秒，而窗口开头还有
+    /// 1 秒的首查延迟），5 秒的窗口里一次查询都没做完就判了超时——元素其实早已不在。
     func expectGone(_ element: XCUIElement, _ what: String, timeout: TimeInterval = Screen.timeout,
                     file: StaticString = #filePath, line: UInt = #line) {
-        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
-        if XCTWaiter().wait(for: [gone], timeout: timeout) != .completed {
-            attachState("still there: \(what)")
-            XCTFail("\(prefix): \(what) did not go away", file: file, line: line)
+        let started = Date()
+        var sightings = 0
+        while element.exists {
+            sightings += 1
+            let waited = Date().timeIntervalSince(started)
+            if waited >= timeout, sightings >= 2 {
+                attachState("still there: \(what)")
+                XCTFail("\(prefix): \(what) did not go away (seen \(sightings) times over \(Int(waited)) s)", file: file, line: line)
+                return
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
     }
 
