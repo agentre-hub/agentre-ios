@@ -66,16 +66,39 @@ final class MainlineUITests: XCTestCase {
         }
         signIn(app, screen, copy, server)
 
-        // 「我」：账号、本机、外观（App 自己的外观设置）。
+        // 「我」（页标题「账号」，tab 仍叫「我」）：账号卡，服务器 / 已授权设备 / 语言 / 外观各自的二级页
+        // （规格「09 我」），二级页上都没有 tab 栏。
         screen.tap(screen.tab(.me), "Me tab")
+        screen.expect(screen.text(copy("Me", "me.account")), "account page title")
         screen.expect(screen.text("UI Tester"), "account name")
+        screen.shot("09 me")
+
+        screen.tap(screen.button(startingWith: copy("Me", "me.devices")), "devices row")
         screen.expect(screen.text(copy("Me", "me.devices.thisDevice")), "this-device label")
+        screen.expectNoTabBar("the devices page")
+        screen.shot("09 me devices")
+        screen.tap(screen.back, "back from the devices page")
+
+        screen.tap(screen.button(startingWith: copy("Me", "me.server")), "server row")
+        screen.expectNoTabBar("the server page")
+        screen.shot("09 me server")
+        screen.tap(screen.back, "back from the server page")
+
+        screen.tap(screen.button(startingWith: copy("Me", "me.language")), "language row")
+        screen.expectNoTabBar("the language page")
+        screen.shot("09 me language")
+        screen.tap(screen.back, "back from the language page")
+
+        screen.tap(screen.button(startingWith: copy("Me", "me.appearance")), "appearance row")
+        screen.expectNoTabBar("the appearance page")
         let option = screen.button(startingWith: copy("Me", dark ? "me.appearance.dark" : "me.appearance.light"))
         screen.reveal(option, "appearance option")
         screen.tap(option, "appearance option")
         screen.expectSelected(option, "appearance option")
         screen.expectAppearance(dark: dark, "Me after choosing the appearance")
-        screen.shot("05 me appearance")
+        screen.tap(screen.back, "back from the appearance page")
+        screen.expectTabBar("Me")
+        screen.shot("09 me appearance")
 
         // 机器名册 → 机器详情：三个计数、别处发起的那条会话，保存到手机。
         screen.tap(screen.tab(.machines), "Machines tab")
@@ -327,9 +350,11 @@ final class MainlineUITests: XCTestCase {
         )
         screen.shot("17a lost answer resumed")
 
-        // 撤销本机 → 回到登录屏。先退回消息列表：tab 栏只在顶层页上。
+        // 撤销本机 → 回到登录屏（决策 22：与底部「退出登录」是同一个动作）。先退回消息列表：
+        // tab 栏只在顶层页上；撤销在「已授权设备」二级页里。
         screen.tap(screen.back, "back to the message list")
         screen.tap(screen.tab(.me), "Me tab")
+        screen.tap(screen.button(startingWith: copy("Me", "me.devices")), "devices row")
         let revoke = screen.button(copy("Me", "me.devices.revoke"))
         screen.reveal(revoke, "revoke this device")
         screen.tap(revoke, "revoke this device")
@@ -364,7 +389,7 @@ final class MainlineUITests: XCTestCase {
         defer { server.stop() }
         let next = Screen(app: launch(against: server, language: "en", locale: "en_US"), test: self, prefix: "leftover-next")
         next.expect(next.button(copy("Login", "login.signIn")), "login screen although the previous flow stayed signed in")
-        next.expect(next.text(server.baseURL), "server address of the new flow")
+        next.expect(next.text(hostOnly(server.baseURL)), "server address of the new flow")
         XCTAssertFalse(next.tab(.messages).exists, "the previous flow's sign-in carried over")
         XCTAssertEqual(server.unhandledRequests, [], "the app called REST endpoints the fake server does not know")
         next.shot("leftover signed out")

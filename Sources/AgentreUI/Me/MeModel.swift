@@ -13,19 +13,25 @@ public final class MeModel {
     public private(set) var serverAddress: ServerAddress
     /// 应用根视图据此施加 `.displayPreferences(_:)`。
     public private(set) var preferences: DisplayPreferences
+    /// 「关于」一行显示的版本号（`MARKETING_VERSION (CURRENT_PROJECT_VERSION)`），装配层从 Bundle 读出后传入。
+    public let version: String
 
     @ObservationIgnored private let account: any AccountService
     @ObservationIgnored private let servers: any ServerAddressStore
     @ObservationIgnored private let preferenceStore: any DisplayPreferencesStore
     @ObservationIgnored private let signOutAction: SignOut
 
-    public init(account: any AccountService, servers: any ServerAddressStore, preferences: any DisplayPreferencesStore, signOut: SignOut) {
+    public init(
+        account: any AccountService, servers: any ServerAddressStore, preferences: any DisplayPreferencesStore, signOut: SignOut,
+        version: String = ""
+    ) {
         self.account = account
         self.servers = servers
         self.preferenceStore = preferences
         self.signOutAction = signOut
         self.serverAddress = servers.load()
         self.preferences = preferences.load()
+        self.version = version
     }
 
     /// 换账号时作废在途的读取：登出前发出的请求晚到，不把上一个账号写回来。
@@ -64,8 +70,13 @@ public final class MeModel {
         return true
     }
 
-    /// 撤销一台设备。撤销的是本机即退出登录；撤销别的设备则把它从列表里拿掉。
+    /// 撤销一台设备。撤销的是本机就是退出登录（决策 22，与底部「退出登录」同一个动作）；
+    /// 撤销别的设备则把它从列表里拿掉。
     public func revoke(_ device: AuthorizedDevice) async {
+        guard !device.isThisDevice else {
+            await signOut()
+            return
+        }
         do {
             try await account.revoke(deviceID: device.id, server: serverAddress)
         } catch {
@@ -73,11 +84,7 @@ public final class MeModel {
             return
         }
         failure = nil
-        if device.isThisDevice {
-            await signOutAction.run()
-        } else {
-            devices.removeAll { $0.id == device.id }
-        }
+        devices.removeAll { $0.id == device.id }
     }
 
     public func setLanguage(_ language: DisplayLanguage) {
@@ -90,7 +97,11 @@ public final class MeModel {
         preferenceStore.save(preferences)
     }
 
+    /// 退出登录就是撤销本机（决策 22）：先请服务端撤销这台设备再清本地。撤销的目标传 0——
+    /// 不必先载入过设备列表才知道自己的设备 id，服务端把 0 解成调用方自己（device_ctr.Revoke）。
+    /// 撤销失败（离线、服务端不可达）不拦这一步：本地照样清空、回到登录屏。
     public func signOut() async {
+        _ = try? await account.revoke(deviceID: 0, server: serverAddress)
         await signOutAction.run()
     }
 

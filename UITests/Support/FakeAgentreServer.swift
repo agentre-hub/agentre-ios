@@ -142,9 +142,11 @@ final class FakeAgentreServer: @unchecked Sendable {
     }
 
     /// 以设备令牌调用时只准撤销本机（device_ctr.Revoke：目标不是调用者即 403）；撤销后它的令牌作废、中继连接断开。
+    /// 与真实服务端同形：不带 `device_id`、或带 `device_id: 0`，都解成调用方自己（device.go:157-159）。
     private func revoke(_ request: LoopbackServer.Request) -> LoopbackServer.Response {
         let body = (try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any] ?? [:]
-        let target = (body["device_id"] as? NSNumber)?.int64Value ?? Self.phoneDeviceID
+        var target = (body["device_id"] as? NSNumber)?.int64Value ?? Self.phoneDeviceID
+        if target == 0 { target = Self.phoneDeviceID }
         guard target == Self.phoneDeviceID else { return Self.failure(403, code: 403) }
         revokedDevices.append(target)
         liveTokens = []

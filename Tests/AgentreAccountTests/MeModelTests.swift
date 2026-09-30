@@ -89,12 +89,12 @@ struct MeModelTests {
         #expect(h.session.phase == .signedIn)
     }
 
-    @Test("撤销本机：撤销后即退出登录")
+    @Test("撤销本机：与退出登录是同一个动作，目标传 0（决策 22）")
     func revokeThisDevice() async throws {
         let h = Harness()
         await h.model.load()
         await h.model.revoke(thisPhone)
-        #expect(await h.account.revoked == [7])
+        #expect(await h.account.revoked == [0])
         #expect(h.session.phase == .signedOut)
         #expect(h.credentials.stored == nil)
     }
@@ -133,9 +133,19 @@ struct MeModelTests {
         #expect(UserDefaultsDisplayPreferencesStore(defaults: defaults).load() == DisplayPreferences(language: .simplifiedChinese, appearance: .light))
     }
 
-    @Test("退出登录按钮背后：回到登录屏、令牌清空")
+    @Test("退出登录按钮背后：先撤销本机（目标 0），再回到登录屏、令牌清空（决策 22）")
     func signOut() async throws {
         let h = Harness()
+        await h.model.signOut()
+        #expect(await h.account.revoked == [0])
+        #expect(h.session.phase == .signedOut)
+        #expect(h.credentials.stored == nil)
+    }
+
+    @Test("退出登录：撤销本机被拒或连不上，也照样清本地、回到登录屏——不把用户困在已登录状态")
+    func signOutClearsEvenWhenRevokeFails() async throws {
+        let h = Harness()
+        await h.account.configure(revokeError: URLError(.notConnectedToInternet))
         await h.model.signOut()
         #expect(h.session.phase == .signedOut)
         #expect(h.credentials.stored == nil)

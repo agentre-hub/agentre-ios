@@ -88,8 +88,13 @@ private struct AppShell: View {
             }
         } me: {
             NavigationStack(path: $router.me) {
-                MeView(model: services.me)
-                    .topLevelHeader(Text("me.title", tableName: "Me", bundle: AgentreUIResources.bundle))
+                // 页标题是「账号」，tab 仍叫「我」（规格「09 我」）。二级页须按值 push 进 `router.me`
+                // （任务 43 留下的规则），tab 栏才会随栈深退场。
+                MeView(model: services.me) { route in router.me.append(route) }
+                    .topLevelHeader(Text("me.account", tableName: "Me", bundle: AgentreUIResources.bundle))
+                    .navigationDestination(for: MeRoute.self) { route in
+                        MeDestination(services: services, route: route)
+                    }
             }
         }
         .fullScreenCover(isPresented: Binding(
@@ -197,6 +202,29 @@ private struct MachinesDestination: View {
             ConversationScreen(services: services, key: key) {
                 services.router.machines.removeAll { $0 == route }
             }
+        }
+    }
+}
+
+/// 「我」栈里的二级页：服务器地址、已授权设备、语言、外观（规格「09 我」）。
+private struct MeDestination: View {
+    let services: SignedInServices
+    let route: MeRoute
+
+    var body: some View {
+        switch route {
+        case .server:
+            ServerAddressScreen(model: services.me)
+                .compactNavigationBar(title: Text("me.server", tableName: "Me", bundle: AgentreUIResources.bundle))
+        case .devices:
+            AuthorizedDevicesScreen(model: services.me)
+                .compactNavigationBar(title: Text("me.devices", tableName: "Me", bundle: AgentreUIResources.bundle))
+        case .language:
+            LanguageScreen(model: services.me)
+                .compactNavigationBar(title: Text("me.language", tableName: "Me", bundle: AgentreUIResources.bundle))
+        case .appearance:
+            AppearanceScreen(model: services.me)
+                .compactNavigationBar(title: Text("me.appearance", tableName: "Me", bundle: AgentreUIResources.bundle))
         }
     }
 }

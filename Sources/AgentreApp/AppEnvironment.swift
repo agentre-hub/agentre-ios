@@ -50,7 +50,10 @@ final class AppEnvironment {
         )
         signOut.tokens = tokens
         transport = AuthorizedTransport(inner: dependencies.http, tokens: tokens)
-        me = MeModel(account: AccountClient(transport: transport), servers: servers, preferences: dependencies.preferences, signOut: signOut)
+        me = MeModel(
+            account: AccountClient(transport: transport), servers: servers, preferences: dependencies.preferences, signOut: signOut,
+            version: dependencies.appVersion
+        )
         connectivity = Connectivity(updates: dependencies.networkPath())
         // 登出（任一条路：主动、切服务器、撤销本机、刷新被拒）先停掉登录态那一套，再清库；
         // 「我」页跟应用同寿，上一个账号的资料与设备随之丢掉。

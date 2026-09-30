@@ -16,9 +16,12 @@ struct Screen {
         app.buttons.matching(NSPredicate(format: "label == %@", label)).firstMatch
     }
 
-    /// 标签以 `label` 开头的按钮（选项行的标签后面可能跟着别的朗读内容）。
+    /// 标签以 `label` 开头的按钮（选项行的标签后面可能跟着别的朗读内容）。系统按语言把同一行内
+    /// 多个可朗读片段接成一句时，分隔符本身也随语言变——英文是「, 」，简体中文是「、」，两种都认。
     func button(startingWith label: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
+        app.buttons.matching(NSPredicate(
+            format: "label == %@ OR label BEGINSWITH %@ OR label BEGINSWITH %@", label, label + ",", label + "、"
+        )).firstMatch
     }
 
     func text(_ label: String) -> XCUIElement {

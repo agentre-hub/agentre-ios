@@ -1,23 +1,6 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "me.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Me"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "我"
-          }
-        }
-      }
-    },
     "me.account": {
       "extractionState": "manual",
       "localizations": {
@@ -48,23 +31,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "服务器"
-          }
-        }
-      }
-    },
-    "me.server.edit": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit Server Address"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "修改服务器地址"
           }
         }
       }
@@ -371,6 +337,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "深色"
+          }
+        }
+      }
+    },
+    "me.about": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关于"
           }
         }
       }

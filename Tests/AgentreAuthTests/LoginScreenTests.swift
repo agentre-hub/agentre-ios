@@ -1,3 +1,4 @@
+import AgentreDesign
 import AgentreDomain
 import AgentreTestSupport
 @testable import AgentreUI
@@ -53,14 +54,16 @@ struct LoginScreenTests {
     func serverAddressIsWhole(screen size: CGSize) async throws {
         let session = AppSession(credentials: credentials)
         let flow = makeFlow(ScriptedDeviceAuth(authorization: .failure(TransportDown()), polls: []), session: session)
-        let address = flow.serverAddress.url.absoluteString
-        #expect(address == "https://app.agentrehub.com")
+        let address = flow.serverAddress.hostOnly
+        #expect(address == "app.agentrehub.com")
 
+        // 服务器行整行是一个按钮（规格「07 登录」：点开即改），无障碍框是这一整行、不只是文字本身；
+        // 宽度仍须够放下完整地址，高度则以一行的命中区为界——真要折成两行会远超它。
         let frame = try #require(await HostedScreen(LoginView(flow: flow), size: size).frame(of: address), "屏上找不到地址")
         let font = UIFont.monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
         let whole = (address as NSString).size(withAttributes: [.font: font])
         #expect(frame.width >= whole.width.rounded(.down), "地址排出来 \(frame.width)pt 宽，完整需要 \(whole.width)pt")
-        #expect(frame.height < whole.height * 2, "默认字号下一行排下：\(frame)")
+        #expect(frame.height < minimumHitTargetSide * 1.5, "默认字号下一行排下：\(frame)")
     }
 
     @Test("完全离线：登录屏如实说这台设备没有联网、登录点不动；上一次的失败不读作连不上服务器")

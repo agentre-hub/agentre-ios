@@ -21,8 +21,9 @@ extension XCTestCase {
     /// 浏览器取到那一页即批准，轮询换得令牌落到三标签。
     func signIn(_ app: XCUIApplication, _ screen: Screen, _ copy: Copy, _ server: FakeAgentreServer) {
         screen.expect(screen.button(copy("Login", "login.signIn")), "sign-in button")
-        screen.expect(screen.text(server.baseURL), "server address from the launch argument")
-        screen.shot("01 login")
+        // 登录屏只承诺主机名，不带协议与端口（规格「07 登录」）。
+        screen.expect(screen.text(hostOnly(server.baseURL)), "server address from the launch argument")
+        screen.shot("07 login")
 
         screen.tap(screen.button(copy("Login", "login.signIn")), "sign in")
         screen.expect("the browser opened the verification address with the user code", timeout: 60) {
@@ -34,4 +35,10 @@ extension XCTestCase {
         XCTAssertFalse(server.signedInFingerprint.isEmpty, "authorize carried no device fingerprint")
         screen.shot("04 signed in")
     }
+}
+
+/// 伪服务端的 `baseURL` 是 `http://127.0.0.1:PORT`；登录屏与「我」只显示主机名（规格「07 登录」「09 我」，
+/// `ServerAddress.hostOnly`）。
+func hostOnly(_ urlString: String) -> String {
+    URL(string: urlString)?.host ?? urlString
 }

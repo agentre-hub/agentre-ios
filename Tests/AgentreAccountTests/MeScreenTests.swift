@@ -5,38 +5,40 @@ import Foundation
 import SwiftUI
 import Testing
 
-/// 「我」屏的视图层断言：逐屏命中区（发现数 = 放置数），以及屏上读得到的事实。
+/// 「我」主页的视图层断言（规格「逐屏视觉契约·09 我」）：逐屏命中区（发现数 = 放置数），
+/// 以及屏上读得到的事实。设备列表、服务器编辑、语言与外观的选项分别是各自二级页的断言
+/// （`AuthorizedDevicesScreenTests`、`ServerAddressScreenTests`、`PreferenceScreensTests`）。
 @MainActor
-@Suite("「我」屏")
+@Suite("「我」主页")
 struct MeScreenTests {
-    /// 整页一屏放得下：List 只建可见的行，屏太矮会让放置的按钮没被建出来。
-    static let tall = CGSize(width: 390, height: 2000)
+    static let tall = CGSize(width: 390, height: 900)
 
     static func text(_ key: String) -> String {
         AgentreUIResources.bundle.localizedString(forKey: key, value: "⟨missing⟩", table: "Me")
     }
 
-    func loadedModel(account: FakeAccountService = FakeAccountService()) async -> MeModel {
+    func loadedModel(account: FakeAccountService = FakeAccountService(), version: String = "0.1.0 (1)") async -> MeModel {
         let model = MeModel(
             account: account, servers: InMemoryServerAddressStore(), preferences: InMemoryDisplayPreferencesStore(),
-            signOut: SignOut(session: AppSession(credentials: InMemoryCredentialStore(credentials: signedInCredentials)), store: EmptyStore())
+            signOut: SignOut(session: AppSession(credentials: InMemoryCredentialStore(credentials: signedInCredentials)), store: EmptyStore()),
+            version: version
         )
         await model.load()
         return model
     }
 
-    /// 放置的可点元素：改服务器地址 1、本机的撤销 1（其它设备撤不了，那一行不放按钮）、语言 3、外观 3、退出登录 1。
-    static func placedTargets(revocable: Int) -> Int {
-        1 + revocable + DisplayLanguage.allCases.count + DisplayAppearance.allCases.count + 1
+    private func view(_ model: MeModel) -> some View {
+        NavigationStack { MeView(model: model) { _ in } }
     }
+
+    /// 放置的可点元素：服务器、已授权设备、语言、外观、退出登录，各一枚（关于不可点，不算）。
+    static let placedTargets = 5
 
     @Test("每个可点元素的命中区补满 44×44 且互不重叠；发现的目标数 = 放置的可点元素数")
     func hitTargets() async throws {
         let model = await loadedModel()
-        #expect(model.devices.count == 2)
-        let report = await hitTargetReport(of: NavigationStack { MeView(model: model) }, size: Self.tall)
-        #expect(Self.placedTargets(revocable: 1) == 9)
-        #expect(report.targets.count == Self.placedTargets(revocable: 1), "\(report.targets)")
+        let report = await hitTargetReport(of: view(model), size: Self.tall)
+        #expect(report.targets.count == Self.placedTargets, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
@@ -46,43 +48,41 @@ struct MeScreenTests {
         await account.configure(devices: .failure(URLError(.timedOut)))
         let model = await loadedModel(account: account)
         #expect(model.failure == .timedOut)
-        let report = await hitTargetReport(of: NavigationStack { MeView(model: model) }, size: Self.tall)
-        #expect(report.targets.count == Self.placedTargets(revocable: 0) + 1, "\(report.targets)")
+        let report = await hitTargetReport(of: view(model), size: Self.tall)
+        #expect(report.targets.count == Self.placedTargets + 1, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
-        let labels = await HostedScreen(NavigationStack { MeView(model: model) }, size: Self.tall).labels().joined(separator: "\n")
+        let labels = await HostedScreen(view(model), size: Self.tall).labels().joined(separator: "\n")
         #expect(labels.contains(Self.text("failure.timedOut")), "\(labels)")
     }
 
-    @Test("屏上读得到：账号、服务器地址、设备名（备注名优先）与本机标注、语言与外观的选项、退出登录")
+    @Test("屏上读得到：账号卡（显示名、邮箱）、主机名、已授权设备条数、语言与外观的当前取值、关于版本、退出登录")
     func facts() async throws {
-        let model = await loadedModel()
-        let labels = await HostedScreen(NavigationStack { MeView(model: model) }, size: Self.tall).labels().joined(separator: "\n")
+        let account = FakeAccountService()
+        let model = MeModel(
+            account: account, servers: InMemoryServerAddressStore(), preferences: InMemoryDisplayPreferencesStore(
+                DisplayPreferences(language: .simplifiedChinese, appearance: .dark)
+            ),
+            signOut: SignOut(session: AppSession(credentials: InMemoryCredentialStore(credentials: signedInCredentials)), store: EmptyStore()),
+            version: "0.1.0 (1)"
+        )
+        await model.load()
+        let labels = await HostedScreen(view(model), size: Self.tall).labels().joined(separator: "\n")
         #expect(labels.contains("Ada"))
         #expect(labels.contains("ada@example.com"))
-        #expect(labels.contains("https://app.agentrehub.com"))
-        #expect(labels.contains("iPhone"))
-        #expect(labels.contains("工作室 Mac"))
-        #expect(!labels.contains("studio.local"), "有备注名时不露主机名")
-        #expect(labels.contains(Self.text("me.devices.thisDevice")))
-        #expect(labels.contains(Self.text("me.language.zhHans")))
-        #expect(labels.contains(Self.text("me.appearance.dark")))
+        #expect(labels.contains("app.agentrehub.com"))
+        #expect(!labels.contains("https://app.agentrehub.com"), "服务器行只承诺主机名，不带协议")
+        #expect(labels.contains("2"), "已授权设备条数")
+        #expect(labels.contains(Self.text("me.language.zhHans")), "语言行显示当前取值")
+        #expect(labels.contains(Self.text("me.appearance.dark")), "外观行显示当前取值")
+        #expect(labels.contains("0.1.0 (1)"), "关于一行的版本号")
         #expect(labels.contains(Self.text("me.signOut")))
     }
 
-    @Test("撤销只对本机生效：本机那一行给撤销；其它设备照常列出，那一行写明到网页控制台撤销、不给撤不动的按钮")
-    func revokeOnlyThisDevice() async throws {
+    @Test("账号卡副行写邮箱，不写「通过 GitHub 授权」（决策 19）")
+    func accountCardShowsEmailNotGithubClaim() async throws {
         let model = await loadedModel()
-        let labels = await HostedScreen(NavigationStack { MeView(model: model) }, size: Self.tall).labels()
-        #expect(labels.filter { $0 == Self.text("me.devices.revoke") }.count == 1, "\(labels)")
-        #expect(labels.contains(Self.text("me.devices.revokeInConsole")), "\(labels)")
-    }
-
-    @Test("设备在线与否不只靠颜色：每一行把在线 / 离线写出来")
-    func deviceOnlineIsNotColourOnly() async throws {
-        let model = await loadedModel()
-        let texts = await HostedScreen(NavigationStack { MeView(model: model) }, size: Self.tall).texts()
-        #expect(texts.contains(Self.text("me.devices.online")), "\(texts)")
-        #expect(texts.contains(Self.text("me.devices.offline")), "\(texts)")
+        let labels = await HostedScreen(view(model), size: Self.tall).labels()
+        #expect(!labels.contains { $0.localizedCaseInsensitiveContains("github") }, "\(labels)")
     }
 
     @Test("语言偏好作用于界面：选了简体中文，同一个键读出中文；选了英文读出英文")

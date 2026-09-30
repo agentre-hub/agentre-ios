@@ -6,10 +6,10 @@ import SwiftUI
 import Testing
 import UIKit
 
-/// 系统字号放大到无障碍档时「我」页的设备行：设备名与平台完整可读，不被截断、不逐字折行。
+/// 系统字号放大到无障碍档时「已授权设备」二级页的设备行：设备名与平台完整可读，不被截断、不逐字折行。
 /// 断言几何：截断的文字无障碍标签仍是全文，但排出来的框装不下它。
 @MainActor
-@Suite("「我」屏 · 无障碍字号")
+@Suite("「已授权设备」屏 · 无障碍字号")
 struct MeLargeTextTests {
     /// iPhone 17 的逻辑宽度；高度放得下整页，List 才会把每一行都建出来。
     static let iPhone17 = CGSize(width: 402, height: 4000)
@@ -59,7 +59,7 @@ struct MeLargeTextTests {
         let model = await loadedModel()
         #expect(model.devices.count == Self.devices.count)
         let screen = HostedScreen(
-            NavigationStack { MeView(model: model) }.environment(\.dynamicTypeSize, .accessibility3),
+            AuthorizedDevicesScreen(model: model).environment(\.dynamicTypeSize, .accessibility3),
             size: Self.iPhone17
         )
         let nameFont = Self.monospaced(.body, .accessibilityExtraLarge)
@@ -84,7 +84,7 @@ struct MeLargeTextTests {
     func revokeExitsAtAccessibilitySize() async throws {
         let model = await loadedModel()
         let screen = HostedScreen(
-            NavigationStack { MeView(model: model) }.environment(\.dynamicTypeSize, .accessibility3),
+            AuthorizedDevicesScreen(model: model).environment(\.dynamicTypeSize, .accessibility3),
             size: Self.iPhone17
         )
         let labels = await screen.labels()
@@ -99,10 +99,10 @@ struct MeLargeTextTests {
     func hitTargetsAtAccessibilitySize() async throws {
         let model = await loadedModel()
         let report = await hitTargetReport(
-            of: NavigationStack { MeView(model: model) }.environment(\.dynamicTypeSize, .accessibility3),
+            of: AuthorizedDevicesScreen(model: model).environment(\.dynamicTypeSize, .accessibility3),
             size: Self.iPhone17
         )
-        #expect(report.targets.count == MeScreenTests.placedTargets(revocable: 1), "\(report.targets)")
+        #expect(report.targets.count == AuthorizedDevicesScreenTests.placedTargets(revocable: 1), "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 }

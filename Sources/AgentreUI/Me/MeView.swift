@@ -2,274 +2,167 @@ import AgentreDesign
 import AgentreDomain
 import SwiftUI
 
-/// 「我」：账号、服务器地址、已授权设备与撤销、语言、外观、退出登录。
-/// 状态只由内容与可供性表达，不加说明文案。
+/// 「我」（页标题「账号」，tab 仍叫「我」）：首字头像卡、四个分组行各进二级页
+/// （服务器 / 已授权设备 / 语言 / 外观）、关于只显示版本号，底部是 `coral` 描边的退出登录
+/// （规格「逐屏视觉契约·09 我」、决策 22）。
 public struct MeView: View {
     private let model: MeModel
-    @State private var isEditingServer = false
-    @State private var draftAddress = ""
-    @State private var draftIsInvalid = false
-    @State private var pendingServer: ServerAddress?
-    @State private var pendingRevoke: AuthorizedDevice?
+    private let navigate: (MeRoute) -> Void
 
-    public init(model: MeModel) {
+    /// - Parameter navigate: 二级页去处交给宿主决定怎么入栈（装配层按值 push 进 `Router.me`）。
+    public init(model: MeModel, navigate: @escaping (MeRoute) -> Void) {
         self.model = model
+        self.navigate = navigate
     }
 
+    // 命中区检查器（AgentreTestSupport，任务 2/4 冻结）在 ScrollView 里看不到任何元素，只在 List 里看得到；
+    // 因此这一屏用 List 铺卡片，而不是 ScrollView + VStack。行与卡片背景经 listRow* 修饰符清空系统样式。
     public var body: some View {
         List {
             if let failure = model.failure {
-                Section {
-                    FailureNotice(fact: failure) { Task { await model.load() } }
-                        .listRowBackground(Color.token(.surface))
-                }
+                FailureNotice(fact: failure) { Task { await model.load() } }
+                    .padding(16)
+                    .background(.token(.surface), in: RoundedRectangle(cornerRadius: 18))
+                    .rowStyled()
             }
             if let profile = model.profile {
-                Section { account(profile) } header: { header("me.account") }
+                accountCard(profile)
+                    .rowStyled()
             }
-            Section { server } header: { header("me.server") }
-            if !model.devices.isEmpty {
-                Section {
-                    ForEach(model.devices) { device in
-                        DeviceRow(device: device) { pendingRevoke = device }
-                            .listRowBackground(Color.token(.surface))
-                    }
-                } header: { header("me.devices") }
+            GroupedSection {
+                GroupedRow(
+                    .globe, title: Text("me.server", tableName: "Me", bundle: .module),
+                    value: Text(verbatim: model.serverAddress.hostOnly), monoValue: true
+                ) { navigate(.server) }
+                GroupedRow(
+                    .smartphone, title: Text("me.devices", tableName: "Me", bundle: .module),
+                    value: Text(verbatim: "\(model.devices.count)")
+                ) { navigate(.devices) }
             }
-            Section {
-                ForEach(DisplayLanguage.allCases, id: \.self) { language in
-                    option(language.labelKey, selected: model.preferences.language == language) { model.setLanguage(language) }
-                }
-            } header: { header("me.language") }
-            Section {
-                ForEach(DisplayAppearance.allCases, id: \.self) { appearance in
-                    option(appearance.labelKey, selected: model.preferences.appearance == appearance) { model.setAppearance(appearance) }
-                }
-            } header: { header("me.appearance") }
-            Section {
-                Button {
-                    Task { await model.signOut() }
-                } label: {
-                    Text("me.signOut", tableName: "Me", bundle: .module)
-                        .foregroundStyle(.token(.coral))
-                        .frame(maxWidth: .infinity)
-                }
-                .hitTarget()
-                .listRowBackground(Color.token(.surface))
+            .rowStyled()
+            GroupedSection {
+                GroupedRow(
+                    .languages, title: Text("me.language", tableName: "Me", bundle: .module),
+                    value: Text(model.preferences.language.labelKey, tableName: "Me", bundle: .module)
+                ) { navigate(.language) }
+                GroupedRow(
+                    .sunMoon, title: Text("me.appearance", tableName: "Me", bundle: .module),
+                    value: Text(model.preferences.appearance.labelKey, tableName: "Me", bundle: .module)
+                ) { navigate(.appearance) }
             }
+            .rowStyled()
+            GroupedSection {
+                AboutRow(version: model.version)
+            }
+            .rowStyled()
+            signOutButton
+                .rowStyled()
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(.token(.bg))
-        .localizedNavigationTitle("me.title", table: "Me")
-        .confirmationDialog(Text("me.devices.revoke", tableName: "Me", bundle: .module), isPresented: isPresented($pendingRevoke), titleVisibility: .hidden, presenting: pendingRevoke) { device in
-            Button(role: .destructive) {
-                Task { await model.revoke(device) }
-            } label: {
-                Text("me.devices.revoke", tableName: "Me", bundle: .module)
-            }
-        }
-        .confirmationDialog(Text("me.server.switch", tableName: "Me", bundle: .module), isPresented: isPresented($pendingServer), titleVisibility: .hidden, presenting: pendingServer) { address in
-            Button(role: .destructive) {
-                isEditingServer = false
-                Task { _ = await model.setServerAddress(address.url.absoluteString) }
-            } label: {
-                Text("me.server.switch", tableName: "Me", bundle: .module)
-            }
-        }
         .task { await model.load() }
     }
 
-    private func header(_ key: LocalizedStringKey) -> some View {
-        Text(key, tableName: "Me", bundle: .module)
-            .foregroundStyle(.token(.ink2))
-    }
-
-    @ViewBuilder private func account(_ profile: AccountProfile) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(verbatim: profile.shownName)
-                .font(.headline)
-                .foregroundStyle(.token(.ink))
-            if !profile.email.isEmpty, profile.email != profile.shownName {
-                Text(verbatim: profile.email)
-                    .font(.subheadline)
-                    .foregroundStyle(.token(.ink2))
-            }
-        }
-        .padding(.vertical, 4)
-        .listRowBackground(Color.token(.surface))
-    }
-
-    @ViewBuilder private var server: some View {
-        if isEditingServer {
-            VStack(alignment: .leading, spacing: 8) {
-                AddressField(text: $draftAddress, onSubmit: saveServer)
-                if draftIsInvalid {
-                    Label {
-                        Text("me.server.invalid", tableName: "Me", bundle: .module)
-                    } icon: {
-                        Image(systemName: "exclamationmark.circle")
-                            .foregroundStyle(.token(.coral))
-                    }
-                    .font(.footnote)
-                    .foregroundStyle(.token(.ink2))
-                }
-                HStack(spacing: 8) {
-                    Spacer()
-                    Button {
-                        isEditingServer = false
-                    } label: {
-                        Text("me.server.cancel", tableName: "Me", bundle: .module)
-                            .foregroundStyle(.token(.ink2))
-                            .padding(.horizontal, 8)
-                    }
-                    .hitTarget()
-                    Button(action: saveServer) {
-                        Text("me.server.save", tableName: "Me", bundle: .module)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.token(.primary))
-                            .padding(.horizontal, 8)
-                    }
-                    .hitTarget()
-                }
-            }
-            .listRowBackground(Color.token(.surface))
-        } else {
-            HStack(spacing: 8) {
-                // 机器产出的内容用等宽字体。
-                Text(verbatim: model.serverAddress.url.absoluteString)
-                    .font(.body.monospaced())
+    @ViewBuilder private func accountCard(_ profile: AccountProfile) -> some View {
+        HStack(spacing: 14) {
+            InitialAvatar(name: profile.shownName)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: profile.shownName)
+                    .font(.agentre(FontRole(size: 17, weight: .semibold, relativeTo: .headline)))
                     .foregroundStyle(.token(.ink))
                     .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Button {
-                    draftAddress = model.serverAddress.url.absoluteString
-                    draftIsInvalid = false
-                    isEditingServer = true
-                } label: {
-                    Image(systemName: "pencil")
-                        .foregroundStyle(.token(.primary))
-                }
-                .hitTarget()
-                .accessibilityLabel(Text("me.server.edit", tableName: "Me", bundle: .module))
+                // 副行写邮箱：GitHub 是唯一的登录方式，「通过 GitHub 授权」删掉用户什么也不少知道（决策 19）。
+                Text(verbatim: profile.email)
+                    .font(.agentre(FontRole(size: 12.5, relativeTo: .footnote)))
+                    .foregroundStyle(.token(.ink2))
+                    .lineLimit(1)
             }
-            .listRowBackground(Color.token(.surface))
+            Spacer(minLength: 0)
         }
+        .padding(16)
+        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 18))
+        .accessibilityElement(children: .combine)
     }
 
-    private func saveServer() {
-        guard let address = ServerAddress(string: draftAddress) else {
-            draftIsInvalid = true
-            return
-        }
-        draftIsInvalid = false
-        if address == model.serverAddress {
-            isEditingServer = false
-        } else {
-            pendingServer = address
-        }
-    }
-
-    private func option(_ key: LocalizedStringKey, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                Text(key, tableName: "Me", bundle: .module)
-                    .foregroundStyle(.token(.ink))
-                Spacer()
-                Image(systemName: "checkmark")
-                    .foregroundStyle(.token(.primary))
-                    .opacity(selected ? 1 : 0)
-                    .accessibilityHidden(true)
+    private var signOutButton: some View {
+        Button {
+            Task { await model.signOut() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(.logOut)
+                    .resizable()
+                    .frame(width: 16, height: 16)
+                Text("me.signOut", tableName: "Me", bundle: .module)
+                    .font(.agentre(FontRole(size: 15, weight: .medium, relativeTo: .subheadline)))
             }
-            .frame(maxWidth: .infinity)
+            .foregroundStyle(.token(.coral))
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(RoundedRectangle(cornerRadius: 16).strokeBorder(.token(.line)))
         }
         .hitTarget()
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .listRowBackground(Color.token(.surface))
-    }
-
-    private func isPresented<T>(_ binding: Binding<T?>) -> Binding<Bool> {
-        Binding(get: { binding.wrappedValue != nil }, set: { if !$0 { binding.wrappedValue = nil } })
     }
 }
 
-/// 一台已授权设备：在线点、名字（备注名优先，等宽）、在线态、平台与本机标注；本机给撤销，其它设备写明到网页控制台撤销。
-/// 无障碍字号下横排放不下：名字、状态与撤销出口改为自上而下，名字可折行而不截断，状态各占一行。
-struct DeviceRow: View {
-    let device: AuthorizedDevice
-    let onRevoke: () -> Void
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+/// 首字头像：账号卡专用，`primary-dim` 底、`primary` 字（规格「09 我」），与项目/Agent 的身份色字形是两回事。
+private struct InitialAvatar: View {
+    let name: String
 
     var body: some View {
-        let stacked = dynamicTypeSize.isAccessibilitySize
-        let row = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 12))
-        let facts = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))
-        row {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(.token(device.online ? .run : .ink2))
-                    .frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: device.shownName)
-                        .font(.body.monospaced())
-                        .foregroundStyle(.token(.ink))
-                        .lineLimit(stacked ? nil : 1)
-                        .truncationMode(.middle)
-                    facts {
-                        // 在线与否写出来：状态不只靠那枚点的颜色。
-                        Text(device.online ? "me.devices.online" : "me.devices.offline", tableName: "Me", bundle: .module)
-                            .font(.caption)
-                            .foregroundStyle(.token(device.online ? .run : .ink2))
-                        if !device.platform.isEmpty {
-                            Text(verbatim: device.platform)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.token(.ink2))
-                        }
-                        if device.isThisDevice {
-                            Text("me.devices.thisDevice", tableName: "Me", bundle: .module)
-                                .font(.caption)
-                                .foregroundStyle(.token(.primary))
-                        }
-                    }
+        Circle()
+            .fill(.token(.primaryDim))
+            .frame(width: 52, height: 52)
+            .overlay {
+                if let letter = name.first {
+                    Text(String(letter).uppercased())
+                        .font(.agentre(FontRole(size: 20, weight: .semibold, relativeTo: .title2)))
+                        .foregroundStyle(.token(.primary))
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // 服务端只允许设备令牌撤销它自己：其它设备在这里撤不动，那一行如实写明去哪儿撤。
-            if device.isThisDevice {
-                Button(action: onRevoke) {
-                    Text("me.devices.revoke", tableName: "Me", bundle: .module)
-                        .foregroundStyle(.token(.coral))
-                        .padding(.horizontal, 8)
-                }
-                .hitTarget()
-            } else {
-                Text("me.devices.revokeInConsole", tableName: "Me", bundle: .module)
-                    .font(.caption)
-                    .foregroundStyle(.token(.ink2))
-                    .multilineTextAlignment(stacked ? .leading : .trailing)
-            }
-        }
+            .accessibilityHidden(true)
     }
 }
 
-private extension DisplayLanguage {
-    var labelKey: LocalizedStringKey {
-        switch self {
-        case .system: "me.language.system"
-        case .simplifiedChinese: "me.language.zhHans"
-        case .english: "me.language.en"
+/// 「关于」一行：等宽版本号，不可点（规格「09 我」）。视觉上与其它分组行同款（图标、标题、取值、展开指示），
+/// 但不是 `Button`——它不在命中区清单里，点它什么也不会发生。
+private struct AboutRow: View {
+    let version: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(.info)
+                .resizable()
+                .frame(width: 17, height: 17)
+                .foregroundStyle(.token(.ink3))
+                .accessibilityHidden(true)
+            Text("me.about", tableName: "Me", bundle: .module)
+                .font(.agentre(FontRole(size: 15, relativeTo: .body)))
+                .foregroundStyle(.token(.ink))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(verbatim: version)
+                .font(.agentre(FontRole(size: 12.5, relativeTo: .subheadline), mono: true))
+                .foregroundStyle(.token(.ink3))
+                .lineLimit(1)
         }
+        .padding(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
-private extension DisplayAppearance {
-    var labelKey: LocalizedStringKey {
-        switch self {
-        case .system: "me.appearance.system"
-        case .light: "me.appearance.light"
-        case .dark: "me.appearance.dark"
-        }
+extension View {
+    /// List 行去掉系统样式，只保留左右外边距；卡片之间的间距靠内容自身的垂直内边距撑开
+    /// （List 不像 VStack 那样能直接给 `spacing`）。
+    fileprivate func rowStyled() -> some View {
+        listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 18))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .padding(.vertical, 10)
     }
+}
+
+extension ServerAddress {
+    /// 登录屏与「我」页只承诺主机名，不带协议、端口与路径（规格「07 登录」「09 我」，
+    /// 数据源核实：`ServerAddress.url.host`）。
+    var hostOnly: String { url.host ?? url.absoluteString }
 }

@@ -20,13 +20,16 @@ final class ShellChromeUITests: XCTestCase {
         let screen = Screen(app: app, test: self, prefix: "shell-\(language)-\(dark ? "dark" : "light")")
         signIn(app, screen, copy, server)
 
-        // 「我」：先按这一遍的外观切好，三张顶层页截图才是这个主题。
+        // 「我」：先按这一遍的外观切好，三张顶层页截图才是这个主题。外观现在是「我」的二级页（规格「09 我」）。
         screen.tap(screen.tab(.me), "Me tab")
+        screen.expect(screen.text(copy("Me", "me.account")), "account page title")
+        screen.tap(screen.button(startingWith: copy("Me", "me.appearance")), "appearance row")
+        screen.expectNoTabBar("the appearance page")
         let appearance = screen.button(startingWith: copy("Me", dark ? "me.appearance.dark" : "me.appearance.light"))
         screen.reveal(appearance, "appearance option")
         screen.tap(appearance, "appearance option")
         screen.expectAppearance(dark: dark, "Me after choosing the appearance")
-        screen.expect(screen.text(copy("Me", "me.title")), "Me title")
+        screen.tap(screen.back, "back from the appearance page")
         screen.expectTabBar("Me")
         screen.shot("top-level me")
 

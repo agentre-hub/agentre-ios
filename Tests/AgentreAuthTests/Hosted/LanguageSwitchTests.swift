@@ -12,7 +12,7 @@ struct LanguageSwitchTests {
     private static let roots: [(tab: Int, copy: [(key: String, table: String)])] = [
         (0, [("messages.title", "Messages"), ("newconv.title", "NewConversation")]),
         (1, [("machines.title", "Machines")]),
-        (2, [("me.title", "Me")]),
+        (2, [("me.account", "Me")]),
     ]
 
     @Test("切到 English、切回简体中文、再跟随系统：三个标签页根屏的大标题每次都即时换成那种语言；机器栈里打开着的详情仍在")

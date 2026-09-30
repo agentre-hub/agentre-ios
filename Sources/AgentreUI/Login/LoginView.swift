@@ -2,8 +2,9 @@ import AgentreDesign
 import AgentreDomain
 import SwiftUI
 
-/// 登录屏：当前服务器地址与一个主操作。主操作发起设备流并直接打开带确认码的验证地址，
-/// 用户不必手输确认码；等待、过期、被拒、失败都由按钮与一行状态表达，不加说明文案。
+/// 登录屏：字标、标语、服务器行（主机名，点开可改）与主操作（规格「逐屏视觉契约·07 登录」）。
+/// 主操作发起设备流并直接打开带确认码的验证地址，用户不必手输确认码；等待、过期、被拒、失败
+/// 都由按钮与一行状态表达，不加说明文案。
 public struct LoginView: View {
     @Bindable private var flow: LoginFlow
     @State private var isEditingServer: Bool
@@ -24,90 +25,109 @@ public struct LoginView: View {
     private var isAwaiting: Bool { flow.state == .awaitingApproval }
 
     public var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            Text(verbatim: "Agentre")
-                .font(.largeTitle.bold())
-                .foregroundStyle(.token(.ink))
-            server
-            Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            top.padding(.top, 70)
+            Spacer(minLength: 24)
             outcome
-            signInButton
+            bottom.padding(.bottom, 26)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 26)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.token(.bg))
     }
 
-    @ViewBuilder private var server: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // 改地址的按钮与标题同一行，地址独占整行宽：默认地址在默认字号下一行排下，
-            // 更长的地址或更大的字号换行而不截断——地址是要被核对的，不能只露两头。
-            HStack(spacing: 8) {
-                Text("login.server", tableName: "Login", bundle: .module)
-                    .font(.footnote)
-                    .foregroundStyle(.token(.ink2))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if !isEditingServer {
-                    Button {
-                        draftAddress = flow.serverAddress.url.absoluteString
-                        draftIsInvalid = false
-                        isEditingServer = true
-                    } label: {
-                        Image(systemName: "pencil")
-                            .foregroundStyle(.token(.primary))
-                    }
-                    .hitTarget()
-                    .disabled(isAwaiting)
-                    .accessibilityLabel(Text("login.server.edit", tableName: "Login", bundle: .module))
-                }
-            }
+    @ViewBuilder private var top: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            Text(verbatim: "AGENTRE")
+                .font(.agentre(FontRole(size: 13, weight: .semibold, relativeTo: .footnote), mono: true))
+                .tracking(5)
+                .foregroundStyle(.token(.primary))
+            Text("login.tagline", tableName: "Login", bundle: .module)
+                .font(.agentre(FontRole(size: 32, weight: .bold, relativeTo: .largeTitle)))
+                .foregroundStyle(.token(.ink))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var bottom: some View {
+        VStack(alignment: .leading, spacing: 14) {
             if isEditingServer {
                 serverEditor
             } else {
-                Text(verbatim: flow.serverAddress.url.absoluteString)
-                    .font(.body.monospaced())
-                    .foregroundStyle(.token(.ink))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                server
             }
+            signInButton
         }
-        .padding(16)
-        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    /// 服务器行：地球图标、等宽主机名、展开指示，整行是一个按钮——点开即改（规格「07 登录」）。
+    @ViewBuilder private var server: some View {
+        Button {
+            draftAddress = flow.serverAddress.url.absoluteString
+            draftIsInvalid = false
+            isEditingServer = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(.globe)
+                    .resizable()
+                    .frame(width: 15, height: 15)
+                    .foregroundStyle(.token(.ink3))
+                    .accessibilityHidden(true)
+                Text(verbatim: flow.serverAddress.hostOnly)
+                    .font(.agentre(FontRole(size: 13, relativeTo: .subheadline), mono: true))
+                    .foregroundStyle(.token(.ink2))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(.chevronRight)
+                    .resizable()
+                    .frame(width: 15, height: 15)
+                    .foregroundStyle(.token(.ink3))
+                    .accessibilityHidden(true)
+            }
+            .padding(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+            .background(.token(.surface), in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.token(.line)))
+        }
+        .hitTarget()
+        .disabled(isAwaiting)
     }
 
     @ViewBuilder private var serverEditor: some View {
-        AddressField(text: $draftAddress, onSubmit: save)
-        if draftIsInvalid {
-            Label {
-                Text("login.server.invalid", tableName: "Login", bundle: .module)
-            } icon: {
-                Image(systemName: "exclamationmark.circle")
-                    .foregroundStyle(.token(.coral))
+        VStack(alignment: .leading, spacing: 8) {
+            AddressField(text: $draftAddress, onSubmit: save)
+            if draftIsInvalid {
+                Label {
+                    Text("login.server.invalid", tableName: "Login", bundle: .module)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.token(.coral))
+                }
+                .font(.footnote)
+                .foregroundStyle(.token(.ink2))
             }
-            .font(.footnote)
-            .foregroundStyle(.token(.ink2))
+            HStack(spacing: 8) {
+                Spacer()
+                Button {
+                    isEditingServer = false
+                } label: {
+                    Text("login.server.cancel", tableName: "Login", bundle: .module)
+                        .foregroundStyle(.token(.ink2))
+                        .padding(.horizontal, 8)
+                }
+                .hitTarget()
+                Button(action: save) {
+                    Text("login.server.save", tableName: "Login", bundle: .module)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.token(.primary))
+                        .padding(.horizontal, 8)
+                }
+                .hitTarget()
+                // 等待授权期间地址不可改（设备流在发起时的服务器上换令牌）。
+                .disabled(isAwaiting)
+            }
         }
-        HStack(spacing: 8) {
-            Spacer()
-            Button {
-                isEditingServer = false
-            } label: {
-                Text("login.server.cancel", tableName: "Login", bundle: .module)
-                    .foregroundStyle(.token(.ink2))
-                    .padding(.horizontal, 8)
-            }
-            .hitTarget()
-            Button(action: save) {
-                Text("login.server.save", tableName: "Login", bundle: .module)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.token(.primary))
-                    .padding(.horizontal, 8)
-            }
-            .hitTarget()
-            // 等待授权期间地址不可改（设备流在发起时的服务器上换令牌）。
-            .disabled(isAwaiting)
-        }
+        .padding(16)
+        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 14))
     }
 
     @ViewBuilder private var outcome: some View {
@@ -121,6 +141,7 @@ public struct LoginView: View {
                     .foregroundStyle(.token(.ink2))
             }
             .font(.callout)
+            .padding(.bottom, 14)
         } else {
             outcomeStatus
         }
@@ -149,31 +170,38 @@ public struct LoginView: View {
                 .foregroundStyle(.token(.coral))
         }
         .font(.callout)
+        .padding(.bottom, 14)
     }
 
     private var signInButton: some View {
         Button {
             Task { await flow.signIn() }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 9) {
                 if isAwaiting {
                     ProgressView()
                         .tint(.token(.primaryInk))
-                    Text("login.awaiting", tableName: "Login", bundle: .module)
-                } else if flow.state == .idle {
-                    Text("login.signIn", tableName: "Login", bundle: .module)
                 } else {
-                    Text("login.signIn.again", tableName: "Login", bundle: .module)
+                    Image(.externalLink)
+                        .resizable()
+                        .frame(width: 18, height: 18)
+                        .accessibilityHidden(true)
                 }
+                Text(signInLabelKey, tableName: "Login", bundle: .module)
             }
-            .font(.headline)
+            .font(.agentre(FontRole(size: 16, weight: .semibold, relativeTo: .headline)))
             .foregroundStyle(.token(.primaryInk))
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 56)
             .background(.token(.primary), in: Capsule())
             .opacity(isAwaiting || isOffline ? 0.7 : 1)
         }
         .hitTarget()
         .disabled(isAwaiting || isOffline)
+    }
+
+    private var signInLabelKey: LocalizedStringKey {
+        if isAwaiting { return "login.awaiting" }
+        return flow.state == .idle ? "login.signIn" : "login.signIn.again"
     }
 
     private func save() {
