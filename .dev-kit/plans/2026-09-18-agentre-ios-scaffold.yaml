@@ -498,7 +498,7 @@ tasks:
     interfaces: "42 的 IdentityDirectory；43 的 GroupedRow、fittedSheet"
     status: done
     commit: 5506447
-    note: "RED：-only-testing:AgentreComposerTests -only-testing:AgentreTranscriptTests（新 DD /tmp/t46-red）exit 65，7 条因预期原因失败：根面板仍显示 acceptEdits / high / 40%、模型带「anthropic · 」前缀、机器名为空、权限页无人话名、ContextRingView.token(for:) 仍映射 primary/amber/coral。GREEN：AgentreComposerTests + AgentreTranscriptTests 118/118 exit 0——ComposerScreenTests.queued（「排队中 · 2 条 · AI 完成后插入」，surface 圆角卡）/ offline / permanentRow（占位「接着说…」）/ stopButton（停止为 surface2 圆 + coral 方块，发送为 primary 圆，空输入或离线压暗）/ panel（两组 GroupedSection(.sheet)，命中区 6 个）；TranscriptScreenTests.contextRingColorTiers（百分比与弧按 ctxOk/ctxWarn/ctxDanger 着色，修掉原先用 primary/amber/coral 的缺陷）/ contextRing / contextDetailIsReadOnly；ComposerDisplayTests（PermissionModeDisplay / ReasoningEffortDisplay，表外 xhigh / max / 自定义值原样等宽；ContextUsage.compactSummary）；panelReasoningEffortDisplay / permissionPage / panelCurrentModelName（有 Opus 无 Anthropic）/ panelSessionInfoMachineName；中文行名「思考档位」（英文仍为 Reasoning effort）。AgentreUITests 8/8 exit 0，Mainline 四组合新增「02B context popover」「04 more panel」截图（FakeAgentred.seedActivityTurn 补一条 UsageUpdate 79,312 / 200,000）；全 scheme build-for-testing（DIAGNOSE…=YES_ERROR）exit 0；AgentreHostedTests 48/48 exit 0。主会话核验：提交路径全在 files 内；该任务留下的 /tmp/t46-* 约 10 GB 由主会话删除。接口：PermissionModeDisplay / ReasoningEffortDisplay（AgentreDomain）、ContextUsage.compactSummary、ComposerModel.machineName（init 带 identity:，默认 NullIdentityDirectory）、ContextRingView.token(for:)；面板根为 GroupedSection(.sheet) + GroupedRow，草稿复用同一形态。concerns：UITextView 的命中区测量按点步进，恰好 44pt 时会差 1pt，输入框下限加了 2pt 余量；权限模式与思考档位的选择页在人话名下方另以等宽小字显示原值（规格 04 写「取值一律以人话呈现，不显示原串」，留规格轴裁定）；fittedSheet 内无滚动容器，模型很多时选项可能溢出面板测得的高度（任务 43 的 Shell 代码，留代码轴核对）。"
+    note: "主会话全量（02c8af2）exit 65：Swift Testing 765 条过，XCUITest 8 条中 1 条失败——ShellChromeUITests.swift:82 testShellChromeSimplifiedChineseLight「tab bar on the draft with the keyboard up did not go away」（UI 部分跑了 3523 秒，负载一度 62）。同一 HEAD 单跑 -only-testing:AgentreUITests/ShellChromeUITests 两遍（负载约 6–16）exit 0、2/2 过；用户选择（原话选项）「新增任务 50 修成确定（推荐）」。 RED：-only-testing:AgentreComposerTests -only-testing:AgentreTranscriptTests（新 DD /tmp/t46-red）exit 65，7 条因预期原因失败：根面板仍显示 acceptEdits / high / 40%、模型带「anthropic · 」前缀、机器名为空、权限页无人话名、ContextRingView.token(for:) 仍映射 primary/amber/coral。GREEN：AgentreComposerTests + AgentreTranscriptTests 118/118 exit 0——ComposerScreenTests.queued（「排队中 · 2 条 · AI 完成后插入」，surface 圆角卡）/ offline / permanentRow（占位「接着说…」）/ stopButton（停止为 surface2 圆 + coral 方块，发送为 primary 圆，空输入或离线压暗）/ panel（两组 GroupedSection(.sheet)，命中区 6 个）；TranscriptScreenTests.contextRingColorTiers（百分比与弧按 ctxOk/ctxWarn/ctxDanger 着色，修掉原先用 primary/amber/coral 的缺陷）/ contextRing / contextDetailIsReadOnly；ComposerDisplayTests（PermissionModeDisplay / ReasoningEffortDisplay，表外 xhigh / max / 自定义值原样等宽；ContextUsage.compactSummary）；panelReasoningEffortDisplay / permissionPage / panelCurrentModelName（有 Opus 无 Anthropic）/ panelSessionInfoMachineName；中文行名「思考档位」（英文仍为 Reasoning effort）。AgentreUITests 8/8 exit 0，Mainline 四组合新增「02B context popover」「04 more panel」截图（FakeAgentred.seedActivityTurn 补一条 UsageUpdate 79,312 / 200,000）；全 scheme build-for-testing（DIAGNOSE…=YES_ERROR）exit 0；AgentreHostedTests 48/48 exit 0。主会话核验：提交路径全在 files 内；该任务留下的 /tmp/t46-* 约 10 GB 由主会话删除。接口：PermissionModeDisplay / ReasoningEffortDisplay（AgentreDomain）、ContextUsage.compactSummary、ComposerModel.machineName（init 带 identity:，默认 NullIdentityDirectory）、ContextRingView.token(for:)；面板根为 GroupedSection(.sheet) + GroupedRow，草稿复用同一形态。concerns：UITextView 的命中区测量按点步进，恰好 44pt 时会差 1pt，输入框下限加了 2pt 余量；权限模式与思考档位的选择页在人话名下方另以等宽小字显示原值（规格 04 写「取值一律以人话呈现，不显示原串」，留规格轴裁定）；fittedSheet 内无滚动容器，模型很多时选项可能溢出面板测得的高度（任务 43 的 Shell 代码，留代码轴核对）。"
 
   - id: 47
     goal: "机器与机器详情对齐（规格「逐屏视觉契约·06 机器详情」「08 机器」、测试决策「显示取值」再加载 N 条一项）：机器页「N 台已配对 · M 台在线」、卡片等宽「平台 · 种类 版本」、在线机器取 sessionCounts 写会话数（零项不写）、离线卡压暗只写最后在线不写数；详情页等宽导航栏、在线三格计数、离线写「这台机器不在线」、行状态点 / 标题 / 等宽 cwd / 相对时间、已保存展开指示 vs「保存到手机」、接上 SessionListResponse.total 的「再加载 N 条」取代自动翻页；06、08 屏截图。"
@@ -527,6 +527,16 @@ tasks:
     model: strong
     interfaces: "42 的 AvatarGlyph、身份色；43 的模态路由、CompactNavBar、fittedSheet"
     status: todo
+    commit: null
+    note: null
+
+  - id: 50
+    goal: "修成确定：ShellChromeUITests.swift:82 在全量（HEAD 02c8af2，UI 部分 3523 秒、负载一度 62）中失败一次——testShellChromeSimplifiedChineseLight「tab bar on the draft with the keyboard up did not go away」：新建对话模态里选 Agent 进草稿后，:80「the draft」无 tab 栏已通过，往草稿输入框打字、键盘弹起后 5 秒内 tab 栏仍在（expectNoTabBar 用 5 秒超时，Screen.swift:147-148）；其后发出首条等步骤均通过。正常负载下单跑两遍 2/2 过。先在满载下确定性地复现并证明根因（产品在模态开着时真的让 tab 栏出现，还是测试的判据 / 等待不对），再修掉；修的是产品缺陷就先写能在正常负载下稳定失败的测试。"
+    deps: []
+    files: [agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/, agentre-ios/UITests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
+    model: strong
+    interfaces: null
+    status: doing
     commit: null
     note: null
 
