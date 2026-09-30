@@ -506,7 +506,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Sources/AgentreRelay/Adapters/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: mid
     interfaces: "43 的 CompactNavBar、TopLevelHeader、SearchField"
-    status: todo
+    status: doing
     commit: null
     note: null
 
@@ -538,7 +538,7 @@ tasks:
     interfaces: null
     status: done
     commit: 5aa5059
-    note: "complete with concerns。只改 UITests/Support/Screen.swift。复现：新 DD 构建后 test-without-building -only-testing:AgentreUITests/ShellChromeUITests/testShellChromeSimplifiedChineseLight；每核一个或四个 yes（负载 40–450）5 跑 0 失败（模拟器高优先级线程不受影响）；对 Agentre.app 进程 taskpolicy -b 降级（trap 中 -B 复原）后复现，失败在同一判据的 :68（新建对话模态），附件的无障碍树里没有 shell.tabBar、截图中模态下无 tab 栏。根因在测试不在产品：expectGone 用 5 秒 XCTWaiter，首次检查约在窗口 1 秒处才开始，失败那次单次存在性查询从 t=149.33 跑到 153.59（4.26 秒），结束时已过期限约 153.3，于是报「did not go away」；正常负载下一次未找到的查询也要 1.2–2 秒。修法：expectGone 只有在超时已过且至少两次完成的查询确实看到该元素时才报仍在，失败信息带看到的次数；tab 栏 5 秒窗口不变。RED：旧等待在降级下 exit 65（:68），而树里 tab 栏已不在。GREEN：临时去掉 Router.showsTabBar 的 newConversation 守卫（已还原）正常负载 2 跑都 exit 65 于 :68「seen 21/22 times over 5 s」，证明仍能抓真缺陷；同样降级 5 跑 1 跑全过，其余 4 跑没有一跑失败在 tab 栏判据上；每核一个 yes 下 ShellChromeUITests 2/2 exit 0；正常负载 MainlineUITests + FakeServerTests 7 条 exit 0。主会话核验：/tmp 无 t50-* 残留、无 yes 进程。concerns（降级下另发现、未修）：边缘右滑返回 5 跑中 2 跑没有弹出（:46、:96，20 秒后返回箭头仍在），疑为推入动画未完或 EdgeSwipeBack 在 viewDidAppear 换手势代理之前滑动到达，未证实，可能是真实产品竞争；搜索框 1 跑失去键盘焦点（:61）；1 跑启动花 60 秒致登录超时；expectTabBar 每个 tab 钮只等 2 秒，同类缺陷未修（无失败实例）。"
+    note: "主会话全量（e1ae22e）exit 0：Swift Testing 765 条 + XCUITest 8 条过。 complete with concerns。只改 UITests/Support/Screen.swift。复现：新 DD 构建后 test-without-building -only-testing:AgentreUITests/ShellChromeUITests/testShellChromeSimplifiedChineseLight；每核一个或四个 yes（负载 40–450）5 跑 0 失败（模拟器高优先级线程不受影响）；对 Agentre.app 进程 taskpolicy -b 降级（trap 中 -B 复原）后复现，失败在同一判据的 :68（新建对话模态），附件的无障碍树里没有 shell.tabBar、截图中模态下无 tab 栏。根因在测试不在产品：expectGone 用 5 秒 XCTWaiter，首次检查约在窗口 1 秒处才开始，失败那次单次存在性查询从 t=149.33 跑到 153.59（4.26 秒），结束时已过期限约 153.3，于是报「did not go away」；正常负载下一次未找到的查询也要 1.2–2 秒。修法：expectGone 只有在超时已过且至少两次完成的查询确实看到该元素时才报仍在，失败信息带看到的次数；tab 栏 5 秒窗口不变。RED：旧等待在降级下 exit 65（:68），而树里 tab 栏已不在。GREEN：临时去掉 Router.showsTabBar 的 newConversation 守卫（已还原）正常负载 2 跑都 exit 65 于 :68「seen 21/22 times over 5 s」，证明仍能抓真缺陷；同样降级 5 跑 1 跑全过，其余 4 跑没有一跑失败在 tab 栏判据上；每核一个 yes 下 ShellChromeUITests 2/2 exit 0；正常负载 MainlineUITests + FakeServerTests 7 条 exit 0。主会话核验：/tmp 无 t50-* 残留、无 yes 进程。concerns（降级下另发现、未修）：边缘右滑返回 5 跑中 2 跑没有弹出（:46、:96，20 秒后返回箭头仍在），疑为推入动画未完或 EdgeSwipeBack 在 viewDidAppear 换手势代理之前滑动到达，未证实，可能是真实产品竞争；搜索框 1 跑失去键盘焦点（:61）；1 跑启动花 60 秒致登录超时；expectTabBar 每个 tab 钮只等 2 秒，同类缺陷未修（无失败实例）。"
 
 review:
   status: pending
