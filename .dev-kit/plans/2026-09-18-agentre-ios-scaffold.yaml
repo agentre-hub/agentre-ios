@@ -508,7 +508,7 @@ tasks:
     interfaces: "43 的 CompactNavBar、TopLevelHeader、SearchField"
     status: done
     commit: 02335c5
-    note: "complete with concerns。RED：生产文件暂存后 -only-testing:AgentreMachineTests -only-testing:AgentreRelayTests（新 DD /tmp/t47-red）编译失败「extra argument 'sessions' in call」（MachinesModel(roster:sessions:) 尚不存在）。GREEN：同命令（/tmp/t47-g4）exit 0，42/42；AgentreHostedTests 48/48；全 scheme build-for-testing（DIAGNOSE…=YES_ERROR）exit 0；AgentreUITests/MainlineUITests 四组合 + 1 条 5/5 exit 0。MachineScreensTests.rosterRows（副标题「N 台已配对 · M 台在线」）；MachineReportedSummaryTests 3/3（Machine.reportedSummary 按上报原样、缺项不写、不给 agentred 编架构）；rosterCards（MachinesModel.loadCounts 逐机 sessionCounts，零项不写；离线卡 opacity 0.45、无「个会话」）；detailOffline（新键 machines.detail.offline「这台机器不在线」+ 最后在线，无三格）；detailRowsShowCwd；reloadMoreButtonReplacesAutomaticPaging（MachineSessionPage.total 从 wire 经适配器到模型，真实 UI 测试点了「再加载 2 条」并翻页）；截图改名为「08 machines」「06 machine detail」「06 machine detail saved」，未加 + / ⋯ / 筛选。主会话核验：提交路径全在 files 内，/tmp 无残留。**未满足的目标部分**：详情导航栏的机器名与副标题不是等宽——CompactNavigationBar（Sources/AgentreUI/Shell/Chrome.swift，任务 43 所有、不在本任务写入集）在内部给标题与副标题重设了非等宽字体，要改 Shell 的接口才能做到；因写入集冻结无法经送回修复，转交收尾规格轴（其范围覆盖全分支）。concern：未保存行的保存入口仍为只有图标、无障碍标签为「保存到手机」，没有可见文字——改成可见文字按钮会打破既有断言 sessionTitleStartsAtRowLeadingAndFillsTheRow（标题宽度从要求的 222pt 降到约 185pt）；已保存行改为展开指示（原为 iphone 图标）。留规格轴裁定。"
+    note: "主会话全量（76f100b）exit 0：Swift Testing 774 条 + XCUITest 8 条过。 complete with concerns。RED：生产文件暂存后 -only-testing:AgentreMachineTests -only-testing:AgentreRelayTests（新 DD /tmp/t47-red）编译失败「extra argument 'sessions' in call」（MachinesModel(roster:sessions:) 尚不存在）。GREEN：同命令（/tmp/t47-g4）exit 0，42/42；AgentreHostedTests 48/48；全 scheme build-for-testing（DIAGNOSE…=YES_ERROR）exit 0；AgentreUITests/MainlineUITests 四组合 + 1 条 5/5 exit 0。MachineScreensTests.rosterRows（副标题「N 台已配对 · M 台在线」）；MachineReportedSummaryTests 3/3（Machine.reportedSummary 按上报原样、缺项不写、不给 agentred 编架构）；rosterCards（MachinesModel.loadCounts 逐机 sessionCounts，零项不写；离线卡 opacity 0.45、无「个会话」）；detailOffline（新键 machines.detail.offline「这台机器不在线」+ 最后在线，无三格）；detailRowsShowCwd；reloadMoreButtonReplacesAutomaticPaging（MachineSessionPage.total 从 wire 经适配器到模型，真实 UI 测试点了「再加载 2 条」并翻页）；截图改名为「08 machines」「06 machine detail」「06 machine detail saved」，未加 + / ⋯ / 筛选。主会话核验：提交路径全在 files 内，/tmp 无残留。**未满足的目标部分**：详情导航栏的机器名与副标题不是等宽——CompactNavigationBar（Sources/AgentreUI/Shell/Chrome.swift，任务 43 所有、不在本任务写入集）在内部给标题与副标题重设了非等宽字体，要改 Shell 的接口才能做到；因写入集冻结无法经送回修复，转交收尾规格轴（其范围覆盖全分支）。concern：未保存行的保存入口仍为只有图标、无障碍标签为「保存到手机」，没有可见文字——改成可见文字按钮会打破既有断言 sessionTitleStartsAtRowLeadingAndFillsTheRow（标题宽度从要求的 222pt 降到约 185pt）；已保存行改为展开指示（原为 iphone 图标）。留规格轴裁定。"
 
   - id: 48
     goal: "登录与账号对齐（规格「逐屏视觉契约·07 登录」「09 我」、决策 22、「退出登录就是撤销本机」、测试决策「退出登录」）：登录页字标、标语、服务器行显示主机名、「用浏览器授权」；账号页标题「账号」、首字头像卡（副行邮箱）、服务器 / 已授权设备（条数）/ 语言 / 外观进二级页、关于显示版本不可点、coral 描边「退出登录」；退出登录先撤销本机再清本地，撤销失败照样清本地并回登录屏；UI 测试伪服务端把 device_id 0 当调用者（与真实服务端一致）；07、09 屏与二级页无 tab 栏的截图。"
@@ -516,7 +516,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Login/, agentre-ios/Sources/AgentreUI/Me/, agentre-ios/Sources/AgentreDomain/Account/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreAccountTests/, agentre-ios/Tests/AgentreAuthTests/, agentre-ios/UITests/]
     model: mid
     interfaces: "43 的 GroupedRow、CompactNavBar、Router.me"
-    status: todo
+    status: doing
     commit: null
     note: null
 
