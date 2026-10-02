@@ -546,9 +546,9 @@ tasks:
     files: [agentre-ios/Tests/AgentreDesignTests/, agentre-ios/Sources/AgentreUI/NewConversation/NewConversation.xcstrings]
     model: mid
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: aa97823
+    note: "RED：改动前 -only-testing:AgentreDesignTests exit 65，LocalizationTests.swift:56 在 en 与 zh-Hans 下 resolved \"%#@value@\"、目录 nil。GREEN：同命令 exit 0——StringCatalog.requiredPluralBranches（en: one / other，zh-Hans: other）与递归 pluralVariations()（含 substitutions）；tablesShipInTheBundle 按 1、5 两个数量逐分支 String(format:) 与资源包解析结果一致；catalogGuardCatchesGaps 新增复数缺分支 / 未翻译 / 空值三例——只撤回缺分支检查后重跑 exit 65（problems.count == 8 与「缺复数分支 one」断言失败），恢复后 exit 0；AgentreDesignTests + AgentreNewConversationTests 36 + 87 条 exit 0，非复数键沿用原逐值检查，未删减任何检查。newconv.projectCount 的英文在任务 49 中已是「%lld project / %lld projects」，目录无需改动，提交只含 Tests/AgentreDesignTests/LocalizationTests.swift。主会话核验：提交路径在 files 内，/tmp 无残留。"
 
 review:
   status: pending
