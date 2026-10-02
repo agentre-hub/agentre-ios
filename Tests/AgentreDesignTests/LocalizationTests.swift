@@ -24,7 +24,7 @@ struct LocalizationTests {
         }
     }
 
-    @Test("守卫自身：缺语言、未翻译、空值都被认出")
+    @Test("守卫自身：缺语言、未翻译、空值都被认出，复数条目的缺分支、未翻译、空值同样被认出")
     func catalogGuardCatchesGaps() throws {
         let json = """
         {"sourceLanguage":"en","version":"1.0","strings":{
@@ -32,15 +32,31 @@ struct LocalizationTests {
           "missing":{"localizations":{"en":{"stringUnit":{"state":"translated","value":"Missing"}}}},
           "stale":{"localizations":{"en":{"stringUnit":{"state":"translated","value":"A"}},"zh-Hans":{"stringUnit":{"state":"new","value":"甲"}}}},
           "empty":{"localizations":{"en":{"stringUnit":{"state":"translated","value":""}},"zh-Hans":{"stringUnit":{"state":"translated","value":"乙"}}}},
-          "bare":{}
+          "bare":{},
+          "pluralMissingBranch":{"localizations":{
+            "en":{"variations":{"plural":{"other":{"stringUnit":{"state":"translated","value":"%lld items"}}}}},
+            "zh-Hans":{"variations":{"plural":{"other":{"stringUnit":{"state":"translated","value":"%lld 个"}}}}}
+          }},
+          "pluralUntranslated":{"localizations":{
+            "en":{"variations":{"plural":{"one":{"stringUnit":{"state":"translated","value":"%lld item"}},"other":{"stringUnit":{"state":"new","value":"%lld items"}}}}},
+            "zh-Hans":{"variations":{"plural":{"other":{"stringUnit":{"state":"translated","value":"%lld 个"}}}}}
+          }},
+          "pluralEmpty":{"localizations":{
+            "en":{"variations":{"plural":{"one":{"stringUnit":{"state":"translated","value":"%lld item"}},"other":{"stringUnit":{"state":"translated","value":"%lld items"}}}}},
+            "zh-Hans":{"variations":{"plural":{"other":{"stringUnit":{"state":"translated","value":""}}}}}
+          }}
         }}
         """
         let problems = try StringCatalog(data: Data(json.utf8)).problems(requiring: Self.languages)
-        #expect(problems.count == 5, "\(problems)")
+        #expect(problems.count == 8, "\(problems)")
         #expect(!problems.contains { $0.hasPrefix("ok") })
+        #expect(problems.contains { $0.contains("pluralMissingBranch") && $0.contains("[en]") && $0.contains("缺复数分支 one") })
+        #expect(!problems.contains { $0.contains("pluralMissingBranch") && $0.contains("[zh-Hans]") })
+        #expect(problems.contains { $0.contains("pluralUntranslated") && $0.contains("[en]") && $0.contains("未翻译") })
+        #expect(problems.contains { $0.contains("pluralEmpty") && $0.contains("[zh-Hans]") && $0.contains("为空") })
     }
 
-    @Test("每张表都随表现层资源包发布：两种语言下每个键都解析成目录里的译文")
+    @Test("每张表都随表现层资源包发布：两种语言下每个键都解析成目录里的译文；复数条目按实际数量解析成对应分支")
     func tablesShipInTheBundle() throws {
         let bundle = AgentreUIResources.bundle
         let catalogs = try Self.catalogs().filter { $0.path.contains("/Sources/AgentreUI/") }
@@ -52,8 +68,22 @@ struct LocalizationTests {
                 let path = try #require(bundle.path(forResource: language, ofType: "lproj"), "\(language).lproj 不在资源包里")
                 let localized = try #require(Bundle(path: path))
                 for (key, values) in catalog.values {
+                    // 这种语言下这个键是复数条目：下面按分支、按实际数量核对，不在此处比较整串。
+                    if catalog.pluralTemplates[key]?[language] != nil { continue }
                     let resolved = localized.localizedString(forKey: key, value: "⟨missing⟩", table: table)
                     #expect(resolved == values[language], "\(table).\(key) [\(language)]")
+                }
+                for (key, templates) in catalog.pluralTemplates {
+                    guard let branches = templates[language] else { continue }
+                    let format = localized.localizedString(forKey: key, value: "⟨missing⟩", table: table)
+                    for count in [1, 5] {
+                        let category = StringCatalog.pluralCategory(for: count, language: language)
+                        // 缺分支已由「守卫自身」的反例用例与 problems() 覆盖，这里只在分支存在时核对解析结果。
+                        guard let expectedTemplate = branches[category] else { continue }
+                        let resolved = String(format: format, count)
+                        let expected = String(format: expectedTemplate, count)
+                        #expect(resolved == expected, "\(table).\(key) [\(language)] count=\(count)")
+                    }
                 }
             }
         }
@@ -98,7 +128,26 @@ struct LocalizationTests {
 struct StringCatalog {
     /// 键 → 语言 → 译文（仅不带变体的条目；带复数等变体的条目只参与缺语言检查）。
     let values: [String: [String: String]]
+    /// 键 → 语言 → 复数分支 → 模板文本。只取直接挂在 localizations 下的 variations.plural——
+    /// substitutions 内嵌的复数分支完整性仍由 problems() 覆盖，但按真实数量解析只对这一直接形态做，
+    /// 因为仓库里目前只出现这一种，substitutions 嵌套复数一旦出现需要另外扩这里。
+    let pluralTemplates: [String: [String: [String: String]]]
     private let strings: [String: [String: Any]]
+
+    /// 一种语言下，一个复数变体必须覆盖的分支（CLDR 基数类别的一个子集，够用即可）：
+    /// 英文区分单复数，中文的基数类别只有 other。新增语言要在这里补一项，否则按 other 兜底。
+    static let requiredPluralBranches: [String: Set<String>] = [
+        "en": ["one", "other"],
+        "zh-Hans": ["other"],
+    ]
+
+    /// 给定数量与语言，运行时会选中的分支——与 requiredPluralBranches 必须覆盖的集合一致。
+    static func pluralCategory(for count: Int, language: String) -> String {
+        switch language {
+        case "zh-Hans": return "other"
+        default: return count == 1 ? "one" : "other"
+        }
+    }
 
     init(contentsOf url: URL) throws {
         try self.init(data: Data(contentsOf: url))
@@ -111,19 +160,44 @@ struct StringCatalog {
             let localizations = entry["localizations"] as? [String: [String: Any]] ?? [:]
             return localizations.compactMapValues { ($0["stringUnit"] as? [String: Any])?["value"] as? String }
         }
+        pluralTemplates = strings.mapValues { entry in
+            let localizations = entry["localizations"] as? [String: [String: Any]] ?? [:]
+            return localizations.compactMapValues { localization -> [String: String]? in
+                guard let variations = localization["variations"] as? [String: Any],
+                      let plural = variations["plural"] as? [String: Any] else { return nil }
+                let branches = plural.compactMapValues { branch -> String? in
+                    ((branch as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+                }
+                return branches.isEmpty ? nil : branches
+            }
+        }.filter { !$0.value.isEmpty }
     }
 
-    /// 缺某种语言、某个译文单元未标为已翻译、或译文为空，各记一条。
+    /// 缺某种语言、某个译文单元未标为已翻译、译文为空，或复数变体缺该语言要求的分支，各记一条。
     func problems(requiring languages: [String]) -> [String] {
         strings.keys.sorted().flatMap { key -> [String] in
             let localizations = strings[key]?["localizations"] as? [String: Any] ?? [:]
-            return languages.compactMap { language in
-                guard let localization = localizations[language] else { return "\(key) 缺 \(language)" }
+            return languages.flatMap { language -> [String] in
+                guard let localization = localizations[language] else { return ["\(key) 缺 \(language)"] }
+                var found: [String] = []
                 let units = Self.stringUnits(in: localization)
-                if units.isEmpty { return "\(key) [\(language)] 没有译文" }
-                if units.contains(where: { $0["state"] as? String != "translated" }) { return "\(key) [\(language)] 未翻译" }
-                if units.contains(where: { ($0["value"] as? String ?? "").isEmpty }) { return "\(key) [\(language)] 为空" }
-                return nil
+                if units.isEmpty {
+                    found.append("\(key) [\(language)] 没有译文")
+                } else {
+                    if units.contains(where: { $0["state"] as? String != "translated" }) {
+                        found.append("\(key) [\(language)] 未翻译")
+                    }
+                    if units.contains(where: { ($0["value"] as? String ?? "").isEmpty }) {
+                        found.append("\(key) [\(language)] 为空")
+                    }
+                }
+                let required = Self.requiredPluralBranches[language] ?? ["other"]
+                for plural in Self.pluralVariations(in: localization) {
+                    for branch in required.sorted() where plural[branch] == nil {
+                        found.append("\(key) [\(language)] 缺复数分支 \(branch)")
+                    }
+                }
+                return found
             }
         }
     }
@@ -133,6 +207,17 @@ struct StringCatalog {
         guard let dictionary = node as? [String: Any] else { return [] }
         if let unit = dictionary["stringUnit"] as? [String: Any] { return [unit] }
         return dictionary.values.flatMap { stringUnits(in: $0) }
+    }
+
+    /// 一个本地化节点下的全部复数分支字典（variations.plural 本身，不管挂在顶层还是 substitutions 里）。
+    private static func pluralVariations(in node: Any) -> [[String: Any]] {
+        guard let dictionary = node as? [String: Any] else { return [] }
+        var found: [[String: Any]] = []
+        if let variations = dictionary["variations"] as? [String: Any], let plural = variations["plural"] as? [String: Any] {
+            found.append(plural)
+        }
+        found.append(contentsOf: dictionary.values.flatMap { pluralVariations(in: $0) })
+        return found
     }
 }
 
