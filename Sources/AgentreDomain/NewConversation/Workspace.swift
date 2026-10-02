@@ -140,6 +140,15 @@ public struct DispatchChoice: Sendable, Equatable {
         self.kind = kind
         self.cwd = cwd
     }
+
+    /// Pi 后端不提供权限模式这一项：它的 `permission_mode` 在派发时承载归属令牌（`RelayDispatcher`）。
+    public var offersPermissionMode: Bool { backendType != "piagent" }
+
+    /// 同一台机器上的同一个后端：工具行的候选随它而定，它变了草稿上选的三项才作废。
+    public func isSameTarget(as other: DispatchChoice?) -> Bool {
+        guard let other else { return false }
+        return deviceFingerprint == other.deviceFingerprint && backendSyncID == other.backendSyncID && backendType == other.backendType
+    }
 }
 
 /// 某 Agent（+ 可选项目 + 可选手动指定的一档）的派发计划。
@@ -156,7 +165,24 @@ public struct DispatchPlan: Sendable, Equatable {
     }
 }
 
-public struct DispatchPlanQuery: Sendable, Equatable {
+/// 某个项目下一个 Agent 此刻落到哪（「从项目里挑」每行的副行）：取自带项目问到的派发计划。
+public enum ProjectLanding: Sendable, Equatable {
+    case landsOn(device: String, cwd: String)
+    /// 跑不了：第一档说得出机器的不可用档（说不出时取第一档不可用档，机器名为空）与原因。
+    case unavailable(device: String, reason: TargetAvailability)
+    case noTarget
+}
+
+extension DispatchPlan {
+    public var landing: ProjectLanding {
+        if let chosen { return .landsOn(device: chosen.deviceName, cwd: chosen.cwd) }
+        let blocked = tiers.filter { !$0.availability.isAvailable }
+        guard let blocking = blocked.first(where: { !$0.deviceName.isEmpty }) ?? blocked.first else { return .noTarget }
+        return .unavailable(device: blocking.deviceName, reason: blocking.availability)
+    }
+}
+
+public struct DispatchPlanQuery: Sendable, Hashable {
     public var agentSyncID: String
     /// nil = 不指定项目。
     public var projectSyncID: String?

@@ -15,7 +15,7 @@ struct ProjectMembershipTests {
 
     func members(_ project: String, _ projects: [WorkspaceProject] = projectTree, _ agents: [WorkspaceAgent]? = nil) -> (direct: [String], inherited: [String]) {
         let membership = ProjectMembership(of: project, projects: projects, agents: agents ?? self.agents)
-        return (membership.direct.map(\.syncID), membership.inherited.map(\.syncID))
+        return (membership.direct.map(\.syncID), membership.inherited.flatMap(\.agents).map(\.syncID))
     }
 
     @Test("直接成员 = 把这个项目写在自己名下的那些")
@@ -26,6 +26,15 @@ struct ProjectMembershipTests {
     @Test("继承 = 祖先项目的直接成员，逐级往上走、由近及远")
     func inheritsUpTheChain() {
         #expect(members("deep").inherited == ["a-fe", "a-both", "a-root"])
+    }
+
+    @Test("继承按祖先各成一组、由近到远，组上记着是哪一个祖先；祖先那一级没有新成员就不成组")
+    func inheritedGroupedPerAncestor() {
+        let membership = ProjectMembership(of: "deep", projects: projectTree, agents: agents)
+        #expect(membership.inherited.map(\.ancestor.syncID) == ["fe", "root"])
+        #expect(membership.inherited.map { $0.agents.map(\.syncID) } == [["a-fe", "a-both"], ["a-root"]])
+        let onlyRoot = ProjectMembership(of: "deep", projects: projectTree, agents: [agent("a-root", projects: ["root"])])
+        #expect(onlyRoot.inherited.map(\.ancestor.syncID) == ["root"])
     }
 
     @Test("同时是直接成员与祖先成员时只算直接，不在两组里各出现一次")
@@ -87,5 +96,7 @@ struct ProjectMembershipTests {
         let rows = WorkspaceProjectRow.flatten(projects)
         #expect(rows.map(\.project.syncID) == ["a", "a1", "a2", "b", "orphan", "x", "y"])
         #expect(rows.map(\.depth) == [0, 1, 1, 0, 0, 0, 1])
+        // 胶囊写「父 › 子」：从根到自己的一串名字。
+        #expect(rows.map(\.trail) == [["a"], ["a", "a1"], ["a", "a2"], ["b"], ["orphan"], ["x"], ["x", "y"]])
     }
 }

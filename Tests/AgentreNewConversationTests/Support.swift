@@ -102,6 +102,24 @@ actor FakeDispatcher: NewConversationDispatching {
     }
 }
 
+let sampleToolOptions = DraftToolOptions(
+    permissionModes: ["default", "acceptEdits", "plan"],
+    models: [
+        ComposerModelChoice(providerKey: "anthropic", modelKey: "sonnet", modelId: "claude-sonnet", name: "Sonnet", providerName: "Anthropic"),
+        ComposerModelChoice(providerKey: "anthropic", modelKey: "opus", modelId: "claude-opus", name: "Opus", providerName: "Anthropic"),
+    ]
+)
+
+/// 草稿工具行的候选：记下问的是哪一档，答回固定的一份。
+actor FakeToolOptions: DraftToolOptionsSource {
+    private(set) var queries: [DispatchChoice] = []
+
+    func options(for target: DispatchChoice) -> DraftToolOptions {
+        queries.append(target)
+        return sampleToolOptions
+    }
+}
+
 struct RecordFailed: Error {}
 
 actor FakeRecorder: StartedConversationRecording {
@@ -177,11 +195,12 @@ func draft(
     workspace: FakeWorkspace = FakeWorkspace(),
     dispatcher: any NewConversationDispatching = FakeDispatcher(),
     recorder: any StartedConversationRecording = FakeRecorder(),
+    options: any DraftToolOptionsSource = FakeToolOptions(),
     id: String = "0199aaaa-0000-7000-8000-000000000001"
 ) -> DraftConversationModel {
     DraftConversationModel(
         agent: agent, project: project, projects: projectTree,
-        workspace: workspace, dispatcher: dispatcher, recorder: recorder, mintID: { id }
+        workspace: workspace, dispatcher: dispatcher, recorder: recorder, toolOptions: options, mintID: { id }
     )
 }
 

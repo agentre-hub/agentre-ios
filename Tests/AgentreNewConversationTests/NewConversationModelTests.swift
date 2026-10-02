@@ -51,6 +51,47 @@ struct NewConversationModelTests {
         await model.load()
         let membership = model.membership(of: "deep")
         #expect(membership.direct.isEmpty)
-        #expect(membership.inherited.map(\.syncID) == ["Coder", "reviewer"])
+        #expect(membership.inherited.map(\.ancestor.name) == ["frontend", "agentre-server"])
+        #expect(membership.inherited.map { $0.agents.map(\.syncID) } == [["Coder"], ["reviewer"]])
+    }
+
+    @Test("「从项目里挑」卡片写项目个数")
+    func projectCount() async throws {
+        let model = NewConversationModel(workspace: FakeWorkspace(agents: agents), store: FakeConversationStore())
+        #expect(model.projectCount == 0)
+        await model.load()
+        #expect(model.projectCount == 4)
+    }
+
+    @Test("项目下每个 Agent 的落点取这个项目的派发结果（带项目问派发计划），不取清单里与项目无关的 current")
+    func landingsComeFromTheProjectPlan() async throws {
+        let workspace = FakeWorkspace(agents: agents, planner: { query in
+            if query.agentSyncID == "reviewer" {
+                return DispatchPlan(agentSyncID: "reviewer", tiers: [
+                    DispatchTier(rank: 1, backendSyncID: "b1", deviceName: "laptop", backendType: "claudecode", availability: .projectPathMissing),
+                ], chosen: nil)
+            }
+            return plan(for: query)
+        })
+        let model = NewConversationModel(workspace: workspace, store: FakeConversationStore())
+        await model.load()
+        #expect(model.landing(of: "Coder", in: "deep") == nil)
+        await model.loadLandings(in: "deep")
+        #expect(Set(await workspace.planQueries) == [
+            DispatchPlanQuery(agentSyncID: "Coder", projectSyncID: "deep"), DispatchPlanQuery(agentSyncID: "reviewer", projectSyncID: "deep"),
+        ])
+        #expect(model.landing(of: "Coder", in: "deep") == .resolved(.landsOn(device: "mini", cwd: "/srv/deep")))
+        #expect(model.landing(of: "reviewer", in: "deep") == .resolved(.unavailable(device: "laptop", reason: .projectPathMissing)))
+        #expect(model.landing(of: "Coder", in: "fe") == nil)
+    }
+
+    @Test("某个 Agent 的派发计划没问到：那一行记作没问到，其余照常")
+    func landingFailure() async throws {
+        let workspace = FakeWorkspace(agents: agents)
+        await workspace.configure(failPlans: true)
+        let model = NewConversationModel(workspace: workspace, store: FakeConversationStore())
+        await model.load()
+        await model.loadLandings(in: "fe")
+        #expect(model.landing(of: "Coder", in: "fe") == .failed)
     }
 }

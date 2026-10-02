@@ -7,15 +7,20 @@ import Testing
 
 private let phone = RelaySourceDevice(fingerprint: "phone-fp", name: "My iPhone")
 
-private func request(kind: String = "desktop", backendType: String = "claudecode", project: String? = "proj-1") -> DispatchRequest {
+private func request(
+    kind: String = "desktop", backendType: String = "claudecode", project: String? = "proj-1", settings: ComposerRunSettings = ComposerRunSettings()
+) -> DispatchRequest {
     DispatchRequest(
         conversationID: "0190-conv", title: "Fix login", userText: "Fix login\nplease", agentSyncID: "agent-1",
         projectSyncID: project,
         target: DispatchChoice(
             deviceFingerprint: "fp-9", deviceName: "Studio", backendSyncID: "be-1", backendType: backendType, kind: kind, cwd: "/repo"
-        )
+        ),
+        settings: settings
     )
 }
+
+private let drafted = ComposerRunSettings(permissionMode: "plan", providerKey: "anthropic", modelKey: "opus", reasoningEffort: "high")
 
 private func ack(_ conversationID: String, providerSession: String = "") -> Agentre_Wire_RuntimeRunResponse {
     var response = Agentre_Wire_RuntimeRunResponse()
@@ -45,14 +50,52 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(body.backend.syncID.isEmpty)
         #expect(body.sourceDevice == "phone-fp")
         #expect(body.sourceDeviceName == "My iPhone")
+        // 草稿上一项都没选：三格留空，按 Agent 绑定与后端配置跑。
         #expect(body.permissionMode.isEmpty)
-        // 新建对话没有选模型与思考档位的入口：两者留空，按 Agent 绑定与后端配置跑。
         #expect(body.llmProviderKey.isEmpty)
         #expect(body.llmModelKey.isEmpty)
         #expect(body.reasoningEffort.isEmpty)
         #expect(!body.compact)
         socket.respond(id, to: run, with: ack("0190-conv"))
         try await sent
+    }
+
+    @Test("草稿上选的权限模式、模型、思考档位随第一条 runtime.run 带过去")
+    func carriesDraftSettings() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayDispatcher(connection: harness.connection, source: phone)
+        async let sent: Void = adapter.dispatch(request(kind: "agentred", settings: drafted))
+        let (socket, id) = try await harness.machineChannel("fp-9")
+        let run = try await socket.nextRequest(on: id, method: .runtimeRun)
+        let body = try run.body(Agentre_Wire_RuntimeRunRequest.self)
+        #expect(body.permissionMode == "plan")
+        #expect(body.llmProviderKey == "anthropic")
+        #expect(body.llmModelKey == "opus")
+        #expect(body.reasoningEffort == "high")
+        socket.respond(id, to: run, with: ack("0190-conv"))
+        try await sent
+    }
+
+    @Test("Pi：用户选的权限模式不上线（那一格承载归属令牌），模型与思考档位照带", arguments: ["agentred", "desktop"])
+    func piOmitsUserPermissionMode(_ kind: String) async throws {
+        let harness = await Harness.started()
+        let adapter = RelayDispatcher(connection: harness.connection, source: phone)
+        async let sent: Void = adapter.dispatch(request(kind: kind, backendType: "piagent", settings: drafted))
+        let (socket, id) = try await harness.machineChannel("fp-9")
+        // agentred 上的 Pi 分注册、准备、启动三步；桌面端只一步。
+        var bodies: [Agentre_Wire_RuntimeRunRequest] = []
+        for step in 0..<(kind == "agentred" ? 3 : 1) {
+            let run = try await socket.nextRequest(on: id, method: .runtimeRun)
+            bodies.append(try run.body(Agentre_Wire_RuntimeRunRequest.self))
+            socket.respond(id, to: run, with: ack("0190-conv", providerSession: step == 0 ? "" : "pi-sess-1"))
+        }
+        try await sent
+        for body in bodies {
+            #expect(body.permissionMode != "plan")
+            #expect(body.llmProviderKey == "anthropic")
+            #expect(body.llmModelKey == "opus")
+            #expect(body.reasoningEffort == "high")
+        }
     }
 
     @Test("agentred 上的派发带后端同步号，daemon 据它取整份配置；不指定项目时 project_sync_id 为空")

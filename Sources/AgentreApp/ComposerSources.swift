@@ -120,3 +120,19 @@ struct ComposerSettingsAdapter: ComposerSettingsSource {
         )
     }
 }
+
+/// 草稿工具行的候选：权限档位问机器 chip 选中的那台机器上的那个后端（runtimeCapabilities；Pi 不问——它的
+/// permission_mode 承载归属令牌），模型取服务端引擎目录。哪一半没问到就是空的一半：这时那一项只剩「不指定」。
+struct DraftToolOptionsAdapter: DraftToolOptionsSource {
+    let catalog: EngineCatalogClient
+    let connection: RelayConnection
+
+    func options(for target: DispatchChoice) async throws -> DraftToolOptions {
+        async let models = try? catalog.models()
+        async let modes = target.offersPermissionMode
+            ? try? connection.permissionModes(backendType: target.backendType, on: target.deviceFingerprint)
+            : nil
+        let (choices, permission) = await (models, modes)
+        return DraftToolOptions(permissionModes: permission?.allowed ?? [], models: choices ?? [])
+    }
+}

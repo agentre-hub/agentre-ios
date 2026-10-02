@@ -154,7 +154,7 @@ private struct NewConversationFlow: View {
     }
 }
 
-/// 新建对话模态栈里的各屏：按项目挑（项目列表、项目下的 Agent）与草稿。
+/// 新建对话模态栈里的各屏：从项目里挑与草稿。
 private struct NewConversationDestination: View {
     let services: SignedInServices
     let route: NewConversationRoute
@@ -162,25 +162,38 @@ private struct NewConversationDestination: View {
     var body: some View {
         switch route {
         case .projects:
-            NewConversationProjectList(model: services.newConversation) { project in
-                services.router.newConversation?.append(.project(project.syncID))
+            NewConversationProjectPicker(model: services.newConversation) { agent, project in
+                services.router.newConversation?.append(.draft(agent: agent.syncID, project: project.syncID))
             }
-            .compactNavigationBar(title: Text("newconv.projects", tableName: "NewConversation", bundle: AgentreUIResources.bundle))
-        case .project(let syncID):
-            if let project = services.project(syncID) {
-                NewConversationProjectAgents(model: services.newConversation, project: project) { agent in
-                    services.router.newConversation?.append(.draft(agent: agent.syncID, project: syncID))
-                }
-                .compactNavigationBar(title: Text(verbatim: project.name))
-            }
+            .compactNavigationBar(
+                title: Text("newconv.fromProject", tableName: "NewConversation", bundle: AgentreUIResources.bundle),
+                leading: { BackToModalRoot(router: services.router) }
+            )
         case .draft:
+            // 草稿自己画导航栏（Agent 字形、「新对话」、Agent 名）。
             if let draft = services.draftModel(for: route) {
                 DraftConversationView(model: draft) { key in
                     services.router.open(started: key)
                 }
-                .compactNavigationBar(title: Text(verbatim: draft.agent.name))
             }
         }
+    }
+}
+
+/// 「从项目里挑」返回处写着回到哪：「新建对话」（规格「05B」）。与返回箭头是同一个去处。
+private struct BackToModalRoot: View {
+    let router: Router
+
+    var body: some View {
+        Button {
+            router.newConversation = []
+        } label: {
+            Text("shell.newConversation", tableName: "Shell", bundle: AgentreUIResources.bundle)
+                .font(.agentre(.body))
+                .foregroundStyle(.token(.primary))
+                .lineLimit(1)
+        }
+        .hitTarget()
     }
 }
 

@@ -14,8 +14,8 @@ enum MessagesRoute: Hashable {
 
 /// 新建对话模态自己的栈里的去处（根屏是 Agent 列表）。
 enum NewConversationRoute: Hashable {
+    /// 从项目里挑：项目胶囊与所选项目下的 Agent 在同一屏。
     case projects
-    case project(String)
     case draft(agent: String, project: String?)
 }
 
@@ -105,6 +105,8 @@ final class SignedInServices {
     @ObservationIgnored let identity: WorkspaceIdentityDirectory
     @ObservationIgnored let mentions: RESTMentionSource
     @ObservationIgnored let settings: ComposerSettingsAdapter
+    /// 草稿工具行的候选。
+    @ObservationIgnored let draftToolOptions: DraftToolOptionsAdapter
     @ObservationIgnored let sync: ConversationSync
     @ObservationIgnored let messages: MessagesModel
     @ObservationIgnored let machines: MachinesModel
@@ -157,10 +159,9 @@ final class SignedInServices {
         workspace = WorkspaceClient(transport: environment.transport, server: server)
         identity = WorkspaceIdentityDirectory(workspace: workspace, roster: roster)
         mentions = RESTMentionSource(workspace: workspace, machines: directory)
-        settings = ComposerSettingsAdapter(
-            catalog: EngineCatalogClient(transport: environment.transport, server: server), connection: connection, carrier: carrier,
-            store: store
-        )
+        let catalog = EngineCatalogClient(transport: environment.transport, server: server)
+        settings = ComposerSettingsAdapter(catalog: catalog, connection: connection, carrier: carrier, store: store)
+        draftToolOptions = DraftToolOptionsAdapter(catalog: catalog, connection: connection)
         messages = MessagesModel(store: store, identity: identity)
         machines = MachinesModel(roster: roster, sessions: machineSessions)
         newConversation = NewConversationModel(workspace: workspace, store: store)
@@ -274,15 +275,11 @@ final class SignedInServices {
         let projects = newConversation.projects
         let model = DraftConversationModel(
             agent: agent, project: projectID.flatMap { id in projects.first { $0.syncID == id } }, projects: projects,
-            workspace: workspace, dispatcher: dispatcher, recorder: startedRecorder
+            workspace: workspace, dispatcher: dispatcher, recorder: startedRecorder, toolOptions: draftToolOptions
         )
         // 已经退出栈的去处（退场动画里再求一次值）不留：否则下一次进来拿到的是它。
         if router.newConversation?.contains(route) == true { drafts[route] = model }
         return model
-    }
-
-    func project(_ syncID: String) -> WorkspaceProject? {
-        newConversation.projects.first { $0.syncID == syncID }
     }
 }
 

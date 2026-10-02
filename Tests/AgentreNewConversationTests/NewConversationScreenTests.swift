@@ -30,9 +30,16 @@ struct NewConversationScreenTests {
         #expect(labels.contains(text("newconv.recent")))
         #expect(labels.contains(text("newconv.allAgents")))
         #expect(labels.contains(text("newconv.fromProject")))
+        #expect(labels.contains(String.localizedStringWithFormat(text("newconv.projectCount %lld"), 4)))
         #expect(labels.contains(text("newconv.currentTarget %@", "mini")))
         #expect(labels.contains(text("newconv.unavailableOn %@ %@", "studio", text("newconv.offline"))))
         #expect(labels.contains(text("newconv.unpaired")))
+    }
+
+    @Test("副行：落点是 `ink-3` 加服务器图标；不可用的原因用次级文字色（`ink-2`）加插头图标，不用红——不可用不是失败")
+    func landingLineColours() {
+        #expect(LandingLine(available: true) == LandingLine(icon: .server, token: .ink3))
+        #expect(LandingLine(available: false) == LandingLine(icon: .plugZap, token: .ink2))
     }
 
     @Test("App 内选的语言与系统不同、再切回：搜索框与草稿输入框的占位与读屏标签随之换成那种语言")
@@ -67,32 +74,44 @@ struct NewConversationScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
-    // MARK: 项目
+    // MARK: 从项目里挑
 
-    @Test("项目列表：每个项目一行")
-    func projectList() async throws {
+    func picker(selecting project: String) async -> (NewConversationProjectPicker, NewConversationModel) {
         let (_, model) = await entry()
-        let view = NewConversationProjectList(model: model, onPick: { _ in })
-        let labels = await HostedScreen(view).labels().joined(separator: "\n")
-        for project in projectTree { #expect(labels.contains(project.name)) }
-        let report = await hitTargetReport(of: view)
-        #expect(report.targets.count == 4, "\(report.targets)")
-        #expect(report.violations.isEmpty, "\(report.violations)")
+        await model.selectProject(project)
+        return (NewConversationProjectPicker(model: model, onPick: { _, _ in }), model)
     }
 
-    @Test("项目下的 Agent：直接成员与继承自父项目分两组标注")
-    func projectAgents() async throws {
-        let (_, model) = await entry()
-        let view = NewConversationProjectAgents(model: model, project: projectTree[1], onPick: { _ in })
+    @Test("从项目里挑：顶上是项目胶囊（子项目写「父 › 子」），下面直接成员，再按祖先由近到远各一组「继承自 <祖先>」")
+    func projectPicker() async throws {
+        let (view, _) = await picker(selecting: "deep")
         let labels = await HostedScreen(view).labels().joined(separator: "\n")
-        let direct = try #require(labels.range(of: text("newconv.directMembers")))
-        let inherited = try #require(labels.range(of: text("newconv.inheritedMembers")))
+        for pill in ["agentre-server", "agentre-server › frontend", "agentre-server › frontend › components", "agentre"] {
+            #expect(labels.contains(pill), "\(pill)")
+        }
+        let near = try #require(labels.range(of: text("newconv.inheritedFrom %@", "frontend")))
+        let far = try #require(labels.range(of: text("newconv.inheritedFrom %@", "agentre-server")))
         let coder = try #require(labels.range(of: "coder"))
         let reviewer = try #require(labels.range(of: "reviewer"))
-        #expect(direct.lowerBound < coder.lowerBound && coder.lowerBound < inherited.lowerBound && inherited.lowerBound < reviewer.lowerBound, "\(labels)")
+        #expect(near.lowerBound < coder.lowerBound && coder.lowerBound < far.lowerBound && far.lowerBound < reviewer.lowerBound, "\(labels)")
+        #expect(!labels.contains(text("newconv.directMembers")))
         #expect(!labels.contains("writer"))
+    }
+
+    @Test("从项目里挑：每行写这个项目下的派发结果「当前落到 <机器> · <路径>」；跑不了写宿主原话的原因")
+    func projectPickerLandings() async throws {
+        let (_, model) = await picker(selecting: "fe")
+        let view = NewConversationProjectPicker(model: model, onPick: { _, _ in })
+        let labels = await HostedScreen(view).labels().joined(separator: "\n")
+        #expect(labels.contains(text("newconv.directMembers")))
+        #expect(labels.contains(text("newconv.landsOnPath %@ %@", "mini", "/srv/fe")), "\(labels)")
+    }
+
+    @Test("从项目里挑命中区：4 枚胶囊 + 2 行 Agent，全都补满且互不重叠")
+    func projectPickerHitTargets() async throws {
+        let (view, _) = await picker(selecting: "deep")
         let report = await hitTargetReport(of: view)
-        #expect(report.targets.count == 2, "\(report.targets)")
+        #expect(report.targets.count == 6, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
@@ -110,19 +129,57 @@ struct NewConversationScreenTests {
         let view = DraftConversationView(model: model, onStarted: { _ in })
         let labels = await HostedScreen(view).labels()
         #expect(labels.contains { $0.contains("mini") })
+        // 机器 chip 上写等宽的后端种类。
+        #expect(labels.contains { $0.contains("mini") && $0.contains("codex") }, "\(labels)")
         #expect(labels.contains { $0.contains("frontend") })
-        #expect(!labels.joined().contains("coder"))
         let report = await hitTargetReport(of: view)
-        // 机器 chip、项目 chip、输入框、发送。
-        #expect(report.targets.count == 4, "\(report.targets)")
+        // 返回、机器 chip、项目 chip、输入框、发送，工具行的 + / 权限模式 / 模型 / 思考档位。
+        #expect(report.targets.count == 9, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
-    @Test("草稿：导航栏写着选中的是哪个 Agent（中央不写，由导航栏说是谁）")
-    func draftNavigationTitleNamesTheAgent() async throws {
+    @Test("草稿：导航栏标题「新对话」、副标题是选中的 Agent")
+    func draftNavigationBar() async throws {
         let model = await loadedDraft()
-        let labels = await HostedScreen(NavigationStack { DraftConversationView(model: model, onStarted: { _ in }) }).labels()
-        #expect(labels.contains("coder"), "\(labels)")
+        let screen = HostedScreen(NavigationStack { DraftConversationView(model: model, onStarted: { _ in }) })
+        let title = try #require(await screen.frame(of: text("newconv.title")))
+        let subtitle = try #require(await screen.frame(of: "coder"))
+        #expect(title.maxY <= subtitle.minY + 1, "\(title) \(subtitle)")
+    }
+
+    @Test("Pi 后端的草稿：工具行没有权限模式这一枚，面板里也没有这一行")
+    func draftPiHasNoPermissionMode() async throws {
+        let workspace = FakeWorkspace(planner: { query in
+            DispatchPlan(agentSyncID: query.agentSyncID, tiers: [], chosen: DispatchChoice(
+                deviceFingerprint: "fp-mini", deviceName: "mini", backendSyncID: "b-pi", backendType: "piagent", kind: "agentred"
+            ))
+        })
+        let model = draft(workspace: workspace)
+        await model.loadPlan()
+        let permission = AgentreUIResources.bundle.localizedString(forKey: "composer.permissionMode", value: "⟨missing⟩", table: "Composer")
+        let labels = await HostedScreen(DraftConversationView(model: model, onStarted: { _ in })).labels()
+        #expect(labels.contains(AgentreUIResources.bundle.localizedString(forKey: "composer.model", value: "⟨missing⟩", table: "Composer")))
+        #expect(!labels.contains(permission), "\(labels)")
+        let panel = await HostedScreen(DraftToolPanel(model: model, initialPage: .root)).labels().joined(separator: "\n")
+        #expect(!panel.contains(permission), "\(panel)")
+    }
+
+    @Test("工具面板：权限模式 / 模型 / 思考档位三行，没选时写「不指定」；选中的档在选项页打勾，选了就带进首条")
+    func draftToolPanel() async throws {
+        let model = await loadedDraft()
+        let root = DraftToolPanel(model: model, initialPage: .root)
+        let labels = await HostedScreen(root).labels().joined(separator: "\n")
+        #expect(labels.contains(text("newconv.tool.unset")), "\(labels)")
+        let report = await hitTargetReport(of: root)
+        #expect(report.targets.count == 3, "\(report.targets)")
+        #expect(report.violations.isEmpty, "\(report.violations)")
+        model.chooseModel(sampleToolOptions.models[1])
+        let page = DraftToolPanel(model: model, initialPage: .model)
+        let options = await hitTargetReport(of: page)
+        // 返回、不指定、两个模型。
+        #expect(options.targets.count == 4, "\(options.targets)")
+        #expect(options.violations.isEmpty, "\(options.violations)")
+        #expect(await HostedScreen(DraftToolPanel(model: model, initialPage: .root)).labels().joined().contains("Opus"))
     }
 
     @Test("发出第一条消息后 chip 行退场；落库失败时如实说已在机器上跑起来、没进列表，并给重试")
@@ -139,8 +196,8 @@ struct NewConversationScreenTests {
         #expect(labels.contains(text("newconv.retry")))
         #expect(!labels.contains("frontend"))
         let report = await hitTargetReport(of: view)
-        // 只剩重试：chip 行与输入区都已退场。
-        #expect(report.targets.count == 1, "\(report.targets)")
+        // 只剩返回与重试：chip 行、输入区与工具行都已退场。
+        #expect(report.targets.count == 2, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
@@ -233,6 +290,10 @@ struct NewConversationScreenTests {
         #expect(try text("newconv.useAutoTarget", language: "zh-Hans") == "交回自动挑")
         #expect(try text("newconv.noProject", language: "zh-Hans") == "不指定项目")
         #expect(try text("newconv.projectPathMissing", language: "zh-Hans") == "这台机器上未配置远端路径")
+        #expect(try text("newconv.inheritedFrom %@", language: "zh-Hans") == "继承自 %@")
+        #expect(try text("newconv.fromProject", language: "zh-Hans") == "从项目里挑")
+        #expect(try text("newconv.message", language: "zh-Hans") == "说点什么，开始这次对话…")
+        #expect(try text("newconv.title", language: "zh-Hans") == "新对话")
         #expect(try text("newconv.offline", language: "zh-Hans") == "离线")
         #expect(try text("newconv.unpaired", language: "zh-Hans") == "未配对")
         #expect(try text("newconv.pickTargetScope", language: "zh-Hans") == "⟨missing⟩")

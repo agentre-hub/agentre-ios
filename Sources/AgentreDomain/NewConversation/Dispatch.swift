@@ -11,15 +11,38 @@ public struct DispatchRequest: Sendable, Equatable {
     public var projectSyncID: String?
     /// 派发落到的那一档（机器指纹、后端、工作目录）。
     public var target: DispatchChoice
+    /// 草稿工具行上选的权限模式、模型、思考档位；一项都没选时三格皆空，按 Agent 与后端的既有配置跑。
+    public var settings: ComposerRunSettings
 
-    public init(conversationID: String, title: String, userText: String, agentSyncID: String, projectSyncID: String?, target: DispatchChoice) {
+    public init(
+        conversationID: String, title: String, userText: String, agentSyncID: String, projectSyncID: String?, target: DispatchChoice,
+        settings: ComposerRunSettings = ComposerRunSettings()
+    ) {
         self.conversationID = conversationID
         self.title = title
         self.userText = userText
         self.agentSyncID = agentSyncID
         self.projectSyncID = projectSyncID
         self.target = target
+        self.settings = settings
     }
+}
+
+/// 草稿工具行的候选：按机器 chip 选中的那台机器与后端取。
+public struct DraftToolOptions: Sendable, Equatable {
+    /// 那台机器上这个后端报的权限档位；空 = 没有权限门（或没问到）。Pi 后端不问。
+    public var permissionModes: [String]
+    public var models: [ComposerModelChoice]
+
+    public init(permissionModes: [String] = [], models: [ComposerModelChoice] = []) {
+        self.permissionModes = permissionModes
+        self.models = models
+    }
+}
+
+/// 草稿工具行的候选从哪来：权限档位问那台机器（runtimeCapabilities），模型取服务端引擎目录。拼装归装配层。
+public protocol DraftToolOptionsSource: Sendable {
+    func options(for target: DispatchChoice) async throws -> DraftToolOptions
 }
 
 /// 派发没成：界面据此用自己的话说，不贴对端原串。

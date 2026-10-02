@@ -40,11 +40,20 @@ public final class DraftConversationModel {
     /// 已经发出（或正在发）的第一条消息；派发没成时收回。
     public private(set) var sentText: String?
     public var text = ""
+    /// 工具行的候选：按机器 chip 此刻选中的那一档问来；还没问到（或没有可派发的档）时为 nil。
+    public private(set) var toolOptions: DraftToolOptions?
+    /// 工具行上选的三项；nil = 不指定，按 Agent 与后端的既有配置跑。改选机器后回到 nil。
+    public private(set) var permissionMode: String?
+    public private(set) var modelChoice: ComposerModelChoice?
+    public private(set) var reasoningEffort: String?
 
     private let workspace: any WorkspaceService
     private let dispatcher: any NewConversationDispatching
     private let recorder: any StartedConversationRecording
+    private let toolOptionsSource: any DraftToolOptionsSource
     private let mintID: @Sendable () -> String
+    /// 每次改问工具行候选加一；换了机器之后才到的旧应答不落。
+    private var optionsGeneration = 0
     /// 每次重算计划加一；过时的应答不落。
     private var planGeneration = 0
     /// 最新一次重算还在飞：手里那份计划是换项目 / 换机器之前的，不能拿它派发。
@@ -55,6 +64,7 @@ public final class DraftConversationModel {
     public init(
         agent: WorkspaceAgent, project: WorkspaceProject?, projects: [WorkspaceProject],
         workspace: any WorkspaceService, dispatcher: any NewConversationDispatching, recorder: any StartedConversationRecording,
+        toolOptions: any DraftToolOptionsSource,
         mintID: @escaping @Sendable () -> String = { ConversationIDs.mint() }
     ) {
         self.agent = agent
@@ -63,6 +73,7 @@ public final class DraftConversationModel {
         self.workspace = workspace
         self.dispatcher = dispatcher
         self.recorder = recorder
+        toolOptionsSource = toolOptions
         self.mintID = mintID
     }
 
@@ -101,6 +112,7 @@ public final class DraftConversationModel {
         }
         guard generation == planGeneration else { return }
         isResolving = false
+        let previous = plan?.chosen
         switch result {
         case .success(let fresh):
             plan = fresh
@@ -109,6 +121,59 @@ public final class DraftConversationModel {
             plan = nil
             planFailed = true
         }
+        if let chosen = plan?.chosen, chosen.isSameTarget(as: previous) { return }
+        await targetChanged()
+    }
+
+    // MARK: 工具行
+
+    /// 这一档提不提供权限模式这一项（Pi 不提供）。
+    public var offersPermissionMode: Bool { plan?.chosen?.offersPermissionMode ?? false }
+
+    /// 随第一条 runtime.run 带过去的三格；没选的留空。
+    public var runSettings: ComposerRunSettings {
+        ComposerRunSettings(
+            permissionMode: offersPermissionMode ? permissionMode ?? "" : "",
+            providerKey: modelChoice?.providerKey ?? "", modelKey: modelChoice?.modelKey ?? "", reasoningEffort: reasoningEffort ?? ""
+        )
+    }
+
+    /// nil = 回到不指定。只认那台机器报的档位。
+    public func choosePermissionMode(_ mode: String?) {
+        guard showsChips, offersPermissionMode else { return }
+        guard let mode else { permissionMode = nil; return }
+        guard toolOptions?.permissionModes.contains(mode) == true else { return }
+        permissionMode = mode
+    }
+
+    /// nil = 回到不指定。只认引擎目录里有的模型。
+    public func chooseModel(_ choice: ComposerModelChoice?) {
+        guard showsChips else { return }
+        guard let choice else { modelChoice = nil; return }
+        guard toolOptions?.models.contains(choice) == true else { return }
+        modelChoice = choice
+    }
+
+    /// nil = 回到不指定。只认五个档位。
+    public func chooseReasoningEffort(_ effort: String?) {
+        guard showsChips else { return }
+        guard let effort else { reasoningEffort = nil; return }
+        guard ComposerSettings.reasoningEffortLevels.contains(effort) else { return }
+        reasoningEffort = effort
+    }
+
+    /// 机器 chip 换了一档（或第一次解出来、或解不出了）：已选的三项回到不指定，候选按新的那一档重问。
+    private func targetChanged() async {
+        permissionMode = nil
+        modelChoice = nil
+        reasoningEffort = nil
+        toolOptions = nil
+        optionsGeneration += 1
+        let generation = optionsGeneration
+        guard let target = plan?.chosen else { return }
+        let options = (try? await toolOptionsSource.options(for: target)) ?? DraftToolOptions()
+        guard generation == optionsGeneration else { return }
+        toolOptions = options
     }
 
     /// 手动指定一档。不可用的档列出但挑不了。
@@ -137,7 +202,7 @@ public final class DraftConversationModel {
         let userText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let request = DispatchRequest(
             conversationID: mintID(), title: conversationTitle(from: userText), userText: userText,
-            agentSyncID: agent.syncID, projectSyncID: project?.syncID, target: target
+            agentSyncID: agent.syncID, projectSyncID: project?.syncID, target: target, settings: runSettings
         )
         phase = .sending
         sentText = userText

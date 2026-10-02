@@ -79,4 +79,24 @@ struct AgentTargetTests {
         let long = String(repeating: "长", count: 70)
         #expect(conversationTitle(from: long) == String(repeating: "长", count: 60) + "…")
     }
+
+    @Test("项目下的落点取自这个项目的派发计划：挑中了写机器与工作目录，挑不中写第一档说得出原因的那一档")
+    func projectLanding() {
+        #expect(plan(for: DispatchPlanQuery(agentSyncID: "a", projectSyncID: "fe")).landing == .landsOn(device: "mini", cwd: "/srv/fe"))
+        let blocked = DispatchPlan(agentSyncID: "a", tiers: [
+            DispatchTier(rank: 1, backendSyncID: "b0", availability: .unpaired),
+            DispatchTier(rank: 2, backendSyncID: "b1", deviceName: "laptop", availability: .projectPathMissing),
+        ], chosen: nil)
+        #expect(blocked.landing == .unavailable(device: "laptop", reason: .projectPathMissing))
+        let nameless = DispatchPlan(agentSyncID: "a", tiers: [DispatchTier(rank: 1, availability: .noDevice)], chosen: nil)
+        #expect(nameless.landing == .unavailable(device: "", reason: .noDevice))
+        #expect(DispatchPlan(agentSyncID: "a", tiers: [], chosen: nil).landing == .noTarget)
+    }
+
+    @Test("Pi 后端的 permission_mode 在派发时承载归属令牌：它不提供权限模式这一项")
+    func piOffersNoPermissionMode() {
+        #expect(choice("mini", backend: "b").offersPermissionMode)
+        let pi = DispatchChoice(deviceFingerprint: "fp", deviceName: "mini", backendType: "piagent", kind: "agentred")
+        #expect(!pi.offersPermissionMode)
+    }
 }

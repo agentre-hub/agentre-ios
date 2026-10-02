@@ -91,10 +91,12 @@ final class FakeAgentreServer: @unchecked Sendable {
         case ("GET", "/v1/workspace/agents"):
             return .respond(Self.ok(Self.agentsJSON))
         case ("GET", "/v1/workspace/projects"):
-            return .respond(Self.ok(#"{"projects":[]}"#))
+            return .respond(Self.ok(Self.projectsJSON))
         case ("GET", "/v1/workspace/dispatch-target"):
-            guard request.query["agent_sync_id"] == Self.agentSyncID else { return .respond(Self.failure(400, code: 400)) }
-            return .respond(Self.ok(Self.dispatchPlanJSON))
+            guard let plan = Self.dispatchPlanJSON(agent: request.query["agent_sync_id"] ?? "", project: request.query["project_sync_id"]) else {
+                return .respond(Self.failure(400, code: 400))
+            }
+            return .respond(Self.ok(plan))
         case ("GET", "/v1/engine/snapshot"):
             return .respond(Self.ok(Self.engineJSON))
         default:
@@ -178,20 +180,57 @@ final class FakeAgentreServer: @unchecked Sendable {
     static let agentName = "Builder"
     static let workingDirectory = "/srv/uitest/work"
 
-    private static var agentsJSON: String {
+    /// 新建对话（05 / 05B）要摆出身份色与继承：项目树 agentre › agentre-server 与另一个根 katch；
+    /// Builder 直接属于子项目，Reviewer 与离线的 Docs Keeper 属于父项目——在子项目下它们是「继承自 agentre」。
+    static let parentProject = (syncID: "proj-agentre", name: "agentre")
+    static let childProject = (syncID: "proj-server", name: "agentre-server")
+    static let reviewerName = "Reviewer"
+    static let docsName = "Docs Keeper"
+    static let offlineMachine = "thinkpad"
+
+    private static var projectsJSON: String {
         """
-        {"agents":[{"sync_id":"\(agentSyncID)","name":"\(agentName)","project_sync_ids":[],\
-        "exec_targets":[{"rank":1,"backend_sync_id":"backend-claude","device_unspecified":false,"device_name":"\(FakeAgentred.boxName)",\
-        "backend_type":"claudecode","availability":"available","current":true}],"has_available_target":true}]}
+        {"projects":[{"sync_id":"\(parentProject.syncID)","name":"\(parentProject.name)","parent_sync_id":"","sort_order":0,"color":"agent-5"},\
+        {"sync_id":"\(childProject.syncID)","name":"\(childProject.name)","parent_sync_id":"\(parentProject.syncID)","sort_order":0,"color":"agent-2"},\
+        {"sync_id":"proj-katch","name":"katch","parent_sync_id":"","sort_order":1,"color":"agent-9"}]}
         """
     }
 
-    private static var dispatchPlanJSON: String {
+    private static func boxTarget(_ backend: String) -> String {
         """
-        {"agent_sync_id":"\(agentSyncID)","tiers":[{"rank":1,"backend_sync_id":"backend-claude","device_name":"\(FakeAgentred.boxName)",\
+        {"rank":1,"backend_sync_id":"\(backend)","device_unspecified":false,"device_name":"\(FakeAgentred.boxName)",\
+        "backend_type":"claudecode","availability":"available","current":true}
+        """
+    }
+
+    private static var agentsJSON: String {
+        """
+        {"agents":[{"sync_id":"\(agentSyncID)","name":"\(agentName)","project_sync_ids":["\(childProject.syncID)"],\
+        "exec_targets":[\(boxTarget("backend-claude"))],"has_available_target":true,"avatar_color":"agent-3"},\
+        {"sync_id":"agent-reviewer","name":"\(reviewerName)","project_sync_ids":["\(parentProject.syncID)"],\
+        "exec_targets":[\(boxTarget("backend-reviewer"))],"has_available_target":true,"avatar_color":"agent-7"},\
+        {"sync_id":"agent-docs","name":"\(docsName)","project_sync_ids":["\(parentProject.syncID)"],\
+        "exec_targets":[{"rank":1,"backend_sync_id":"backend-docs","device_unspecified":false,"device_name":"\(offlineMachine)",\
+        "backend_type":"claudecode","availability":"offline","current":false}],"has_available_target":false,"avatar_color":"agent-11"}]}
+        """
+    }
+
+    /// 与服务端同形：挑中可用的那一档带回工作目录（带项目时是那个项目在机器上的路径）；离线的 Agent 没有 chosen。
+    private static func dispatchPlanJSON(agent: String, project: String?) -> String? {
+        let backends = [agentSyncID: "backend-claude", "agent-reviewer": "backend-reviewer"]
+        if agent == "agent-docs" {
+            return """
+            {"agent_sync_id":"agent-docs","tiers":[{"rank":1,"backend_sync_id":"backend-docs","device_name":"\(offlineMachine)",\
+            "backend_type":"claudecode","kind":"agentred","availability":"offline"}]}
+            """
+        }
+        guard let backend = backends[agent] else { return nil }
+        let cwd = project.map { "/srv/uitest/\($0)" } ?? workingDirectory
+        return """
+        {"agent_sync_id":"\(agent)","tiers":[{"rank":1,"backend_sync_id":"\(backend)","device_name":"\(FakeAgentred.boxName)",\
         "backend_type":"claudecode","kind":"agentred","availability":"available"}],\
         "chosen":{"device_fingerprint":"\(FakeAgentred.boxFingerprint)","device_name":"\(FakeAgentred.boxName)",\
-        "backend_sync_id":"backend-claude","backend_type":"claudecode","kind":"agentred","cwd":"\(workingDirectory)"}}
+        "backend_sync_id":"\(backend)","backend_type":"claudecode","kind":"agentred","cwd":"\(cwd)"}}
         """
     }
 

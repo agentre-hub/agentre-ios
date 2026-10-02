@@ -168,14 +168,47 @@ final class MainlineUITests: XCTestCase {
         screen.tap(screen.back, "back to the message list")
         screen.expect(screen.tab(.messages), "message list")
 
-        // 新建对话：选 Agent（每行给出解析结果）→ 草稿（机器 chip）→ 发出第一条。
+        // 05 新建对话：选 Agent（每行给出解析结果，离线的那个写原因）、带项目个数的「从项目里挑」。
         screen.tap(screen.button(copy("NewConversation", "newconv.title")), "new conversation")
         let agentRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", FakeAgentreServer.agentName)).firstMatch
         screen.expect(agentRow, "agent row")
         screen.expect(screen.text(containing: FakeAgentred.boxName), "where the agent currently runs")
-        screen.shot("10 pick agent")
+        screen.expect(element(containing: FakeAgentreServer.offlineMachine), "the offline agent's machine and reason")
+        let fromProject = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", copy("NewConversation", "newconv.fromProject"))).firstMatch
+        screen.expect(fromProject, "from-project card")
+        screen.expectAppearance(dark: dark, "new conversation")
+        screen.shot("05 new conversation")
+
+        // 05B 从项目里挑：子项目胶囊写「父 › 子」；直接成员 Builder，Reviewer 与 Docs Keeper 继承自父项目；
+        // 每行写这个项目下的派发结果（机器与该项目的路径）。
+        screen.tap(fromProject, "from-project card")
+        let childPill = screen.button("\(FakeAgentreServer.parentProject.name) › \(FakeAgentreServer.childProject.name)")
+        screen.expect(childPill, "child project pill")
+        screen.tap(childPill, "child project pill")
+        screen.expectSelected(childPill, "child project pill")
+        screen.expect(
+            screen.text(String(format: copy("NewConversation", "newconv.inheritedFrom %@"), FakeAgentreServer.parentProject.name)),
+            "inherited-from-parent group"
+        )
+        screen.expect(element(containing: "/srv/uitest/\(FakeAgentreServer.childProject.syncID)"), "landing path under the project")
+        screen.shot("05B from project")
+        screen.tap(screen.back, "back to picking an agent")
+        screen.expect(agentRow, "agent row after coming back")
+
+        // 05C 草稿：标题「新对话」、副标题 Agent 名；机器 chip 写机器名与后端；工具行可用。
         screen.tap(agentRow, "agent row")
-        screen.expect(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", FakeAgentred.boxName)).firstMatch, "machine chip")
+        let machineChip = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", FakeAgentred.boxName)).firstMatch
+        screen.expect(machineChip, "machine chip")
+        screen.expect(screen.text(copy("NewConversation", "newconv.title")), "draft title")
+        screen.expect(screen.button(copy("Composer", "composer.model")), "draft tool row")
+        screen.shot("05C draft")
+
+        // 05D 选执行机器：分组档位面板。
+        screen.tap(machineChip, "machine chip")
+        screen.expect(screen.text(copy("NewConversation", "newconv.pickTargetTitle")), "machine panel title")
+        screen.shot("05D machine panel")
+        screen.dismissSheet()
+        screen.expectGone(screen.text(copy("NewConversation", "newconv.pickTargetTitle")), "machine panel dismissed")
         screen.type(Self.firstMessage, into: screen.input(copy("NewConversation", "newconv.message")), "draft message field")
         screen.shot("11 draft")
         screen.tap(screen.button(copy("NewConversation", "newconv.send")), "send first message")

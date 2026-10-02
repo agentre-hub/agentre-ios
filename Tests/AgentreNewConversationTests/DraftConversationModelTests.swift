@@ -216,4 +216,97 @@ struct DraftConversationModelTests {
         #expect(row.cwd == "/srv/root")
         #expect(try await store.conversations().map(\.key) == [key])
     }
+
+    // MARK: 工具行（权限模式 / 模型 / 思考档位）
+
+    @Test("工具行的候选按机器 chip 选中的那台机器与后端问；草稿上选的三项随第一条 runtime.run 带过去")
+    func toolChoicesRideTheFirstRun() async throws {
+        let options = FakeToolOptions()
+        let dispatcher = FakeDispatcher()
+        let model = draft(dispatcher: dispatcher, options: options)
+        await model.loadPlan()
+        #expect(await options.queries == [choice("mini", backend: "b-mini")])
+        #expect(model.toolOptions == sampleToolOptions)
+        #expect(model.offersPermissionMode)
+        model.choosePermissionMode("plan")
+        model.chooseModel(sampleToolOptions.models[1])
+        model.chooseReasoningEffort("high")
+        #expect(model.permissionMode == "plan")
+        #expect(model.modelChoice == sampleToolOptions.models[1])
+        #expect(model.reasoningEffort == "high")
+        model.text = "hi"
+        await model.send()
+        #expect(await dispatcher.requests.first?.settings == ComposerRunSettings(
+            permissionMode: "plan", providerKey: "anthropic", modelKey: "opus", reasoningEffort: "high"
+        ))
+    }
+
+    @Test("一项都不选：三格留空，按 Agent 与后端的既有配置跑")
+    func noToolChoicesLeaveFieldsEmpty() async throws {
+        let dispatcher = FakeDispatcher()
+        let model = draft(dispatcher: dispatcher, options: FakeToolOptions())
+        await model.loadPlan()
+        model.text = "hi"
+        await model.send()
+        #expect(await dispatcher.requests.first?.settings == ComposerRunSettings())
+    }
+
+    @Test("选回「不指定」即清掉那一项；候选以外的取值选不上")
+    func unsetAndOutOfRange() async throws {
+        let dispatcher = FakeDispatcher()
+        let model = draft(dispatcher: dispatcher, options: FakeToolOptions())
+        await model.loadPlan()
+        model.choosePermissionMode("plan")
+        model.choosePermissionMode(nil)
+        model.choosePermissionMode("yolo")
+        model.chooseModel(ComposerModelChoice(providerKey: "other", modelKey: "gpt"))
+        model.chooseReasoningEffort("ultra")
+        #expect(model.permissionMode == nil)
+        #expect(model.modelChoice == nil)
+        #expect(model.reasoningEffort == nil)
+        model.text = "hi"
+        await model.send()
+        #expect(await dispatcher.requests.first?.settings == ComposerRunSettings())
+    }
+
+    @Test("改选机器后三项回到不指定、候选按新的那台重问；换项目而机器没变时不清")
+    func machineChangeClearsChoices() async throws {
+        let options = FakeToolOptions()
+        let dispatcher = FakeDispatcher()
+        let model = draft(dispatcher: dispatcher, options: options)
+        await model.loadPlan()
+        model.choosePermissionMode("plan")
+        model.chooseModel(sampleToolOptions.models[0])
+        model.chooseReasoningEffort("low")
+        await model.choose(projectTree[1])
+        #expect(model.permissionMode == "plan")
+        #expect(model.reasoningEffort == "low")
+        await model.pick(tiers[4])
+        #expect(model.permissionMode == nil)
+        #expect(model.modelChoice == nil)
+        #expect(model.reasoningEffort == nil)
+        #expect(await options.queries.last == choice("box", backend: "b-box", cwd: "/srv/fe"))
+        model.text = "hi"
+        await model.send()
+        #expect(await dispatcher.requests.first?.settings == ComposerRunSettings())
+    }
+
+    @Test("Pi 后端不提供权限模式这一项：选不上，派发也不带")
+    func piOffersNoPermissionMode() async throws {
+        let workspace = FakeWorkspace(planner: { query in
+            DispatchPlan(agentSyncID: query.agentSyncID, tiers: [
+                DispatchTier(rank: 1, backendSyncID: "b-pi", deviceName: "mini", backendType: "piagent", kind: "agentred", availability: .available),
+            ], chosen: DispatchChoice(deviceFingerprint: "fp-mini", deviceName: "mini", backendSyncID: "b-pi", backendType: "piagent", kind: "agentred"))
+        })
+        let dispatcher = FakeDispatcher()
+        let model = draft(workspace: workspace, dispatcher: dispatcher, options: FakeToolOptions())
+        await model.loadPlan()
+        #expect(!model.offersPermissionMode)
+        model.choosePermissionMode("plan")
+        model.chooseReasoningEffort("medium")
+        #expect(model.permissionMode == nil)
+        model.text = "hi"
+        await model.send()
+        #expect(await dispatcher.requests.first?.settings == ComposerRunSettings(reasoningEffort: "medium"))
+    }
 }

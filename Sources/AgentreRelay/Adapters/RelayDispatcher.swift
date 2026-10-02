@@ -30,7 +30,14 @@ public struct RelayDispatcher: NewConversationDispatching {
             backend.syncID = request.target.backendSyncID
         }
         run.backend = backend
-        // 新建对话没有选模型与思考档位的入口：llm_provider_key / llm_model_key / reasoning_effort 留空，按 Agent 绑定与后端配置跑。
+        // 草稿工具行上选的三项随这第一条过线；没选的格留空，按 Agent 绑定与后端配置跑。Pi 的 permission_mode
+        // 承载归属令牌（见 dispatchPi），用户选的档不上线。
+        if request.target.offersPermissionMode {
+            run.permissionMode = request.settings.permissionMode
+        }
+        run.llmProviderKey = request.settings.providerKey
+        run.llmModelKey = request.settings.modelKey
+        run.reasoningEffort = request.settings.reasoningEffort
         run.sourceDevice = source.fingerprint
         run.sourceDeviceName = source.name
 
