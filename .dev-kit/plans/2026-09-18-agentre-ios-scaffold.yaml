@@ -526,9 +526,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/NewConversation/, agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Sources/AgentreRelay/Adapters/, agentre-ios/Sources/AgentreREST/Workspace/, agentre-ios/Sources/AgentreApp/, agentre-ios/Tests/AgentreNewConversationTests/, agentre-ios/Tests/AgentreRelayTests/, agentre-ios/Tests/AgentreAuthTests/Hosted/, agentre-ios/UITests/]
     model: strong
     interfaces: "42 的 AvatarGlyph、身份色；43 的模态路由、CompactNavBar、fittedSheet"
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 37c5c4c
+    note: "complete with concerns。中途两次因电脑休眠断线，经 SendMessage 续接，未提交的工作区改动完整找回。RED：-only-testing:AgentreNewConversationTests -only-testing:AgentreRelayTests/DispatchAdapterTests（新 DD /tmp/t49-red）exit 65，编译失败：DraftToolOptions、DraftToolOptionsSource、NewConversationProjectPicker 尚不存在。GREEN：同命令加 -only-testing:AgentreHostedTests（/tmp/t49-g5）exit 0（87 + 48 + 10）；-only-testing:AgentreUITests/MainlineUITests -only-testing:AgentreUITests/ShellChromeUITests（/tmp/t49-ui）exit 0，7/7，四组合留 05 / 05B / 05C / 05D 截图。05：取消、新建对话、搜索、「从项目里挑」卡带「N 个项目」（projectCount）、最近用过 / 全部 Agent 等宽小组题、Agent 字形行、不可用行压暗且原因用 ink2 加插头图标而非红色（landingLineColours）。05B：胶囊「父 › 子」（trail）、直接成员 + 按祖先由近到远各一组「继承自 <名>」（inheritedGroupedPerAncestor、projectPicker）、每行按 project_sync_id 取该项目派发计划写「当前落到 <机器> · <路径>」（landingsComeFromTheProjectPlan、projectPickerLandings），命中区 6/6。05C：导航栏字形 + 「新对话」+ Agent 名副标题（draftNavigationBar）、描边 chip、机器 chip 等宽后端、占位「说点什么，开始这次对话…」，命中区 9/9。草稿工具行：toolChoicesRideTheFirstRun / carriesDraftSettings / noToolChoicesLeaveFieldsEmpty / machineChangeClearsChoices（同机器改项目保留）/ piOmitsUserPermissionMode（agentred 与桌面）/ piOffersNoPermissionMode；RelayDispatcher.swift:33 过时注释已删。05D：fittedSheet 分组档位、手动指定后「交回自动挑」（machinePanelManual，3 个命中区）。主会话核验：提交路径全在 files 内，/tmp 无残留。concerns：05B 胶囊条用 UIKit 滚动视图承载（命中区检查器看不到 SwiftUI ScrollView 内的元素），配色、字号与命中区收集手工传入，大字号未测；05B 返回箭头旁的「新建对话」是第二个同去处按钮，共享导航栏无返回文字选项，标题「从项目里挑」偏左未居中；项目树里缺失的祖先被跳过（无名可作组题），控制台同名逻辑仍列出该祖先的成员；草稿选的模型与思考档位没有写进本地会话行（存储不在写入集），第二轮起取同步后机器报的值——是否与首轮一致留规格轴与运行验证核对；UI 夹具每个 Agent 只有一档，05D 截图只有一行、看不到「交回自动挑」（单元测试覆盖）。"
 
   - id: 50
     goal: "修成确定：ShellChromeUITests.swift:82 在全量（HEAD 02c8af2，UI 部分 3523 秒、负载一度 62）中失败一次——testShellChromeSimplifiedChineseLight「tab bar on the draft with the keyboard up did not go away」：新建对话模态里选 Agent 进草稿后，:80「the draft」无 tab 栏已通过，往草稿输入框打字、键盘弹起后 5 秒内 tab 栏仍在（expectNoTabBar 用 5 秒超时，Screen.swift:147-148）；其后发出首条等步骤均通过。正常负载下单跑两遍 2/2 过。先在满载下确定性地复现并证明根因（产品在模态开着时真的让 tab 栏出现，还是测试的判据 / 等待不对），再修掉；修的是产品缺陷就先写能在正常负载下稳定失败的测试。"
