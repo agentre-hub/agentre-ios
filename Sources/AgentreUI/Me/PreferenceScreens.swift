@@ -62,6 +62,7 @@ private struct PreferenceOptionRow: View {
         Button(action: action) {
             HStack {
                 Text(label, tableName: "Me", bundle: .module)
+                    .font(.agentre(.body))
                     .foregroundStyle(.token(.ink))
                 Spacer()
                 Image(systemName: "checkmark")

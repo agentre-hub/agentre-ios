@@ -28,11 +28,7 @@ public struct DraftConversationView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // 一个视图上只挂一个面板：项目面板（可能很长，放在可滚动的系统面板里）挂在转录区上，其余挂在外层。
             transcript
-                .sheet(isPresented: Binding(get: { panel == .project }, set: { if !$0 { panel = nil } })) {
-                    NewConversationProjectPanel(model: model).presentationDetents([.medium, .large])
-                }
             if model.showsChips {
                 composer
             }
@@ -47,11 +43,11 @@ public struct DraftConversationView: View {
         .onChange(of: model.phase, initial: true) { _, phase in
             if case .started(let key) = phase { onStarted(key) }
         }
-        .fittedSheet(item: Binding(get: { panel == .project ? nil : panel }, set: { panel = $0 })) { panel in
+        .fittedSheet(item: $panel) { panel in
             switch panel {
             case .machine: NewConversationMachinePanel(model: model)
             case .tool(let page): DraftToolPanel(model: model, initialPage: page)
-            case .project: EmptyView()
+            case .project: NewConversationProjectPanel(model: model)
             }
         }
     }
@@ -59,16 +55,9 @@ public struct DraftConversationView: View {
     private var transcript: some View {
         List {
             if let sent = model.sentText {
-                HStack {
-                    Spacer(minLength: 48)
-                    Text(verbatim: sent)
-                        .font(.agentre(.body))
-                        .foregroundStyle(.token(.ink))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.token(.surface2), in: RoundedRectangle(cornerRadius: 16))
-                }
-                .row()
+                // 与对话屏同一枚用户气泡（规格「02」）：这条对话发出去后就是那一屏的第一条。
+                UserBubble(text: sent)
+                    .row()
             }
             switch model.phase {
             case .notListed(let started):
@@ -395,7 +384,8 @@ private struct TierRow: View {
 
 // MARK: 项目面板
 
-/// 项目面板：不指定项目，或选一个项目（决定工作目录）。项目树可以很长：在可滚动的系统面板里。
+/// 项目面板：不指定项目，或选一个项目（决定工作目录）。与其余面板同一形态：标题下一张分组卡片，
+/// 子项目按层级缩进；项目树很长时面板封顶在全屏档、在里面滚动（`fittedSheet`）。
 public struct NewConversationProjectPanel: View {
     private let model: DraftConversationModel
     @Environment(\.dismiss) private var dismiss
@@ -405,12 +395,13 @@ public struct NewConversationProjectPanel: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("newconv.pickProjectTitle", tableName: table, bundle: .module)
                 .font(.agentre(.headline))
                 .foregroundStyle(.token(.ink))
-                .padding(16)
-            List {
+                .padding(.horizontal, 2)
+                .accessibilityAddTraits(.isHeader)
+            GroupedSection(style: .sheet) {
                 option(nil, depth: 0) {
                     Text("newconv.noProject", tableName: table, bundle: .module)
                 }
@@ -420,10 +411,7 @@ public struct NewConversationProjectPanel: View {
                     }
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
-        .background(.token(.surface))
     }
 
     private func option(_ project: WorkspaceProject?, depth: Int, @ViewBuilder label: () -> some View) -> some View {
@@ -452,9 +440,10 @@ public struct NewConversationProjectPanel: View {
                 }
             }
             .padding(.leading, CGFloat(depth) * 20)
+            .padding(EdgeInsets(top: 13, leading: 14, bottom: 13, trailing: 14))
             .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .hitTarget()
-        .row()
     }
 }

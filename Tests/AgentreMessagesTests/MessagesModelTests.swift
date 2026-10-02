@@ -97,6 +97,32 @@ struct MessagesModelTests {
         #expect(model.conversations.map(\.key.conversationID) == ["by-title", "by-project", "by-machine"])
     }
 
+    @Test("项目树与机器名晚于列表到达（冷启动、离线后联网）：库没有变动，字形与按项目名 / 机器名搜索也随之补上")
+    func identityArrivingLaterRefreshesGlyphsAndSearch() async throws {
+        var inProject = row("in-project", last: 200)
+        inProject.projectSyncID = "proj-1"
+        inProject.carrierFingerprint = "fp-a"
+        let store = FakeConversationStore([inProject])
+        let identity = FakeIdentityDirectory()
+        let model = MessagesModel(store: store, identity: identity)
+        await model.load()
+        let conversation = try #require(model.conversations.first)
+        #expect(model.glyph(for: conversation) == .blank)
+        let following = Task { await model.follow() }
+        defer { following.cancel() }
+        try await eventually("follow subscribed") { await store.observerCount > 0 }
+        try await Task.sleep(for: .milliseconds(20))
+
+        await identity.set(machines: ["fp-a": "mac-studio"])
+        await identity.set(projects: [WorkspaceProject(syncID: "proj-1", name: "agentre-server")])
+        try await eventually("glyph resolved") { model.glyph(for: conversation) != .blank }
+        #expect(model.glyph(for: conversation) == .project(conversation.projectSyncID, in: [WorkspaceProject(syncID: "proj-1", name: "agentre-server")]))
+        model.query = "agentre-server"
+        #expect(model.conversations.map(\.key.conversationID) == ["in-project"])
+        model.query = "MAC-STUDIO"
+        #expect(model.conversations.map(\.key.conversationID) == ["in-project"])
+    }
+
     @Test("冷启动、没有任何中继：真实本地库里已保存的会话直接出现在列表上")
     func coldStartShowsLocalContent() async throws {
         let directory = try TemporaryDirectory()

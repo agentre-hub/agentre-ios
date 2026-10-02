@@ -1,3 +1,4 @@
+import AgentreDesign
 import Foundation
 import UIKit
 
@@ -24,10 +25,15 @@ struct LocalizedCopy: Sendable {
 
 extension UIView {
     /// UIKit 文本框的占位（UITextField）与读屏标签按视图环境此刻的语言设。在 make 与 update 里都调：
-    /// 在「我」里切换语言时，已建好的文本框随之换成新语言。
+    /// 在「我」里切换语言时，已建好的文本框随之换成新语言。占位取 `ink-3`、与文本框同一款字（稿子的搜索框占位），
+    /// 不落回系统的 placeholderText。
     func showPlaceholder(_ copy: LocalizedCopy, in locale: Locale) {
         let text = copy.resolved(in: locale)
-        if let field = self as? UITextField, field.placeholder != text { field.placeholder = text }
+        if let field = self as? UITextField, field.attributedPlaceholder?.string != text {
+            var attributes: [NSAttributedString.Key: Any] = [.foregroundColor: ColorToken.ink3.uiColor]
+            if let font = field.font { attributes[.font] = font }
+            field.attributedPlaceholder = NSAttributedString(string: text, attributes: attributes)
+        }
         if accessibilityLabel != text { accessibilityLabel = text }
     }
 }

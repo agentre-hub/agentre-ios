@@ -236,14 +236,24 @@ private final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
 
 // MARK: 模态导航栏
 
-/// 模态（新建对话）根屏的导航栏：左上「取消」，标题居中，底边一条 `line`。
+/// 模态（新建对话）里的导航栏：标题居中，底边一条 `line`。根屏左上是「取消」；模态内推入的一屏左上是
+/// 返回箭头连同写着回到哪的文字（「< 新建对话」，规格「05B」），两者是同一个去处、同一个命中区。
 public struct ModalNavigationBar: View {
     private let title: Text
+    private let backTitle: Text?
     private let onCancel: () -> Void
 
     public init(title: Text, onCancel: @escaping () -> Void) {
         self.title = title
+        self.backTitle = nil
         self.onCancel = onCancel
+    }
+
+    /// 模态内推入的一屏：左上「< backTitle」，点了做 `onBack`。
+    public init(title: Text, backTitle: Text, onBack: @escaping () -> Void) {
+        self.title = title
+        self.backTitle = backTitle
+        self.onCancel = onBack
     }
 
     public var body: some View {
@@ -257,13 +267,31 @@ public struct ModalNavigationBar: View {
                 // 两侧给「取消」留位，长标题不压到它。
                 .padding(.horizontal, 72)
             HStack {
-                Button(action: onCancel) {
-                    Text("shell.cancel", tableName: "Shell", bundle: .module)
-                        .font(.agentre(.body))
+                if let backTitle {
+                    Button(action: onCancel) {
+                        HStack(spacing: 2) {
+                            Image(.chevronLeft)
+                                .resizable()
+                                .frame(width: 22, height: 22)
+                                .accessibilityHidden(true)
+                            backTitle
+                                .font(.agentre(.body))
+                                .lineLimit(1)
+                        }
                         .foregroundStyle(.token(.primary))
+                    }
+                    .hitTarget()
+                    .accessibilityIdentifier("shell.back")
+                    .padding(.leading, -8)
+                } else {
+                    Button(action: onCancel) {
+                        Text("shell.cancel", tableName: "Shell", bundle: .module)
+                            .font(.agentre(.body))
+                            .foregroundStyle(.token(.primary))
+                    }
+                    .hitTarget()
+                    .accessibilityIdentifier("shell.cancel")
                 }
-                .hitTarget()
-                .accessibilityIdentifier("shell.cancel")
                 Spacer(minLength: 0)
             }
         }
@@ -279,5 +307,12 @@ extension View {
     public func modalNavigationBar(title: Text, onCancel: @escaping () -> Void) -> some View {
         toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) { ModalNavigationBar(title: title, onCancel: onCancel) }
+    }
+
+    /// 作为模态内推入的一屏：隐去系统导航栏，顶上是「< backTitle」与居中的标题；边缘右滑返回照常可用。
+    public func modalNavigationBar(title: Text, backTitle: Text, onBack: @escaping () -> Void) -> some View {
+        toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) { ModalNavigationBar(title: title, backTitle: backTitle, onBack: onBack) }
+            .background(EdgeSwipeBack())
     }
 }

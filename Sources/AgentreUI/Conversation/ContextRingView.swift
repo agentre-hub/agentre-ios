@@ -66,7 +66,7 @@ public struct ContextUsageDetail: View {
                 Text("context.used", tableName: "Conversation", bundle: .module)
                     .foregroundStyle(.token(.ink2))
                 Text(verbatim: usage.used.formatted())
-                    .monospacedDigit()
+                    .font(.agentre(.footnote, mono: true))
                     .foregroundStyle(.token(.ink))
                     .gridColumnAlignment(.trailing)
             }
@@ -74,11 +74,11 @@ public struct ContextUsageDetail: View {
                 Text("context.max", tableName: "Conversation", bundle: .module)
                     .foregroundStyle(.token(.ink2))
                 Text(verbatim: usage.max.formatted())
-                    .monospacedDigit()
+                    .font(.agentre(.footnote, mono: true))
                     .foregroundStyle(.token(.ink))
             }
         }
-        .font(.footnote)
+        .font(.agentre(.footnote))
         .padding(14)
     }
 }

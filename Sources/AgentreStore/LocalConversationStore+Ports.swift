@@ -60,6 +60,9 @@ extension LocalConversationStore {
         summary.projectSyncID = conversation.projectSyncID
         summary.cwd = conversation.cwd
         summary.backendType = conversation.backendType
+        summary.providerKey = conversation.providerKey
+        summary.modelKey = conversation.modelKey
+        summary.reasoningEffort = conversation.reasoningEffort
         summary.lifecycleState = SavedConversation.Lifecycle.running
         // 话是本机此刻说的：最后活动就是此刻（排在列表最前），也已读过。
         summary.lastMessageAt = now()

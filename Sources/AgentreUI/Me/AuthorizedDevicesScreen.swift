@@ -55,28 +55,28 @@ struct DeviceRow: View {
         row {
             HStack(spacing: 12) {
                 Circle()
-                    .fill(.token(device.online ? .run : .ink2))
+                    .fill(.token(device.online ? .run : .idle))
                     .frame(width: 8, height: 8)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: device.shownName)
-                        .font(.body.monospaced())
+                        .font(.agentre(.body, mono: true))
                         .foregroundStyle(.token(.ink))
                         .lineLimit(stacked ? nil : 1)
                         .truncationMode(.middle)
                     facts {
                         // 在线与否写出来：状态不只靠那枚点的颜色。
                         Text(device.online ? "me.devices.online" : "me.devices.offline", tableName: "Me", bundle: .module)
-                            .font(.caption)
+                            .font(.agentre(.caption))
                             .foregroundStyle(.token(device.online ? .run : .ink2))
                         if !device.platform.isEmpty {
                             Text(verbatim: device.platform)
-                                .font(.caption.monospaced())
+                                .font(.agentre(.caption, mono: true))
                                 .foregroundStyle(.token(.ink2))
                         }
                         if device.isThisDevice {
                             Text("me.devices.thisDevice", tableName: "Me", bundle: .module)
-                                .font(.caption)
+                                .font(.agentre(.caption))
                                 .foregroundStyle(.token(.primary))
                         }
                     }
@@ -87,13 +87,14 @@ struct DeviceRow: View {
             if device.isThisDevice {
                 Button(action: onRevoke) {
                     Text("me.devices.revoke", tableName: "Me", bundle: .module)
+                        .font(.agentre(.subheadline, weight: .semibold))
                         .foregroundStyle(.token(.coral))
                         .padding(.horizontal, 8)
                 }
                 .hitTarget()
             } else {
                 Text("me.devices.revokeInConsole", tableName: "Me", bundle: .module)
-                    .font(.caption)
+                    .font(.agentre(.caption))
                     .foregroundStyle(.token(.ink2))
                     .multilineTextAlignment(stacked ? .leading : .trailing)
             }

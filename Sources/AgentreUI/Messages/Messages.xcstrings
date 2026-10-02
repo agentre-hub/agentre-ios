@@ -18,6 +18,40 @@
         }
       }
     },
+    "messages.pending.command %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求执行 %@"
+          }
+        }
+      }
+    },
+    "messages.pending.tool %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请求使用 %@"
+          }
+        }
+      }
+    },
     "messages.pendingCount %lld": {
       "extractionState": "manual",
       "localizations": {

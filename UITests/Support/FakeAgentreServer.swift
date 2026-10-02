@@ -216,6 +216,7 @@ final class FakeAgentreServer: @unchecked Sendable {
     }
 
     /// 与服务端同形：挑中可用的那一档带回工作目录（带项目时是那个项目在机器上的路径）；离线的 Agent 没有 chosen。
+    /// 可用的 Agent 在链上还排着一台离线的第二档：05D 的截图要呈现逐档次序与压暗写原因的那一档。
     private static func dispatchPlanJSON(agent: String, project: String?) -> String? {
         let backends = [agentSyncID: "backend-claude", "agent-reviewer": "backend-reviewer"]
         if agent == "agent-docs" {
@@ -228,7 +229,9 @@ final class FakeAgentreServer: @unchecked Sendable {
         let cwd = project.map { "/srv/uitest/\($0)" } ?? workingDirectory
         return """
         {"agent_sync_id":"\(agent)","tiers":[{"rank":1,"backend_sync_id":"\(backend)","device_name":"\(FakeAgentred.boxName)",\
-        "backend_type":"claudecode","kind":"agentred","availability":"available"}],\
+        "backend_type":"claudecode","kind":"agentred","availability":"available"},\
+        {"rank":2,"backend_sync_id":"\(backend)-fallback","device_name":"\(offlineMachine)",\
+        "backend_type":"claudecode","kind":"agentred","availability":"offline"}],\
         "chosen":{"device_fingerprint":"\(FakeAgentred.boxFingerprint)","device_name":"\(FakeAgentred.boxName)",\
         "backend_sync_id":"\(backend)","backend_type":"claudecode","kind":"agentred","cwd":"\(cwd)"}}
         """

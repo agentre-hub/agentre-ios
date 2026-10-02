@@ -104,12 +104,12 @@ struct ActivityStepView: View {
                 }
                 HStack(spacing: 8) {
                     name
-                        .fontWeight(nameWeight)
+                        .font(.agentre(Self.rowFont, mono: true, weight: nameWeight))
                         .layoutPriority(1)
                     summary
                         .truncationMode(.middle)
                 }
-                .font(.agentre(FontRole(size: 11, relativeTo: .caption2), mono: true))
+                .font(.agentre(Self.rowFont, mono: true))
                 .foregroundStyle(.token(nameToken))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 StepTrailing(facts: step.facts)
@@ -151,7 +151,9 @@ struct ActivityStepView: View {
         }
     }
 
-    private var nameWeight: Font.Weight {
+    private static let rowFont = FontRole(size: 11, relativeTo: .caption2)
+
+    private var nameWeight: FontWeight {
         step.weight == .write ? .semibold : .regular
     }
 

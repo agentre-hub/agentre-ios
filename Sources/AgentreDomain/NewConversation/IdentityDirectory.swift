@@ -8,4 +8,7 @@ public protocol IdentityDirectory: Sendable {
     func projects() async -> [WorkspaceProject]?
     /// 承载机器此刻的呈现名；查不到时为 `nil`。
     func machineName(fingerprint: String) async -> String?
+    /// 目录取到一份新材料时各响一次，直到订阅方的任务被取消：项目树与机器名常常晚于列表到达
+    /// （冷启动时 REST 还没答、离线冷启动后才联网），已经画出来的空白字形要随之补上。
+    func changes() async -> AsyncStream<Void>
 }

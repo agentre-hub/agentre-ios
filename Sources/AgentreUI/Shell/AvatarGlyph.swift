@@ -51,6 +51,18 @@ struct AvatarGlyphAppearance: Equatable {
     }
 }
 
+/// 字形的圆角与字号随边长等比：稿子里 50 / 42 / 34 的字形分别是圆角 16 / 13 / 11、字号 15 / 13 / 11.5。
+struct AvatarGlyphMetrics: Equatable {
+    let cornerRadius: CGFloat
+    let letterSize: CGFloat
+
+    /// 圆角取边长的 0.32；字号在 34→11.5 与 50→15 两端之间线性取（42 落在 13.2）。
+    init(size: CGFloat) {
+        cornerRadius = size * 0.32
+        letterSize = 4 + size * 0.22
+    }
+}
+
 /// 会话、项目与 Agent 共用的身份字形：项目/Agent 的身份色加首字，不属于任何项目的中性字形，
 /// 或项目已挂但列表还没取到时的空白字形（规格「全局框架」头像字形一条）。
 ///
@@ -64,12 +76,14 @@ public struct AvatarGlyph: View {
         self.size = size
     }
 
+    private var metrics: AvatarGlyphMetrics { AvatarGlyphMetrics(size: size) }
+
     public var body: some View {
         ZStack {
             shape
             if let letter = appearance.letter {
                 Text(letter)
-                    .font(.agentre(.footnote, weight: .semibold))
+                    .font(.agentre(FontRole(size: metrics.letterSize, weight: .semibold, relativeTo: .footnote)))
                     .foregroundStyle(.token(.agentInk))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
@@ -81,7 +95,7 @@ public struct AvatarGlyph: View {
     }
 
     @ViewBuilder private var shape: some View {
-        let corner = size / 4
+        let corner = metrics.cornerRadius
         switch appearance.fill {
         case .identity(let token):
             RoundedRectangle(cornerRadius: corner).fill(.token(token))

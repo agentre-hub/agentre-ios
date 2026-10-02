@@ -60,7 +60,7 @@ private struct ApprovalPermissionCard: View {
                     model.toggleExpanded(request.requestID)
                 } label: {
                     Text(expanded ? "input.collapse" : "input.expand", tableName: "Cards", bundle: .module)
-                        .font(.footnote.weight(.semibold))
+                        .font(.agentre(.footnote, weight: .semibold))
                         .foregroundStyle(.token(.primary))
                 }
                 .hitTarget()
@@ -69,7 +69,7 @@ private struct ApprovalPermissionCard: View {
             if case .open(let submitting, let failed) = state {
                 if failed {
                     Text("permission.submitFailed", tableName: "Cards", bundle: .module)
-                        .font(.footnote)
+                        .font(.agentre(.footnote))
                         .foregroundStyle(.token(.coral))
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
@@ -147,11 +147,11 @@ private struct ApprovalQuestionCard: View {
         ApprovalCardFrame(tone: state.tone) {
             HStack(spacing: 8) {
                 Image(systemName: "questionmark.bubble")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.agentre(.subheadline, weight: .semibold))
                     .foregroundStyle(.token(state.tone))
                     .accessibilityHidden(true)
                 Text(verbatim: "user_ask")
-                    .font(.subheadline.weight(.semibold).monospaced())
+                    .font(.agentre(.subheadline, mono: true, weight: .semibold))
                     .foregroundStyle(.token(.ink))
                 Spacer(minLength: 8)
                 if let settled = state.settledKey {
@@ -161,16 +161,16 @@ private struct ApprovalQuestionCard: View {
             ForEach(Array(request.questions.enumerated()), id: \.offset) { index, question in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(verbatim: question.question)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.agentre(.subheadline, weight: .semibold))
                         .foregroundStyle(.token(.ink))
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if !question.header.isEmpty {
                         Text(verbatim: question.header)
-                            .font(.caption.weight(.medium))
+                            .font(.agentre(.caption, weight: .medium))
                             .foregroundStyle(.token(.primary))
                     }
                     Text(question.multiSelect ? "question.multi" : "question.single", tableName: "Cards", bundle: .module)
-                        .font(.caption.weight(.semibold))
+                        .font(.agentre(.caption, weight: .semibold))
                         .foregroundStyle(.token(.ink2))
                 }
                 if case .open(let submitting) = state {
@@ -196,13 +196,13 @@ private struct ApprovalQuestionCard: View {
             }
             if case .open = state, let error = model.inputError(of: request) {
                 Text(error.messageKey, tableName: "Cards", bundle: .module)
-                    .font(.footnote)
+                    .font(.agentre(.footnote))
                     .foregroundStyle(.token(.coral))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if state == .expired {
                 Text("question.expiredDetail", tableName: "Cards", bundle: .module)
-                    .font(.footnote)
+                    .font(.agentre(.footnote))
                     .foregroundStyle(.token(.coral))
             }
             if case .open(let submitting) = state {
@@ -246,11 +246,11 @@ private struct ApprovalOptionButton: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: option.label)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.agentre(.subheadline, weight: .semibold))
                         .foregroundStyle(.token(selected ? .primary : .ink))
                     if !option.description.isEmpty {
                         Text(verbatim: option.description)
-                            .font(.footnote)
+                            .font(.agentre(.footnote))
                             .foregroundStyle(.token(.ink2))
                     }
                 }
@@ -278,7 +278,7 @@ private struct ApprovalAnswerField: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.isSecureTextEntry = isSecure
-        field.font = .preferredFont(forTextStyle: .subheadline)
+        field.font = UIFont.agentre(.subheadline)
         field.adjustsFontForContentSizeCategory = true
         field.textColor = ColorToken.ink.uiColor
         field.tintColor = ColorToken.primary.uiColor
@@ -393,7 +393,7 @@ private struct ApprovalPill: View {
 
     var body: some View {
         Text(key, tableName: "Cards", bundle: .module)
-            .font(.caption.weight(.semibold))
+            .font(.agentre(.caption, weight: .semibold))
             .foregroundStyle(.token(tone))
             .padding(.horizontal, 8)
             .padding(.vertical, 3)

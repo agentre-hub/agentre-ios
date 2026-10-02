@@ -12,7 +12,7 @@ struct AddressField: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
-        field.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 17, weight: .regular))
+        field.font = UIFont.agentre(.body, mono: true)
         field.adjustsFontForContentSizeCategory = true
         field.textColor = ColorToken.ink.uiColor
         field.tintColor = ColorToken.primary.uiColor

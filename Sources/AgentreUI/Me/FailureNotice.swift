@@ -19,13 +19,13 @@ public struct FailureNotice: View {
                 .foregroundStyle(.token(.coral))
                 .accessibilityHidden(true)
             Text(LocalizedStringKey(failureKey(fact)), tableName: "Me", bundle: .module)
-                .font(.subheadline)
+                .font(.agentre(.subheadline))
                 .foregroundStyle(.token(.ink))
                 .frame(maxWidth: .infinity, alignment: .leading)
             if fact.exit == .retry {
                 Button(action: onRetry) {
                     Text("me.retry", tableName: "Me", bundle: .module)
-                        .fontWeight(.semibold)
+                        .font(.agentre(.subheadline, weight: .semibold))
                         .foregroundStyle(.token(.primary))
                         .padding(.horizontal, 8)
                 }

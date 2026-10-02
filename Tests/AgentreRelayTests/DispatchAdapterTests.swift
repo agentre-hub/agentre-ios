@@ -22,6 +22,14 @@ private func request(
 
 private let drafted = ComposerRunSettings(permissionMode: "plan", providerKey: "anthropic", modelKey: "opus", reasoningEffort: "high")
 
+/// 应答派发收尾的两次钉住（模型目标、思考档位）。
+private func answerPins(_ socket: FakeSocket, _ id: String) async throws {
+    socket.respond(id, to: try await socket.nextRequest(on: id, method: .setModelTarget), with: Agentre_Wire_SetModelTargetResponse())
+    socket.respond(
+        id, to: try await socket.nextRequest(on: id, method: .setSessionReasoningEffort), with: Agentre_Wire_SetSessionReasoningEffortResponse()
+    )
+}
+
 private func ack(_ conversationID: String, providerSession: String = "") -> Agentre_Wire_RuntimeRunResponse {
     var response = Agentre_Wire_RuntimeRunResponse()
     response.conversationID = conversationID
@@ -58,6 +66,9 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(!body.compact)
         socket.respond(id, to: run, with: ack("0190-conv"))
         try await sent
+        // 一项都没选：会话行不钉，模型与档位留给 Agent 绑定与后端配置。
+        #expect(socket.requests(on: id, method: .setModelTarget).isEmpty)
+        #expect(socket.requests(on: id, method: .setSessionReasoningEffort).isEmpty)
     }
 
     @Test("草稿上选的权限模式、模型、思考档位随第一条 runtime.run 带过去")
@@ -73,6 +84,71 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(body.llmModelKey == "opus")
         #expect(body.reasoningEffort == "high")
         socket.respond(id, to: run, with: ack("0190-conv"))
+        try await answerPins(socket, id)
+        try await sent
+    }
+
+    @Test("草稿上选的模型与思考档位在 runtime.run 被接受后钉到这条会话上：run 带的只管第一轮，会话行只有这两个 RPC 写")
+    func pinsDraftModelAndEffortAfterRun() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayDispatcher(connection: harness.connection, source: phone)
+        async let sent: Void = adapter.dispatch(request(settings: drafted))
+        let (socket, id) = try await harness.machineChannel("fp-9")
+        let run = try await socket.nextRequest(on: id, method: .runtimeRun)
+        // run 被接受之前不钉：那时会话还不存在，钉了只会回「会话不在」。
+        #expect(socket.requests(on: id, method: .setModelTarget).isEmpty)
+        socket.respond(id, to: run, with: ack("0190-conv"))
+
+        let target = try await socket.nextRequest(on: id, method: .setModelTarget)
+        let targetBody = try target.body(Agentre_Wire_SetModelTargetRequest.self)
+        #expect(targetBody.conversationID == "0190-conv")
+        #expect(targetBody.peerFingerprint == "phone-fp")
+        #expect(targetBody.providerKey == "anthropic")
+        #expect(targetBody.modelKey == "opus")
+        socket.respond(id, to: target, with: Agentre_Wire_SetModelTargetResponse())
+
+        let effort = try await socket.nextRequest(on: id, method: .setSessionReasoningEffort)
+        let effortBody = try effort.body(Agentre_Wire_SetSessionReasoningEffortRequest.self)
+        #expect(effortBody.conversationID == "0190-conv")
+        #expect(effortBody.peerFingerprint == "phone-fp")
+        #expect(effortBody.reasoningEffort == "high")
+        socket.respond(id, to: effort, with: Agentre_Wire_SetSessionReasoningEffortResponse())
+        try await sent
+    }
+
+    @Test("只选了思考档位：只钉档位；选了供应商没选模型：照钉，模型键空即该供应商的默认模型")
+    func pinsOnlyWhatWasChosen() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayDispatcher(connection: harness.connection, source: phone)
+        async let effortOnly: Void = adapter.dispatch(request(settings: ComposerRunSettings(reasoningEffort: "low")))
+        let (socket, id) = try await harness.machineChannel("fp-9")
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .runtimeRun), with: ack("0190-conv"))
+        let effort = try await socket.nextRequest(on: id, method: .setSessionReasoningEffort)
+        #expect(try effort.body(Agentre_Wire_SetSessionReasoningEffortRequest.self).reasoningEffort == "low")
+        socket.respond(id, to: effort, with: Agentre_Wire_SetSessionReasoningEffortResponse())
+        try await effortOnly
+        #expect(socket.requests(on: id, method: .setModelTarget).isEmpty)
+
+        async let providerDefault: Void = adapter.dispatch(request(settings: ComposerRunSettings(providerKey: "anthropic")))
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .runtimeRun), with: ack("0190-conv"))
+        let target = try await socket.nextRequest(on: id, method: .setModelTarget)
+        let body = try target.body(Agentre_Wire_SetModelTargetRequest.self)
+        #expect(body.providerKey == "anthropic")
+        #expect(body.modelKey.isEmpty)
+        socket.respond(id, to: target, with: Agentre_Wire_SetModelTargetResponse())
+        try await providerDefault
+        #expect(socket.requests(on: id, method: .setSessionReasoningEffort).count == 1)
+    }
+
+    @Test("钉不住不算派发失败：会话已经在机器上跑起来了，报成失败用户一重试就凭空再开一条")
+    func failedPinStillDispatched() async throws {
+        let harness = await Harness.started()
+        let adapter = RelayDispatcher(connection: harness.connection, source: phone)
+        async let sent: Void = adapter.dispatch(request(settings: drafted))
+        let (socket, id) = try await harness.machineChannel("fp-9")
+        socket.respond(id, to: try await socket.nextRequest(on: id, method: .runtimeRun), with: ack("0190-conv"))
+        socket.fail(id, to: try await socket.nextRequest(on: id, method: .setModelTarget), code: -32002, message: "Session not found")
+        socket.fail(id, to: try await socket.nextRequest(on: id, method: .setSessionReasoningEffort), code: -32002, message: "Session not found")
         try await sent
     }
 
@@ -89,6 +165,7 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
             bodies.append(try run.body(Agentre_Wire_RuntimeRunRequest.self))
             socket.respond(id, to: run, with: ack("0190-conv", providerSession: step == 0 ? "" : "pi-sess-1"))
         }
+        try await answerPins(socket, id)
         try await sent
         for body in bodies {
             #expect(body.permissionMode != "plan")

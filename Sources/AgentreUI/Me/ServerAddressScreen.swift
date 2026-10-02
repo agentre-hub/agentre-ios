@@ -28,7 +28,7 @@ public struct ServerAddressScreen: View {
                             Image(systemName: "exclamationmark.circle")
                                 .foregroundStyle(.token(.coral))
                         }
-                        .font(.footnote)
+                        .font(.agentre(.footnote))
                         .foregroundStyle(.token(.ink2))
                     }
                 }
@@ -40,13 +40,14 @@ public struct ServerAddressScreen: View {
                     dismiss()
                 } label: {
                     Text("me.server.cancel", tableName: "Me", bundle: .module)
+                        .font(.agentre(.body))
                         .foregroundStyle(.token(.ink2))
                         .padding(.horizontal, 8)
                 }
                 .hitTarget()
                 Button(action: save) {
                     Text("me.server.save", tableName: "Me", bundle: .module)
-                        .fontWeight(.semibold)
+                        .font(.agentre(.body, weight: .semibold))
                         .foregroundStyle(.token(.primary))
                         .padding(.horizontal, 8)
                 }

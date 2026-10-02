@@ -77,7 +77,7 @@ public struct ComposerPanel: View {
         GroupedSection(style: .sheet) {
             GroupedRow(
                 .info, title: Text("composer.sessionInfo", tableName: composerTable, bundle: .module),
-                value: model.machineName.map { Text(verbatim: $0) }
+                value: model.machineName.map { Text(verbatim: $0) }, monoValue: true
             ) { page = .sessionInfo }
             GroupedRow(
                 .gauge, title: Text("composer.context", tableName: composerTable, bundle: .module),
@@ -188,10 +188,10 @@ public struct ComposerPanel: View {
         let conversation = model.conversation
         GroupedSection(style: .sheet) {
             ComposerFactRow("composer.info.title", Text(verbatim: conversation.title))
-            ComposerFactRow("composer.info.machine", Text(verbatim: conversation.carrierFingerprint).monospaced())
-            ComposerFactRow("composer.info.cwd", Text(verbatim: conversation.cwd).monospaced())
-            ComposerFactRow("composer.info.backend", Text(verbatim: conversation.backendType).monospaced())
-            ComposerFactRow("composer.info.id", Text(verbatim: conversation.key.conversationID).monospaced())
+            ComposerFactRow("composer.info.machine", Text(verbatim: conversation.carrierFingerprint).font(.agentre(.subheadline, mono: true)))
+            ComposerFactRow("composer.info.cwd", Text(verbatim: conversation.cwd).font(.agentre(.subheadline, mono: true)))
+            ComposerFactRow("composer.info.backend", Text(verbatim: conversation.backendType).font(.agentre(.subheadline, mono: true)))
+            ComposerFactRow("composer.info.id", Text(verbatim: conversation.key.conversationID).font(.agentre(.subheadline, mono: true)))
         }
     }
 

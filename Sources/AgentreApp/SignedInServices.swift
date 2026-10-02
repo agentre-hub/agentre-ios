@@ -208,8 +208,11 @@ final class SignedInServices {
 
     /// 回到前台、网络恢复、或用户点了重试：补上没在跟随的会话（连接自己会重拨），
     /// 并让开着的对话屏里已收场的实时流从转录自己的最新帧号重新接上。
+    /// 身份目录（项目树、机器名）一并再取一遍：离线冷启动时它一份都没取到，联网后头像字形与按项目名 / 机器名的搜索才补得上。
     func resume() async {
         for screen in conversations.values { screen.transcript.resume() }
+        let identity = identity
+        Task { await identity.load() }
         await sync.resync()
     }
 

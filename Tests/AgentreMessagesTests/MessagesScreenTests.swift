@@ -46,7 +46,6 @@ struct MessagesScreenTests {
     func rowsCarryTheFacts() async throws {
         let labels = await HostedScreen(await screen()).labels().joined(separator: "\n")
         #expect(labels.contains("rm -rf build"))
-        #expect(labels.contains("Bash"))
         #expect(labels.contains("用哪个分支？"))
         #expect(labels.contains(Self.text("messages.typing")))
         // 运行中的行不再露出上一句话：它此刻就是在输入。
@@ -59,6 +58,28 @@ struct MessagesScreenTests {
         let order = ["用哪个分支？", "rm -rf build", "修构建", "整理文档", "跑测试"].compactMap { labels.range(of: $0)?.lowerBound }
         #expect(order.count == 5)
         #expect(order == order.sorted(), "\(labels)")
+    }
+
+    @Test("等你处理的行副行是一句待处理事项：命令类写「请求执行 <命令>」，其余工具写「请求使用 <工具名>」，不另起一行列工具原名")
+    func pendingLineIsOneSentence() async throws {
+        let rows = [
+            SavedConversation(
+                key: key("command"), title: "清理产物", lifecycleState: "running", waitingForInput: true, lastMessageAt: 200,
+                pending: .permission(tool: "Bash", detail: "rm -rf build"), pendingCount: 1
+            ),
+            SavedConversation(
+                key: key("edit"), title: "改配置", lifecycleState: "running", waitingForInput: true, lastMessageAt: 100,
+                pending: .permission(tool: "Edit", detail: "/repo/config.yaml"), pendingCount: 1
+            ),
+        ]
+        let model = MessagesModel(store: FakeConversationStore(rows))
+        await model.load()
+        let labels = await HostedScreen(MessagesView(model: model, onOpen: { _ in })).labels()
+        let joined = labels.joined(separator: "\n")
+        #expect(joined.contains(String(format: Self.text("messages.pending.command %@"), "rm -rf build")), "\(labels)")
+        #expect(joined.contains(String(format: Self.text("messages.pending.tool %@"), "Edit")), "\(labels)")
+        // 工具原名不单独成行：它已经在那句话里（或由「请求执行」说清了种类）。
+        #expect(!labels.contains("Bash") && !labels.contains("Edit"), "\(labels)")
     }
 
     @Test("头像右下角的状态点：等你处理琥珀、运行中绿，闲着与失败都不挂（规格「01 消息」：颜色只表这两档状态）")

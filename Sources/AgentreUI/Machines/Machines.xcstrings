@@ -24,13 +24,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Total"
+            "value": "Sessions"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "总数"
+            "value": "会话总数"
           }
         }
       }
@@ -234,7 +234,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "最后在线：%@"
+            "value": "最后在线 %@"
           }
         }
       }

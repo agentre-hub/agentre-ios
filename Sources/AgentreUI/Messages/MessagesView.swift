@@ -71,7 +71,7 @@ struct MessageRow: View {
                     Spacer(minLength: 0)
                     if conversation.lastMessageAt > 0 {
                         Text(Date(timeIntervalSince1970: TimeInterval(conversation.lastMessageAt) / 1000), format: .relative(presentation: .named))
-                            .font(.caption)
+                            .font(.agentre(.caption))
                             .foregroundStyle(.token(.ink2))
                     }
                     // 未读是有无，不是条数（决策 17/19）：一枚圆点，不写数字。
@@ -110,13 +110,13 @@ struct MessageRow: View {
         if conversation.title.isEmpty {
             // 没有标题时以会话 ID 认出：机器产出的内容用等宽字体。
             Text(verbatim: conversation.key.conversationID)
-                .font(.body.monospaced().weight(conversation.isUnread ? .semibold : .regular))
+                .font(.agentre(.body, mono: true, weight: conversation.isUnread ? .semibold : .regular))
                 .foregroundStyle(.token(.ink))
                 .lineLimit(1)
                 .truncationMode(.middle)
         } else {
             Text(verbatim: conversation.title)
-                .font(conversation.isUnread ? .headline : .body)
+                .font(.agentre(.body, weight: conversation.isUnread ? .semibold : .regular))
                 .foregroundStyle(.token(.ink))
                 .lineLimit(1)
         }
@@ -128,41 +128,35 @@ struct MessageRow: View {
             pendingPreview
         case .typing:
             Text("messages.typing", tableName: "Messages", bundle: .module)
-                .font(.subheadline)
+                .font(.agentre(.subheadline))
                 .foregroundStyle(.token(.run))
         case .failed, .idle:
             if !conversation.lastText.isEmpty {
                 Text(verbatim: conversation.lastText)
-                    .font(.subheadline)
+                    .font(.agentre(.subheadline))
                     .foregroundStyle(.token(.ink2))
                     .lineLimit(2)
             }
         }
     }
 
-    /// 琥珀色的待处理事项（命令等宽），行尾是这条会话里尚未处理的请求条数。
+    /// 琥珀色的待处理事项，一行（命令与工具名等宽），行尾是这条会话里尚未处理的请求条数。
     @ViewBuilder private var pendingPreview: some View {
         switch conversation.pending {
         case .permission(let tool, let detail):
             pendingLine(icon: .shieldAlert) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(verbatim: tool)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.token(.amber))
-                    if let detail {
-                        Text(verbatim: detail)
-                            .font(.subheadline.monospaced())
-                            .foregroundStyle(.token(.ink))
-                            .lineLimit(3)
-                    }
+                // 种类与审批卡标题同一规则（`ApprovalInput`：Bash 突出 command）：命令类写出命令本身，其余写工具名。
+                if tool == "Bash", let detail {
+                    Text("messages.pending.command \(Text(verbatim: detail).font(.agentre(.subheadline, mono: true)))",
+                         tableName: "Messages", bundle: .module)
+                } else {
+                    Text("messages.pending.tool \(Text(verbatim: tool).font(.agentre(.subheadline, mono: true)))",
+                         tableName: "Messages", bundle: .module)
                 }
             }
         case .question(let question):
             pendingLine(icon: .messageCircleQuestionMark) {
                 Text(verbatim: question)
-                    .font(.subheadline)
-                    .foregroundStyle(.token(.ink))
-                    .lineLimit(3)
             }
         case nil:
             EmptyView()
@@ -170,18 +164,20 @@ struct MessageRow: View {
     }
 
     @ViewBuilder private func pendingLine(icon: AgentreIcon, @ViewBuilder content: () -> some View) -> some View {
-        HStack(alignment: .top, spacing: 7) {
+        HStack(alignment: .center, spacing: 7) {
             Image(icon)
                 .resizable()
                 .frame(width: 13, height: 13)
                 .foregroundStyle(.token(.amber))
                 .accessibilityHidden(true)
-                .padding(.top, 2)
             content()
+                .font(.agentre(.subheadline))
+                .foregroundStyle(.token(.amber))
+                .lineLimit(1)
             if conversation.pendingCount > 0 {
                 Spacer(minLength: 8)
                 Text(verbatim: "\(conversation.pendingCount)")
-                    .font(.footnote.weight(.semibold))
+                    .font(.agentre(.footnote, weight: .semibold))
                     .foregroundStyle(.token(.amberDim))
                     .padding(.horizontal, 6)
                     .frame(minWidth: 19, minHeight: 19)
@@ -211,7 +207,7 @@ struct ConversationStatusGlyph: View {
                     .accessibilityHidden(true)
             }
         }
-        .font(.caption)
+        .font(.agentre(.caption))
         .frame(minWidth: 14, minHeight: 14)
     }
 }

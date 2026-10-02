@@ -62,6 +62,8 @@ actor FakeAccountService: AccountService {
     var devicesResult: Result<[AuthorizedDevice], any Error> = .success([thisPhone, studioMac])
     var revokeError: (any Error)?
     private(set) var revoked: [Int64] = []
+    /// 每次撤销发往的服务器，与 `revoked` 一一对应。
+    private(set) var revokedOn: [ServerAddress] = []
     private(set) var servers: [ServerAddress] = []
 
     func configure(
@@ -86,6 +88,7 @@ actor FakeAccountService: AccountService {
     func revoke(deviceID: Int64, server: ServerAddress) async throws {
         if let revokeError { throw revokeError }
         revoked.append(deviceID)
+        revokedOn.append(server)
         if case .success(let devices) = devicesResult {
             devicesResult = .success(devices.filter { $0.id != deviceID })
         }

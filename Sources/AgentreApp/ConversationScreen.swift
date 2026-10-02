@@ -64,8 +64,15 @@ struct ConversationScreen: View {
             // 进来就是读过了（不论从消息列表还是机器详情进来）；离开时把开着期间到的活动一并记成已读。
             try? await services.store.markRead(key)
             guard let conversation = model?.conversation else { return }
-            glyph = IdentityGlyph.project(conversation.projectSyncID, in: await services.identity.projects())
-            machineName = await services.identity.machineName(fingerprint: conversation.carrierFingerprint)
+            // 目录晚到（冷启动时 REST 还没答、离线后才联网）时，空白字形与副标题里的机器名随之补上。
+            let identity = services.identity
+            let changes = await identity.changes()
+            glyph = IdentityGlyph.project(conversation.projectSyncID, in: await identity.projects())
+            machineName = await identity.machineName(fingerprint: conversation.carrierFingerprint)
+            for await _ in changes {
+                glyph = IdentityGlyph.project(conversation.projectSyncID, in: await identity.projects())
+                machineName = await identity.machineName(fingerprint: conversation.carrierFingerprint)
+            }
         }
         .onDisappear {
             let store = services.store

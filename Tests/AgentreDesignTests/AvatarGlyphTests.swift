@@ -1,6 +1,7 @@
 import AgentreDesign
 import AgentreDomain
 @testable import AgentreUI
+import CoreGraphics
 import Testing
 
 /// `AvatarGlyph` 该画什么色块与字，按 `IdentityGlyph` 的四种取舍逐一核对（规格「全局框架」头像字形一条）。
@@ -46,5 +47,16 @@ struct AvatarGlyphTests {
     @Test("中性身份色映射到 agentNeutral")
     func neutralMapsToAgentNeutralToken() {
         #expect(IdentityColor.neutral.token == .agentNeutral)
+    }
+
+    @Test("圆角与字号随边长等比，与稿子三档逐一相符", arguments: [
+        (CGFloat(50), CGFloat(16), CGFloat(15)),
+        (CGFloat(42), CGFloat(13), CGFloat(13)),
+        (CGFloat(34), CGFloat(11), CGFloat(11.5)),
+    ])
+    func metricsFollowTheDesign(size: CGFloat, corner: CGFloat, letter: CGFloat) {
+        let metrics = AvatarGlyphMetrics(size: size)
+        #expect(abs(metrics.cornerRadius - corner) < 0.5)
+        #expect(abs(metrics.letterSize - letter) < 0.5)
     }
 }

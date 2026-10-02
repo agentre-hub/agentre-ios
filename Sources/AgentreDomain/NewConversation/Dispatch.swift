@@ -71,6 +71,10 @@ public struct StartedConversation: Sendable, Equatable {
     public var projectSyncID: String
     public var cwd: String
     public var backendType: String
+    /// 草稿上选的模型与思考档位：派发收尾已钉到机器的会话行上，本地这一行随之记下（空 = 没选）。
+    public var providerKey: String
+    public var modelKey: String
+    public var reasoningEffort: String
 
     public init(request: DispatchRequest) {
         conversationID = request.conversationID
@@ -81,6 +85,10 @@ public struct StartedConversation: Sendable, Equatable {
         projectSyncID = request.projectSyncID ?? ""
         cwd = request.target.cwd
         backendType = request.target.backendType
+        providerKey = request.settings.providerKey
+        // 与派发同一条规矩：没选供应商就不钉模型。
+        modelKey = request.settings.providerKey.isEmpty ? "" : request.settings.modelKey
+        reasoningEffort = request.settings.reasoningEffort
     }
 }
 

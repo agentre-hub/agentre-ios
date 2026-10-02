@@ -49,11 +49,20 @@ public final class MessagesModel {
         await refreshIdentity(for: allConversations)
     }
 
-    /// 跟着本地库的变动刷新，直到所在任务被取消。
+    /// 跟着本地库与身份目录的变动刷新，直到所在任务被取消。项目树与机器名常常晚于列表到达，
+    /// 库此时未必再变：不跟着目录，空白字形与按项目名 / 机器名的搜索会一直停在「还不知道」。
     public func follow() async {
-        for await _ in await store.changes() {
-            await load()
-        }
+        async let library: Void = followStore()
+        async let directory: Void = followIdentity()
+        _ = await (library, directory)
+    }
+
+    private func followStore() async {
+        for await _ in await store.changes() { await load() }
+    }
+
+    private func followIdentity() async {
+        for await _ in await identity.changes() { await load() }
     }
 
     /// 标记已读：这一行立刻读作已读，再让库记下；库没记下就退回库里的真值。

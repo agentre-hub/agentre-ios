@@ -24,7 +24,7 @@ public struct MachinesView: View {
                     .machinesRow()
             } else if !model.machines.isEmpty {
                 Text("machines.subtitle \(model.machines.count) \(model.machines.filter(\.online).count)", tableName: "Machines", bundle: .module)
-                    .font(.subheadline)
+                    .font(.agentre(.subheadline))
                     .foregroundStyle(.token(.ink2))
                     .machinesRow()
             }
@@ -67,19 +67,19 @@ private struct MachineRosterRow: View {
             HStack(spacing: 12) {
                 // 纯装饰：在线态由下面分隔线以下的文字块（会话计数 或 最后在线时刻）写出来，不只靠这枚点的颜色。
                 Circle()
-                    .fill(.token(machine.online ? .run : .ink2))
+                    .fill(.token(machine.online ? .run : .idle))
                     .frame(width: 10, height: 10)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: machine.name)
-                        .font(.body.monospaced())
+                        .font(.agentre(.body, mono: true, weight: .semibold))
                         .foregroundStyle(.token(.ink))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if let summary = machine.reportedSummary {
                         Text(verbatim: summary)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.token(.ink2))
+                            .font(.agentre(.caption, mono: true))
+                            .foregroundStyle(.token(.ink3))
                             .lineLimit(1)
                     }
                 }
@@ -96,42 +96,42 @@ private struct MachineRosterRow: View {
             } else if machine.lastSeenAt > 0 {
                 Divider().overlay(.token(.line))
                 Text("machines.lastSeen \(Text(Date(timeIntervalSince1970: TimeInterval(machine.lastSeenAt) / 1000), format: .relative(presentation: .named)))", tableName: "Machines", bundle: .module)
-                    .font(.caption)
+                    .font(.agentre(.caption))
                     .foregroundStyle(.token(.ink2))
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 12))
-        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: 16))
         .opacity(machine.online ? 1 : 0.45)
     }
 }
 
-/// 「N 个会话」与「N 运行中 · N 等你处理」：为零的项不写（决策 19）。
+/// 一行「N 个会话 · N 运行中 · N 等你处理」：各项各自成句、以「·」相隔，为零的项不写（决策 19）。
 private struct MachineActivitySummary: View {
     let counts: MachineSessionCounts
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 4) {
             Text("machines.count.sessions \(counts.total)", tableName: "Machines", bundle: .module)
-                .font(.caption.weight(.medium))
+                .font(.agentre(.caption, weight: .medium))
                 .foregroundStyle(.token(.run))
-            if counts.running > 0 || counts.waiting > 0 {
-                HStack(spacing: 4) {
-                    if counts.running > 0 {
-                        Text("machines.count.running \(counts.running)", tableName: "Machines", bundle: .module)
-                    }
-                    if counts.running > 0, counts.waiting > 0 {
-                        Text(verbatim: "·").accessibilityHidden(true)
-                    }
-                    if counts.waiting > 0 {
-                        Text("machines.count.waiting \(counts.waiting)", tableName: "Machines", bundle: .module)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.token(.ink2))
+            if counts.running > 0 {
+                separator
+                Text("machines.count.running \(counts.running)", tableName: "Machines", bundle: .module)
+            }
+            if counts.waiting > 0 {
+                separator
+                Text("machines.count.waiting \(counts.waiting)", tableName: "Machines", bundle: .module)
             }
         }
+        .font(.agentre(.caption))
+        .foregroundStyle(.token(.ink2))
+        .lineLimit(1)
+    }
+
+    private var separator: some View {
+        Text(verbatim: "·").accessibilityHidden(true)
     }
 }

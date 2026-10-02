@@ -141,6 +141,19 @@ struct ShellChromeTests {
         #expect(height > 100, "sheet \(height) cut its content")
     }
 
+    @Test("底部面板的内容比屏幕还高时可以滚动：末尾的行滚得到，不被裁在屏幕下沿之外")
+    func fittedSheetScrollsOverflow() async throws {
+        let screen = Screen(SheetHost(rows: 40))
+        defer { screen.close() }
+        let sheet = try await eventually("sheet presented") { screen.window.rootViewController?.presentedViewController }
+        let scroll = try await eventually("sheet scrolls its content") { () -> UIScrollView? in
+            sheet.view.layoutIfNeeded()
+            return descendants(of: sheet.view).compactMap { $0 as? UIScrollView }
+                .first { $0.bounds.height > 0 && $0.contentSize.height > $0.bounds.height + 1 }
+        }
+        #expect(scroll.frame.maxY <= sheet.view.bounds.maxY + 0.5, "scroll view \(scroll.frame) past the sheet \(sheet.view.bounds)")
+    }
+
     @Test("搜索框：可点区域至少 44pt 高，占位按界面语言，输入即写回绑定")
     func searchField() async throws {
         let box = TextBox()
@@ -211,17 +224,29 @@ private struct PushedHost: View {
 }
 
 private struct SheetHost: View {
+    /// 0 时是稿子那样的两行；给出行数时铺这么多行，比屏幕还高。
+    var rows = 0
     @State private var presented = true
 
     var body: some View {
         Color.clear
             .fittedSheet(isPresented: $presented) {
                 GroupedSection(style: .sheet) {
-                    GroupedRow(.shieldCheck, title: Text(verbatim: "Permission"), value: Text(verbatim: "default")) {}
-                    GroupedRow(.cpu, title: Text(verbatim: "Model"), value: Text(verbatim: "opus"), monoValue: true) {}
+                    if rows == 0 {
+                        GroupedRow(.shieldCheck, title: Text(verbatim: "Permission"), value: Text(verbatim: "default")) {}
+                        GroupedRow(.cpu, title: Text(verbatim: "Model"), value: Text(verbatim: "opus"), monoValue: true) {}
+                    } else {
+                        ForEach(0..<rows, id: \.self) { index in
+                            GroupedRow(.cpu, title: Text(verbatim: "Model \(index)")) {}
+                        }
+                    }
                 }
             }
     }
+}
+
+private func descendants(of view: UIView) -> [UIView] {
+    view.subviews.flatMap { [$0] + descendants(of: $0) }
 }
 
 @MainActor

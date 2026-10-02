@@ -102,7 +102,7 @@ public struct LoginView: View {
                     Image(systemName: "exclamationmark.circle")
                         .foregroundStyle(.token(.coral))
                 }
-                .font(.footnote)
+                .font(.agentre(.footnote))
                 .foregroundStyle(.token(.ink2))
             }
             HStack(spacing: 8) {
@@ -111,13 +111,14 @@ public struct LoginView: View {
                     isEditingServer = false
                 } label: {
                     Text("login.server.cancel", tableName: "Login", bundle: .module)
+                        .font(.agentre(.body))
                         .foregroundStyle(.token(.ink2))
                         .padding(.horizontal, 8)
                 }
                 .hitTarget()
                 Button(action: save) {
                     Text("login.server.save", tableName: "Login", bundle: .module)
-                        .fontWeight(.semibold)
+                        .font(.agentre(.body, weight: .semibold))
                         .foregroundStyle(.token(.primary))
                         .padding(.horizontal, 8)
                 }
@@ -140,7 +141,7 @@ public struct LoginView: View {
                 Image(systemName: "wifi.slash")
                     .foregroundStyle(.token(.ink2))
             }
-            .font(.callout)
+            .font(.agentre(.callout))
             .padding(.bottom, 14)
         } else {
             outcomeStatus
@@ -169,7 +170,7 @@ public struct LoginView: View {
             Image(systemName: systemImage)
                 .foregroundStyle(.token(.coral))
         }
-        .font(.callout)
+        .font(.agentre(.callout))
         .padding(.bottom, 14)
     }
 

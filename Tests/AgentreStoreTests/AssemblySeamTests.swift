@@ -109,7 +109,8 @@ struct AssemblySeamTests {
         let recorder: any StartedConversationRecording = StartedConversationRecorder(store: store, origin: "phone-fp")
         let request = DispatchRequest(
             conversationID: "new-1", title: "Hello", userText: "Hello there", agentSyncID: "agent-1", projectSyncID: "p-1",
-            target: DispatchChoice(deviceFingerprint: "m-1", deviceName: "mac", backendType: "claudecode", cwd: "/repo")
+            target: DispatchChoice(deviceFingerprint: "m-1", deviceName: "mac", backendType: "claudecode", cwd: "/repo"),
+            settings: ComposerRunSettings(permissionMode: "plan", providerKey: "anthropic", modelKey: "opus", reasoningEffort: "high")
         )
         let key = try await recorder.record(StartedConversation(request: request))
         // 与机器报的 peer_fingerprint 同一个发起端：机器清单里的那一条对得上这一行。
@@ -121,6 +122,11 @@ struct AssemblySeamTests {
         #expect(row.projectSyncID == "p-1")
         #expect(row.cwd == "/repo")
         #expect(row.backendType == "claudecode")
+        // 草稿上选的模型与档位已钉到机器的会话行上（派发收尾），本地这一行在第一次刷新之前就与之相符；
+        // 权限模式不是会话行上的一格，不落。
+        #expect(row.providerKey == "anthropic")
+        #expect(row.modelKey == "opus")
+        #expect(row.reasoningEffort == "high")
         #expect(row.lifecycleState == SavedConversation.Lifecycle.running)
         #expect(try await store.carrier(of: key) == "m-1")
         #expect(try await store.followTargets() == [FollowTarget(key: key, peerFingerprint: "phone-fp", carrier: "m-1")])

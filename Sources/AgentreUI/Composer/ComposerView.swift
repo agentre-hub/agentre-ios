@@ -89,7 +89,7 @@ public struct ComposerView: View {
                         .hitTarget()
                     } else {
                         Image(systemName: "lock")
-                            .font(.footnote)
+                            .font(.agentre(.footnote))
                             .foregroundStyle(.token(.ink2))
                             .frame(width: minimumHitTargetSide, height: minimumHitTargetSide)
                             .accessibilityLabel(Text("composer.notCancellable", tableName: composerTable, bundle: .module))

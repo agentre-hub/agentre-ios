@@ -94,8 +94,8 @@ private struct DayCapsule: View {
     }
 }
 
-/// 用户消息：`primary` 底、`primary-ink` 字的右侧气泡，右下角收尖。
-private struct UserBubble: View {
+/// 用户消息：`primary` 底、`primary-ink` 字的右侧气泡，右下角收尖。草稿发出的第一条也画成这一枚。
+struct UserBubble: View {
     let text: String
 
     var body: some View {

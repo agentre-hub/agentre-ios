@@ -11,6 +11,7 @@ public actor WorkspaceIdentityDirectory: IdentityDirectory {
     private let roster: any MachineRoster
     private var loadedProjects: [WorkspaceProject]?
     private var loadedMachines: [Machine] = []
+    private var observers: [AsyncStream<Void>.Continuation] = []
 
     public init(workspace: any WorkspaceService, roster: any MachineRoster) {
         self.workspace = workspace
@@ -20,8 +21,19 @@ public actor WorkspaceIdentityDirectory: IdentityDirectory {
     public func load() async {
         async let projectList = try? workspace.projects()
         async let machineList = try? roster.machines()
-        if let projects = await projectList { loadedProjects = projects }
-        if let machines = await machineList { loadedMachines = machines }
+        let projects = await projectList
+        let machines = await machineList
+        if let projects { loadedProjects = projects }
+        if let machines { loadedMachines = machines }
+        // 取到了哪一份就告诉订阅者：已经画出来的空白字形、按项目名与机器名的搜索随之补上。
+        guard projects != nil || machines != nil else { return }
+        observers.removeAll { if case .terminated = $0.yield() { true } else { false } }
+    }
+
+    public func changes() -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        observers.append(continuation)
+        return stream
     }
 
     public func projects() -> [WorkspaceProject]? { loadedProjects }

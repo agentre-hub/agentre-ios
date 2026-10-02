@@ -51,6 +51,32 @@ public struct RelayDispatcher: NewConversationDispatching {
         } catch let failure as RelayFailure {
             throw Self.dispatchFailure(failure)
         }
+        await pin(request.settings, conversationID: run.conversationID, on: machine)
+    }
+
+    /// 把草稿上选的模型与思考档位钉到这条会话上（对照控制台 dispatch.ts 的 pinModelTarget / pinReasoningEffort）。
+    /// run 带的两项 agentred 只按这一轮用，不写会话行；会话行只有 setModelTarget / setSessionReasoningEffort 写。
+    /// 不钉，第一轮按所选跑、第二轮起却回到 Agent 绑定与后端配置，而打开对话读回的是「不指定」。
+    /// 只钉选了的：供应商没选不钉模型（模型键空 = 该供应商的默认模型，与输入区同一取法），档位没选不钉档位。
+    /// 钉不住不算派发失败：会话已经在机器上跑起来了，报成失败用户一重试就凭空再开一条；之后的刷新以机器为准。
+    private func pin(_ settings: ComposerRunSettings, conversationID: String, on machine: String) async {
+        if !settings.providerKey.isEmpty {
+            var request = Agentre_Wire_SetModelTargetRequest()
+            request.conversationID = conversationID
+            request.peerFingerprint = source.fingerprint
+            request.providerKey = settings.providerKey
+            request.modelKey = settings.modelKey
+            let _: Agentre_Wire_SetModelTargetResponse? = try? await connection.call(machine: machine, .setModelTarget, request)
+        }
+        if !settings.reasoningEffort.isEmpty {
+            var request = Agentre_Wire_SetSessionReasoningEffortRequest()
+            request.conversationID = conversationID
+            request.peerFingerprint = source.fingerprint
+            request.reasoningEffort = settings.reasoningEffort
+            let _: Agentre_Wire_SetSessionReasoningEffortResponse? = try? await connection.call(
+                machine: machine, .setSessionReasoningEffort, request
+            )
+        }
     }
 
     /// agentred 上的 Pi 用同一个 runtime.run 依次注册 generation、准备、启动，三次带同一个 generation

@@ -79,6 +79,22 @@ struct MeModelTests {
         #expect(h.credentials.stored == nil)
     }
 
+    @Test("换服务器即退出登录，也就先在原来那台服务器上撤销本机（决策 22）；撤销不成照样换、照样清本地")
+    func switchingServerRevokesThisDeviceOnTheOldServer() async throws {
+        let h = Harness()
+        #expect(await h.model.setServerAddress("http://docker.local:8443") == true)
+        #expect(await h.account.revoked == [0])
+        #expect(await h.account.revokedOn == [.production], "撤销发往原来那台：令牌是它签的")
+        #expect(h.session.phase == .signedOut)
+
+        let offline = Harness()
+        await offline.account.configure(revokeError: URLError(.notConnectedToInternet))
+        #expect(await offline.model.setServerAddress("http://docker.local:8443") == true)
+        #expect(offline.servers.load() == ServerAddress(string: "http://docker.local:8443"))
+        #expect(offline.session.phase == .signedOut)
+        #expect(offline.credentials.stored == nil)
+    }
+
     @Test("撤销另一台设备：它从列表里消失，本机仍在登录态")
     func revokeOther() async throws {
         let h = Harness()

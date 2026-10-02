@@ -60,10 +60,12 @@ public final class MeModel {
     }
 
     /// 改服务器地址。不合法时不改、返回 false。换到另一台服务器即退出登录：
-    /// 手里的令牌与本地会话属于原来那台服务器上的账号，不能带过去。
+    /// 手里的令牌与本地会话属于原来那台服务器上的账号，不能带过去。退出登录就是撤销本机（决策 22），
+    /// 所以先在原来那台服务器上撤销这台设备再换地址；撤销不成同样不拦。
     public func setServerAddress(_ text: String) async -> Bool {
         guard let address = ServerAddress(string: text) else { return false }
         guard address != serverAddress else { return true }
+        _ = try? await account.revoke(deviceID: 0, server: serverAddress)
         servers.save(address)
         serverAddress = address
         await signOutAction.run()

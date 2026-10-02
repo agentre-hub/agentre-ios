@@ -35,7 +35,7 @@ public struct MachineDetailView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
-                MachineSearchField(text: $query) { Task { await model.search(query) } }
+                SearchField(text: $query, placeholder: "machines.detail.search", table: "Machines") { Task { await model.search(query) } }
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -46,28 +46,29 @@ public struct MachineDetailView: View {
                     } icon: {
                         Image(systemName: "wifi.slash")
                     }
-                    .font(.subheadline)
+                    .font(.agentre(.subheadline))
                     .foregroundStyle(.token(.ink2))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 } else if model.updateRequired {
                     Text(LocalizedStringKey(failureKey(.updateRequired)), tableName: "Me", bundle: .module)
-                        .font(.subheadline)
+                        .font(.agentre(.subheadline))
                         .foregroundStyle(.token(.ink2))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 } else if model.unreachable {
                     Text("machines.detail.unreachable", tableName: "Machines", bundle: .module)
-                        .font(.subheadline)
+                        .font(.agentre(.subheadline))
                         .foregroundStyle(.token(.ink2))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 }
-                ForEach(model.rows) { row in
-                    MachineSessionRowView(row: row, onOpen: onOpen) {
+                let rows = model.rows
+                ForEach(rows) { row in
+                    MachineSessionRowView(row: row, isLast: row.id == rows.last?.id, onOpen: onOpen) {
                         Task { await model.save(row.id) }
                     }
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 0, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 }
@@ -76,7 +77,7 @@ public struct MachineDetailView: View {
                         Task { await model.loadMore() }
                     } label: {
                         Text("machines.detail.reloadMore \(reloadCount)", tableName: "Machines", bundle: .module)
-                            .font(.subheadline.weight(.medium))
+                            .font(.agentre(.subheadline, weight: .medium))
                             .foregroundStyle(.token(.primary))
                             .frame(maxWidth: .infinity)
                     }
@@ -95,18 +96,18 @@ public struct MachineDetailView: View {
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "desktopcomputer")
-                    .font(.largeTitle)
+                    .font(.agentre(.display))
                     .foregroundStyle(.token(.ink2))
                     .accessibilityHidden(true)
                 Text("machines.detail.offline", tableName: "Machines", bundle: .module)
-                    .font(.subheadline)
+                    .font(.agentre(.subheadline))
                     .foregroundStyle(.token(.ink2))
                 if model.machine.lastSeenAt > 0 {
                     Text(
                         "machines.lastSeen \(Text(Date(timeIntervalSince1970: TimeInterval(model.machine.lastSeenAt) / 1000), format: .relative(presentation: .named)))",
                         tableName: "Machines", bundle: .module
                     )
-                    .font(.caption)
+                    .font(.agentre(.caption))
                     .foregroundStyle(.token(.ink2))
                 }
             }
@@ -130,10 +131,11 @@ private struct MachineCountsHeader: View {
     private func cell(_ value: Int64, _ label: LocalizedStringKey, _ token: ColorToken) -> some View {
         VStack(spacing: 2) {
             Text(value, format: .number)
-                .font(.title2.monospacedDigit().weight(.semibold))
+                .font(.agentre(.title))
+                .monospacedDigit()
                 .foregroundStyle(.token(token))
             Text(label, tableName: "Machines", bundle: .module)
-                .font(.caption)
+                .font(.agentre(.caption))
                 .foregroundStyle(.token(.ink2))
         }
         .frame(maxWidth: .infinity)
@@ -142,10 +144,12 @@ private struct MachineCountsHeader: View {
     }
 }
 
-/// 一条会话。已保存：整行是进入对话的按钮，带「在手机上」的标记；
+/// 一条会话，平铺行加分隔线（不做卡片，与稿子同）。已保存：整行是进入对话的按钮，带「在手机上」的标记；
 /// 未保存：行本身不可点，尾部是「保存到手机」。
 private struct MachineSessionRowView: View {
     let row: MachineSessionRow
+    /// 最后一行底下不画分隔线。
+    let isLast: Bool
     let onOpen: (ConversationKey) -> Void
     let onSave: () -> Void
     /// 保存要机器来答：离线时点不动。
@@ -182,43 +186,51 @@ private struct MachineSessionRowView: View {
         }
     }
 
+    /// 状态点、标题叠等宽工作目录、行尾相对时间，再是进入指示或保存入口；行下一条 `line` 分隔线，避开状态点。
     private func card(@ViewBuilder trailing: () -> some View) -> some View {
         HStack(spacing: 12) {
             ConversationStatusGlyph(activity: row.session.activity)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 title
                 if !row.session.cwd.isEmpty {
                     Text(verbatim: row.session.cwd)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.token(.ink2))
+                        .font(.agentre(.caption2, mono: true))
+                        .foregroundStyle(.token(.ink3))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
-                if row.session.lastMessageAt > 0 {
-                    Text(Date(timeIntervalSince1970: TimeInterval(row.session.lastMessageAt) / 1000), format: .relative(presentation: .named))
-                        .font(.caption)
-                        .foregroundStyle(.token(.ink2))
-                }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if row.session.lastMessageAt > 0 {
+                Text(Date(timeIntervalSince1970: TimeInterval(row.session.lastMessageAt) / 1000), format: .relative(presentation: .named))
+                    .font(.agentre(.caption))
+                    .foregroundStyle(.token(.ink3))
+                    .lineLimit(1)
+            }
             trailing()
         }
-        .padding(.leading, 12)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.token(.surface), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                Rectangle().fill(.token(.line)).frame(height: 1).padding(.leading, Self.dividerInset)
+            }
+        }
     }
+
+    /// 状态图标列（14）加间距（12）：分隔线与标题对齐。
+    private static let dividerInset: CGFloat = 14 + 12
 
     @ViewBuilder private var title: some View {
         if row.session.title.isEmpty {
             Text(verbatim: row.session.conversationID)
-                .font(.body.monospaced())
+                .font(.agentre(.body, mono: true))
                 .foregroundStyle(.token(.ink))
                 .lineLimit(1)
                 .truncationMode(.middle)
         } else {
             Text(verbatim: row.session.title)
-                .font(.body)
+                .font(.agentre(.body))
                 .foregroundStyle(.token(.ink))
                 .lineLimit(1)
         }

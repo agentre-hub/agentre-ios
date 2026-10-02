@@ -8,4 +8,6 @@ public struct NullIdentityDirectory: IdentityDirectory {
     public init() {}
     public func projects() async -> [WorkspaceProject]? { nil }
     public func machineName(fingerprint: String) async -> String? { nil }
+    /// 材料从不变化：订阅即结束。
+    public func changes() async -> AsyncStream<Void> { AsyncStream { $0.finish() } }
 }

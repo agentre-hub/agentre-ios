@@ -271,6 +271,7 @@ struct StubIdentityDirectory: IdentityDirectory {
     var name: String?
     func projects() async -> [WorkspaceProject]? { nil }
     func machineName(fingerprint: String) async -> String? { name }
+    func changes() async -> AsyncStream<Void> { AsyncStream { $0.finish() } }
 }
 
 struct FakeMentionSource: ComposerMentionSource {

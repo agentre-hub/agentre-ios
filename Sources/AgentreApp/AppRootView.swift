@@ -15,6 +15,8 @@ struct AppRootView: View {
         }
         .displayPreferences(environment.me.preferences)
         .environment(\.isOffline, environment.connectivity.isOffline)
+        // 没写字体的文字也取随包的 Inter，而不是落回系统字（规格「设计语言」：不依赖系统字体）。
+        .font(.agentre(.body))
     }
 }
 
@@ -165,10 +167,13 @@ private struct NewConversationDestination: View {
             NewConversationProjectPicker(model: services.newConversation) { agent, project in
                 services.router.newConversation?.append(.draft(agent: agent.syncID, project: project.syncID))
             }
-            .compactNavigationBar(
+            // 返回处写着回到哪：「< 新建对话」，标题居中（规格「05B」）。
+            .modalNavigationBar(
                 title: Text("newconv.fromProject", tableName: "NewConversation", bundle: AgentreUIResources.bundle),
-                leading: { BackToModalRoot(router: services.router) }
-            )
+                backTitle: Text("shell.newConversation", tableName: "Shell", bundle: AgentreUIResources.bundle)
+            ) {
+                services.router.newConversation = []
+            }
         case .draft:
             // 草稿自己画导航栏（Agent 字形、「新对话」、Agent 名）。
             if let draft = services.draftModel(for: route) {
@@ -177,23 +182,6 @@ private struct NewConversationDestination: View {
                 }
             }
         }
-    }
-}
-
-/// 「从项目里挑」返回处写着回到哪：「新建对话」（规格「05B」）。与返回箭头是同一个去处。
-private struct BackToModalRoot: View {
-    let router: Router
-
-    var body: some View {
-        Button {
-            router.newConversation = []
-        } label: {
-            Text("shell.newConversation", tableName: "Shell", bundle: AgentreUIResources.bundle)
-                .font(.agentre(.body))
-                .foregroundStyle(.token(.primary))
-                .lineLimit(1)
-        }
-        .hitTarget()
     }
 }
 
@@ -209,7 +197,11 @@ private struct MachinesDestination: View {
                 MachineDetailView(model: services.detailModel(for: machine)) { key in
                     services.router.machines.append(.conversation(key))
                 }
-                .compactNavigationBar(title: Text(verbatim: machine.name), subtitle: machine.reportedSummary.map { Text(verbatim: $0) })
+                // 机器名与「平台 · 种类 版本」都是机器产出的字面：等宽（规格「06」）。
+                .compactNavigationBar(
+                    title: Text(verbatim: machine.name).font(.agentre(FontRole(size: 15, weight: .semibold, relativeTo: .headline), mono: true)),
+                    subtitle: machine.reportedSummary.map { Text(verbatim: $0).font(.agentre(.caption2, mono: true)).foregroundStyle(.token(.ink3)) }
+                )
             }
         case .conversation(let key):
             ConversationScreen(services: services, key: key) {

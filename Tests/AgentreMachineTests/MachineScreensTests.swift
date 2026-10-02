@@ -262,7 +262,8 @@ struct MachineScreensTests {
             let title = try #require(await screen.frame(of: session.title), "找不到标题 \(session.title)")
             // 行内留白加一枚状态图标的位置：标题不得再往右。
             #expect(title.minX - rowInset <= 44, "\(session.conversationID)：标题起于 \(title.minX)")
-            #expect(title.width >= rowWidth * 0.6, "\(session.conversationID)：标题宽 \(title.width) / 行宽 \(rowWidth)")
+            // 相对时间与保存入口排在同一行的行尾（稿子 06）：标题占去其余的大半，与消息列表同一判据。
+            #expect(title.width >= rowWidth * 0.5, "\(session.conversationID)：标题宽 \(title.width) / 行宽 \(rowWidth)")
         }
     }
 }

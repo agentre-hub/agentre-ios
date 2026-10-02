@@ -199,11 +199,26 @@ actor FakeIdentityDirectory: IdentityDirectory {
         self.machines = machines
     }
 
-    func set(projects: [WorkspaceProject]?) { projectList = projects }
-    func set(machines: [String: String]) { self.machines = machines }
+    private var observers: [AsyncStream<Void>.Continuation] = []
+
+    /// 换一份答案并告诉订阅者「目录变了」，与真实目录取到一次新材料同形。
+    func set(projects: [WorkspaceProject]?) {
+        projectList = projects
+        for observer in observers { observer.yield() }
+    }
+    func set(machines: [String: String]) {
+        self.machines = machines
+        for observer in observers { observer.yield() }
+    }
 
     func projects() -> [WorkspaceProject]? { projectList }
     func machineName(fingerprint: String) -> String? { machines[fingerprint] }
+
+    func changes() -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        observers.append(continuation)
+        return stream
+    }
 }
 
 /// 等一个条件成立（真实时间上限 3 秒）。

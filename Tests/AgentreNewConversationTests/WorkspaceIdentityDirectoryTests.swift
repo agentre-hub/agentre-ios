@@ -1,5 +1,6 @@
 import AgentreDomain
 import AgentreREST
+import Foundation
 import Testing
 
 /// 会话头像字形与副标题要问的两件事：项目树取到了没有、承载机器叫什么名字
@@ -33,6 +34,22 @@ struct WorkspaceIdentityDirectoryTests {
         await directory.load()
         let projects = await directory.projects()
         #expect(projects == [WorkspaceProject(syncID: "p1", name: "server")])
+    }
+
+    @Test("取到一份新材料就告诉订阅者目录变了；一样都没取到不吭声")
+    func announcesLoads() async throws {
+        let workspace = FakeWorkspace(projects: [WorkspaceProject(syncID: "p1", name: "server")])
+        let directory = WorkspaceIdentityDirectory(workspace: workspace, roster: FakeRoster(.failure(URLError(.notConnectedToInternet))))
+        let changes = await directory.changes()
+        var iterator = changes.makeAsyncIterator()
+        await workspace.configure(failProjects: true)
+        await directory.load()
+        await workspace.configure(failProjects: false)
+        await directory.load()
+        let first: Void? = await iterator.next()
+        #expect(first != nil)
+        let projects = await directory.projects()
+        #expect(projects == [WorkspaceProject(syncID: "p1", name: "server")], "通知到达时新材料已经在目录里")
     }
 
     @Test("机器名取自名册，查不到即 nil")

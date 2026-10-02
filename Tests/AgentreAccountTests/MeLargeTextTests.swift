@@ -1,3 +1,4 @@
+import AgentreDesign
 import AgentreDomain
 import AgentreTestSupport
 @testable import AgentreUI
@@ -41,10 +42,9 @@ struct MeLargeTextTests {
         return model
     }
 
-    /// 与视图同款的等宽字体（`.body.monospaced()` / `.caption.monospaced()`）在给定字号档下的 UIKit 对应。
-    static func monospaced(_ style: UIFont.TextStyle, _ category: UIContentSizeCategory) -> UIFont {
-        let size = UIFont.preferredFont(forTextStyle: style, compatibleWith: UITraitCollection(preferredContentSizeCategory: category)).pointSize
-        return UIFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    /// 与视图同款的随包等宽字体（`.agentre(.body, mono: true)` / `.agentre(.caption, mono: true)`）在给定字号档下的 UIKit 对应。
+    static func monospaced(_ role: FontRole, _ category: UIContentSizeCategory) -> UIFont {
+        UIFont.agentre(role, mono: true, compatibleWith: UITraitCollection(preferredContentSizeCategory: category))
     }
 
     static func size(of text: String, font: UIFont, width: CGFloat = .greatestFiniteMagnitude) -> CGSize {
@@ -63,7 +63,7 @@ struct MeLargeTextTests {
             size: Self.iPhone17
         )
         let nameFont = Self.monospaced(.body, .accessibilityExtraLarge)
-        let platformFont = Self.monospaced(.caption1, .accessibilityExtraLarge)
+        let platformFont = Self.monospaced(.caption, .accessibilityExtraLarge)
         for device in Self.devices {
             let name = try #require(await screen.frame(of: device.shownName), "找不到设备名 \(device.shownName)")
             let full = Self.size(of: device.shownName, font: nameFont)

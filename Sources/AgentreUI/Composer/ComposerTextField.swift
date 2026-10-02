@@ -14,7 +14,7 @@ struct ComposerTextField: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
-        view.font = .preferredFont(forTextStyle: .body)
+        view.font = UIFont.agentre(FontRole(size: 14.5, relativeTo: .body))
         view.adjustsFontForContentSizeCategory = true
         view.textColor = ColorToken.ink.uiColor
         view.tintColor = ColorToken.primary.uiColor
