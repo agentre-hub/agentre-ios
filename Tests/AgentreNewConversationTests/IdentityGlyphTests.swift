@@ -51,7 +51,8 @@ struct IdentityGlyphTests {
         #expect(IdentityColor(wireToken: "agent-\(slot)") == .slot(slot))
     }
 
-    @Test("缺失、空串、越界或裸色值一律中性", arguments: [nil, "", "agent-0", "agent-17", "agent-1x", "#3B6896", "neutral"] as [String?])
+    @Test("缺失、空串、越界、裸色值或不在词汇表里的写法（前导零、正号）一律中性——宿主按词汇表全集逐字认",
+          arguments: [nil, "", "agent-0", "agent-17", "agent-1x", "#3B6896", "neutral", "agent-01", "agent-+3", "AGENT-3"] as [String?])
     func identityColorFallsBackToNeutral(token: String?) {
         #expect(IdentityColor(wireToken: token) == .neutral)
     }

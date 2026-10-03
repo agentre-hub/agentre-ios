@@ -275,23 +275,21 @@ struct StepFactsTests {
         #expect(ActivityRules.summarize([step]).failures == 1)
         let facts = step.facts()
         #expect(facts.failed)
-        #expect(facts.exitCode == 2)
         #expect(facts.result == .failed)
         #expect(facts.resultText == "2 errors")
     }
 
-    @Test("结果标了 isError 的命令：失败、exit 1")
+    @Test("结果标了 isError 的命令：失败，行尾写「失败」")
     func isErrorFailure() {
         let step = toolStep("s", use("s", input: ["command": "pnpm lint"]), result("s", #"{"exitCode":1,"output":"boom"}"#, isError: true))
         #expect(step.facts().failed)
-        #expect(step.facts().exitCode == 1)
+        #expect(step.facts().result == .failed)
     }
 
-    @Test("成功的命令不报退出码；退出码为 0 不算失败；输出只是原文，行尾不写")
+    @Test("退出码为 0 不算失败；输出只是原文，行尾不写")
     func success() {
         let step = toolStep("s", use("s", input: ["command": "pnpm test"]), result("s", #"{"exitCode":0,"output":"13 passed"}"#))
         #expect(!step.facts().failed)
-        #expect(step.facts().exitCode == nil)
         #expect(step.facts().result == nil)
         #expect(step.facts().resultText == "13 passed")
     }

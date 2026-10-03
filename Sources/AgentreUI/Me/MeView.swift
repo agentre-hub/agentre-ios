@@ -36,7 +36,7 @@ public struct MeView: View {
                 ) { navigate(.server) }
                 GroupedRow(
                     .smartphone, title: Text("me.devices", tableName: "Me", bundle: .module),
-                    value: Text(verbatim: "\(model.devices.count)")
+                    value: model.devices.map { Text(verbatim: "\($0.count)") }
                 ) { navigate(.devices) }
             }
             .rowStyled()

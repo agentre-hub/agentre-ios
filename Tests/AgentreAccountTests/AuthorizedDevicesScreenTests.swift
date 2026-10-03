@@ -31,7 +31,7 @@ struct AuthorizedDevicesScreenTests {
     @Test("每个可点元素的命中区补满 44×44 且互不重叠；发现的目标数 = 放置的可点元素数")
     func hitTargets() async throws {
         let model = await loadedModel()
-        #expect(model.devices.count == 2)
+        #expect(model.devices?.count == 2)
         let report = await hitTargetReport(of: AuthorizedDevicesScreen(model: model), size: Self.tall)
         #expect(report.targets.count == Self.placedTargets(revocable: 1), "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
@@ -53,6 +53,16 @@ struct AuthorizedDevicesScreenTests {
         let labels = await HostedScreen(AuthorizedDevicesScreen(model: model), size: Self.tall).labels()
         #expect(labels.filter { $0 == Self.text("me.devices.revoke") }.count == 1, "\(labels)")
         #expect(labels.contains(Self.text("me.devices.revokeInConsole")), "\(labels)")
+    }
+
+    @Test("设备列表没取到：这一页如实说没取到并给重试，不是一张空列表")
+    func devicesFailureIsSaid() async throws {
+        let account = FakeAccountService()
+        await account.configure(devices: .failure(URLError(.timedOut)))
+        let model = await loadedModel(account: account)
+        let labels = await HostedScreen(AuthorizedDevicesScreen(model: model), size: Self.tall).labels().joined(separator: "\n")
+        #expect(labels.contains(Self.text("failure.timedOut")), "\(labels)")
+        #expect(labels.contains(Self.text("me.retry")), "\(labels)")
     }
 
     @Test("设备在线与否不只靠颜色：每一行把在线 / 离线写出来")

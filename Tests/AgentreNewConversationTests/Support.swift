@@ -66,6 +66,9 @@ actor FakeWorkspace: WorkspaceService {
         self.holdNextPlan = holdNextPlan
     }
 
+    func set(planner: @escaping @Sendable (DispatchPlanQuery) -> DispatchPlan) { self.planner = planner }
+    func set(projects: [WorkspaceProject]) { projectList = projects }
+
     var isHoldingPlan: Bool { planGate != nil }
     func releasePlan() { planGate?.resume(); planGate = nil }
 
@@ -93,12 +96,16 @@ actor FakeWorkspace: WorkspaceService {
 actor FakeDispatcher: NewConversationDispatching {
     private(set) var requests: [DispatchRequest] = []
     var failure: DispatchFailure?
+    /// 派发收尾钉住的结果；缺省两项都钉住了。
+    var pins = DispatchPins()
 
     func fail(with failure: DispatchFailure?) { self.failure = failure }
+    func setPins(_ pins: DispatchPins) { self.pins = pins }
 
-    func dispatch(_ request: DispatchRequest) throws {
+    func dispatch(_ request: DispatchRequest) throws -> DispatchPins {
         requests.append(request)
         if let failure { throw failure }
+        return pins
     }
 }
 
@@ -113,10 +120,25 @@ let sampleToolOptions = DraftToolOptions(
 /// 草稿工具行的候选：记下问的是哪一档，答回固定的一份。
 actor FakeToolOptions: DraftToolOptionsSource {
     private(set) var queries: [DispatchChoice] = []
+    /// 按机器名给的答复；没配的那台答 `sampleToolOptions`。
+    var answers: [String: DraftToolOptions] = [:]
+    private var holdNext = false
+    private var gate: CheckedContinuation<Void, Never>?
 
-    func options(for target: DispatchChoice) -> DraftToolOptions {
+    func set(_ options: DraftToolOptions, for machine: String) { answers[machine] = options }
+    /// 挂住下一次问询，直到 `release()`：用来验证换了机器之后才到的旧应答。
+    func holdNextQuery() { holdNext = true }
+    var isHolding: Bool { gate != nil }
+    func release() { gate?.resume(); gate = nil }
+
+    func options(for target: DispatchChoice) async -> DraftToolOptions {
         queries.append(target)
-        return sampleToolOptions
+        let answer = answers[target.deviceName] ?? sampleToolOptions
+        if holdNext {
+            holdNext = false
+            await withCheckedContinuation { gate = $0 }
+        }
+        return answer
     }
 }
 

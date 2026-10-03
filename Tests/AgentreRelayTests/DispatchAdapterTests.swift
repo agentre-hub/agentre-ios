@@ -42,7 +42,7 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
     func dispatchesRun() async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let sent: Void = adapter.dispatch(request())
+        async let sent = adapter.dispatch(request())
         let (socket, id) = try await harness.machineChannel("fp-9")
         let run = try await socket.nextRequest(on: id, method: .runtimeRun)
         let body = try run.body(Agentre_Wire_RuntimeRunRequest.self)
@@ -65,7 +65,7 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(body.reasoningEffort.isEmpty)
         #expect(!body.compact)
         socket.respond(id, to: run, with: ack("0190-conv"))
-        try await sent
+        _ = try await sent
         // 一项都没选：会话行不钉，模型与档位留给 Agent 绑定与后端配置。
         #expect(socket.requests(on: id, method: .setModelTarget).isEmpty)
         #expect(socket.requests(on: id, method: .setSessionReasoningEffort).isEmpty)
@@ -75,7 +75,7 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
     func carriesDraftSettings() async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let sent: Void = adapter.dispatch(request(kind: "agentred", settings: drafted))
+        async let sent = adapter.dispatch(request(kind: "agentred", settings: drafted))
         let (socket, id) = try await harness.machineChannel("fp-9")
         let run = try await socket.nextRequest(on: id, method: .runtimeRun)
         let body = try run.body(Agentre_Wire_RuntimeRunRequest.self)
@@ -85,14 +85,14 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(body.reasoningEffort == "high")
         socket.respond(id, to: run, with: ack("0190-conv"))
         try await answerPins(socket, id)
-        try await sent
+        _ = try await sent
     }
 
     @Test("草稿上选的模型与思考档位在 runtime.run 被接受后钉到这条会话上：run 带的只管第一轮，会话行只有这两个 RPC 写")
     func pinsDraftModelAndEffortAfterRun() async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let sent: Void = adapter.dispatch(request(settings: drafted))
+        async let sent = adapter.dispatch(request(settings: drafted))
         let (socket, id) = try await harness.machineChannel("fp-9")
         let run = try await socket.nextRequest(on: id, method: .runtimeRun)
         // run 被接受之前不钉：那时会话还不存在，钉了只会回「会话不在」。
@@ -113,30 +113,30 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(effortBody.peerFingerprint == "phone-fp")
         #expect(effortBody.reasoningEffort == "high")
         socket.respond(id, to: effort, with: Agentre_Wire_SetSessionReasoningEffortResponse())
-        try await sent
+        #expect(try await sent == DispatchPins(modelTarget: true, reasoningEffort: true))
     }
 
     @Test("只选了思考档位：只钉档位；选了供应商没选模型：照钉，模型键空即该供应商的默认模型")
     func pinsOnlyWhatWasChosen() async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let effortOnly: Void = adapter.dispatch(request(settings: ComposerRunSettings(reasoningEffort: "low")))
+        async let effortOnly = adapter.dispatch(request(settings: ComposerRunSettings(reasoningEffort: "low")))
         let (socket, id) = try await harness.machineChannel("fp-9")
         socket.respond(id, to: try await socket.nextRequest(on: id, method: .runtimeRun), with: ack("0190-conv"))
         let effort = try await socket.nextRequest(on: id, method: .setSessionReasoningEffort)
         #expect(try effort.body(Agentre_Wire_SetSessionReasoningEffortRequest.self).reasoningEffort == "low")
         socket.respond(id, to: effort, with: Agentre_Wire_SetSessionReasoningEffortResponse())
-        try await effortOnly
+        _ = try await effortOnly
         #expect(socket.requests(on: id, method: .setModelTarget).isEmpty)
 
-        async let providerDefault: Void = adapter.dispatch(request(settings: ComposerRunSettings(providerKey: "anthropic")))
+        async let providerDefault = adapter.dispatch(request(settings: ComposerRunSettings(providerKey: "anthropic")))
         socket.respond(id, to: try await socket.nextRequest(on: id, method: .runtimeRun), with: ack("0190-conv"))
         let target = try await socket.nextRequest(on: id, method: .setModelTarget)
         let body = try target.body(Agentre_Wire_SetModelTargetRequest.self)
         #expect(body.providerKey == "anthropic")
         #expect(body.modelKey.isEmpty)
         socket.respond(id, to: target, with: Agentre_Wire_SetModelTargetResponse())
-        try await providerDefault
+        _ = try await providerDefault
         #expect(socket.requests(on: id, method: .setSessionReasoningEffort).count == 1)
     }
 
@@ -144,19 +144,20 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
     func failedPinStillDispatched() async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let sent: Void = adapter.dispatch(request(settings: drafted))
+        async let sent = adapter.dispatch(request(settings: drafted))
         let (socket, id) = try await harness.machineChannel("fp-9")
         socket.respond(id, to: try await socket.nextRequest(on: id, method: .runtimeRun), with: ack("0190-conv"))
         socket.fail(id, to: try await socket.nextRequest(on: id, method: .setModelTarget), code: -32002, message: "Session not found")
         socket.fail(id, to: try await socket.nextRequest(on: id, method: .setSessionReasoningEffort), code: -32002, message: "Session not found")
-        try await sent
+        // 钉没钉住如实交回：本地那一行只记钉住了的（`StartedConversation`）。
+        #expect(try await sent == DispatchPins(modelTarget: false, reasoningEffort: false))
     }
 
     @Test("Pi：用户选的权限模式不上线（那一格承载归属令牌），模型与思考档位照带", arguments: ["agentred", "desktop"])
     func piOmitsUserPermissionMode(_ kind: String) async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let sent: Void = adapter.dispatch(request(kind: kind, backendType: "piagent", settings: drafted))
+        async let sent = adapter.dispatch(request(kind: kind, backendType: "piagent", settings: drafted))
         let (socket, id) = try await harness.machineChannel("fp-9")
         // agentred 上的 Pi 分注册、准备、启动三步；桌面端只一步。
         var bodies: [Agentre_Wire_RuntimeRunRequest] = []
@@ -166,7 +167,7 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
             socket.respond(id, to: run, with: ack("0190-conv", providerSession: step == 0 ? "" : "pi-sess-1"))
         }
         try await answerPins(socket, id)
-        try await sent
+        _ = try await sent
         for body in bodies {
             #expect(body.permissionMode != "plan")
             #expect(body.llmProviderKey == "anthropic")
@@ -179,21 +180,21 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
     func agentredCarriesBackendSyncID() async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let sent: Void = adapter.dispatch(request(kind: "agentred", project: nil))
+        async let sent = adapter.dispatch(request(kind: "agentred", project: nil))
         let (socket, id) = try await harness.machineChannel("fp-9")
         let run = try await socket.nextRequest(on: id, method: .runtimeRun)
         let body = try run.body(Agentre_Wire_RuntimeRunRequest.self)
         #expect(body.backend.syncID == "be-1")
         #expect(body.projectSyncID.isEmpty)
         socket.respond(id, to: run, with: ack("0190-conv"))
-        try await sent
+        _ = try await sent
     }
 
     @Test("agentred 上的 Pi：同一 generation 令牌依次注册、准备、启动，启动带上准备交回的会话号")
     func piGenerationThreeSteps() async throws {
         let harness = await Harness.started()
         let adapter = RelayDispatcher(connection: harness.connection, source: phone)
-        async let sent: Void = adapter.dispatch(request(kind: "agentred", backendType: "piagent"))
+        async let sent = adapter.dispatch(request(kind: "agentred", backendType: "piagent"))
         let (socket, id) = try await harness.machineChannel("fp-9")
 
         let register = try await socket.nextRequest(on: id, method: .runtimeRun)
@@ -211,7 +212,7 @@ private func ack(_ conversationID: String, providerSession: String = "") -> Agen
         #expect(startBody.permissionMode == token)
         #expect(startBody.providerSessionID == "pi-sess-1")
         socket.respond(id, to: start, with: ack("0190-conv", providerSession: "pi-sess-1"))
-        try await sent
+        _ = try await sent
         #expect(socket.requests(on: id, method: .runtimeAbort).isEmpty)
     }
 

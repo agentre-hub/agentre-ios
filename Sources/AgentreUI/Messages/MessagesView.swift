@@ -45,7 +45,6 @@ public struct MessagesView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(.token(.bg))
-        .localizedNavigationTitle("messages.title", table: "Messages")
         .task {
             await model.load()
             await model.follow()

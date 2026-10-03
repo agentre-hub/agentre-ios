@@ -138,8 +138,6 @@ public struct StepFacts: Sendable, Equatable {
     public var pending: PendingOutcome?
     public var backgroundRunning = false
     public var backgroundTaskID: String?
-    /// 非零退出码。
-    public var exitCode: Int?
     /// 行尾写的结果；没有结构化结果（成功命令的原文、认不出的工具、运行中）时为 nil。
     public var result: StepResult?
     /// 展开体要渲染的结果正文（命令结果取 output）。

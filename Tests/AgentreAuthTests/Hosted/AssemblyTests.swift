@@ -624,7 +624,7 @@ struct AssemblyTests {
 
         #expect(environment.session.phase == .signedOut)
         #expect(environment.services == nil, "the signed-in services outlived the sign-out")
-        #expect(environment.me.profile == nil && environment.me.devices.isEmpty && environment.me.failure == nil)
+        #expect(environment.me.profile == nil && environment.me.devices == nil && environment.me.failure == nil)
     }
 
     @Test("从登出状态起步（界面流程的启动环境）：上一次留在钥匙串里的令牌与库里的会话都不带进来，设备指纹不变")

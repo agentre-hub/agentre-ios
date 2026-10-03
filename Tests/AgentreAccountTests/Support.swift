@@ -85,7 +85,29 @@ actor FakeAccountService: AccountService {
         try devicesResult.get()
     }
 
+    /// 撤销收到过几次（含挂住的）。
+    private(set) var revokeAttempts = 0
+    private var holdingRevokes = false
+    private var heldRevokes: [AsyncStream<Void>.Continuation] = []
+
+    /// 此后的撤销挂住不答（服务器不可达而网络在：请求要等系统超时），直到 `releaseRevokes` 或调用方取消。
+    func holdRevokes() { holdingRevokes = true }
+
+    func releaseRevokes() {
+        holdingRevokes = false
+        heldRevokes.forEach { $0.finish() }
+        heldRevokes = []
+    }
+
     func revoke(deviceID: Int64, server: ServerAddress) async throws {
+        revokeAttempts += 1
+        if holdingRevokes {
+            // 与 URLSession 一样随调用方取消而收场：AsyncStream 的迭代在任务取消时结束。
+            let (gate, continuation) = AsyncStream<Void>.makeStream()
+            heldRevokes.append(continuation)
+            for await _ in gate {}
+            try Task.checkCancellation()
+        }
         if let revokeError { throw revokeError }
         revoked.append(deviceID)
         revokedOn.append(server)
@@ -150,4 +172,26 @@ actor FailingConversationStore: ConversationStore {
         throw CocoaError(.fileWriteNoPermission)
     }
     func changes() async -> AsyncStream<Void> { AsyncStream { $0.finish() } }
+}
+
+/// 立刻到点的睡眠：撤销本机的等待期限一开始就到了。
+struct ImmediateSleeper: Sleeping {
+    func sleep(for duration: Duration) async throws {}
+}
+
+/// 永不到点的睡眠（直到被取消）：撤销本机的等待期限不参与判定。
+struct NeverSleeper: Sleeping {
+    func sleep(for duration: Duration) async throws {
+        try await Task.sleep(for: .seconds(3600))
+    }
+}
+
+/// 等一个条件成立（真实时间上限 3 秒）；成立返回 true，不记失败——调用方先收拾挂住的请求再断言。
+@MainActor
+func settles(_ probe: @MainActor () async -> Bool) async -> Bool {
+    for _ in 0..<3000 {
+        if await probe() { return true }
+        try? await Task.sleep(for: .milliseconds(1))
+    }
+    return false
 }

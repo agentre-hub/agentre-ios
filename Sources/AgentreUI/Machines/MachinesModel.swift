@@ -32,23 +32,31 @@ public final class MachinesModel {
 
     /// 取一遍名册：在线的在前，同档按名字。取失败时保留已有的名册，从没取到过才算失败。
     /// 名册取到后，各在线机器再各问一次它现算的会话计数。
+    /// 进屏载入与下拉刷新会叠在一起：先发的那次晚到时（某台机器的计数要等到中继期限），不盖掉后发那次已落下的。
     public func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         do {
-            machines = try await roster.machines().sorted { lhs, rhs in
+            let fetched = try await roster.machines()
+            guard generation == loadGeneration else { return }
+            machines = fetched.sorted { lhs, rhs in
                 if lhs.online != rhs.online { return lhs.online }
                 return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
             }
             hasLoaded = true
             loadFailed = false
             failure = nil
-            await loadCounts()
+            await loadCounts(generation: generation)
         } catch {
+            guard generation == loadGeneration else { return }
             loadFailed = !hasLoaded
             failure = hasLoaded ? nil : FailureFact(presenting: error)
         }
     }
 
-    private func loadCounts() async {
+    private var loadGeneration = 0
+
+    private func loadCounts(generation: Int) async {
         let online = machines.filter(\.online)
         let sessions = sessions
         var updated: [String: MachineSessionCounts] = [:]
@@ -60,6 +68,7 @@ public final class MachinesModel {
                 updated[fingerprint] = counts
             }
         }
+        guard generation == loadGeneration else { return }
         counts = updated
     }
 }

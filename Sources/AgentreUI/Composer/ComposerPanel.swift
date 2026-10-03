@@ -59,7 +59,7 @@ public struct ComposerPanel: View {
     @ViewBuilder private var root: some View {
         let settings = model.settings
         GroupedSection(style: .sheet) {
-            let permission = settings.map { permissionModeText($0.permissionMode) }
+            let permission = settings.map { SettingCopy.permissionMode($0.permissionMode) }
             GroupedRow(
                 .shieldCheck, title: Text("composer.permissionMode", tableName: composerTable, bundle: .module),
                 value: permission?.text, monoValue: permission?.mono ?? false
@@ -68,7 +68,7 @@ public struct ComposerPanel: View {
                 .cpu, title: Text("composer.model", tableName: composerTable, bundle: .module),
                 value: settings?.model.map { Text(verbatim: $0.displayName) }, monoValue: true
             ) { page = .model }
-            let effort = reasoningEffortText(settings?.reasoningEffort ?? "")
+            let effort = SettingCopy.reasoningEffort(settings?.reasoningEffort ?? "")
             GroupedRow(
                 .brain, title: Text("composer.effort", tableName: composerTable, bundle: .module),
                 value: effort.text, monoValue: effort.mono
@@ -97,18 +97,11 @@ public struct ComposerPanel: View {
         let current = model.settings?.permissionMode
         GroupedSection(style: .sheet) {
             ForEach(model.settings?.permissionModes ?? [], id: \.self) { mode in
-                let display = permissionModeText(mode)
-                ComposerSelectionRow(selected: mode == current) {
+                let display = SettingCopy.permissionMode(mode)
+                SettingSelectionRow(selected: mode == current, disabledWhenOffline: true) {
                     Task { await model.setPermissionMode(mode) }
                 } label: {
-                    if display.mono {
-                        display.text.font(.agentre(.body, mono: true))
-                    } else {
-                        VStack(alignment: .leading, spacing: 2) {
-                            display.text.font(.agentre(.body))
-                            Text(verbatim: mode).font(.agentre(.caption, mono: true)).foregroundStyle(.token(.ink2))
-                        }
-                    }
+                    SettingOptionLabel(display: display, raw: mode)
                 }
             }
         }
@@ -125,7 +118,7 @@ public struct ComposerPanel: View {
                 .foregroundStyle(.token(.ink2))
             GroupedSection(style: .sheet) {
                 ForEach(group.models, id: \.self) { choice in
-                    ComposerSelectionRow(selected: choice == current) {
+                    SettingSelectionRow(selected: choice == current, disabledWhenOffline: true) {
                         Task { await model.setModel(choice) }
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
@@ -160,21 +153,13 @@ public struct ComposerPanel: View {
         let current = model.settings?.reasoningEffort
         GroupedSection(style: .sheet) {
             ForEach([""] + ComposerSettings.reasoningEffortLevels, id: \.self) { level in
-                ComposerSelectionRow(selected: level == current) {
+                SettingSelectionRow(selected: level == current, disabledWhenOffline: true) {
                     Task { await model.setReasoningEffort(level) }
                 } label: {
                     if level.isEmpty {
                         Text("composer.effort.followBackend", tableName: composerTable, bundle: .module).font(.agentre(.body))
                     } else {
-                        let display = reasoningEffortText(level)
-                        if display.mono {
-                            display.text.font(.agentre(.body, mono: true))
-                        } else {
-                            VStack(alignment: .leading, spacing: 2) {
-                                display.text.font(.agentre(.body))
-                                Text(verbatim: level).font(.agentre(.caption, mono: true)).foregroundStyle(.token(.ink2))
-                            }
-                        }
+                        SettingOptionLabel(display: SettingCopy.reasoningEffort(level), raw: level)
                     }
                 }
             }
@@ -203,72 +188,7 @@ public struct ComposerPanel: View {
     }
 
     private func back(_ title: LocalizedStringKey) -> some View {
-        Button {
-            page = .root
-        } label: {
-            HStack(spacing: 6) {
-                Image(.chevronLeft)
-                    .resizable()
-                    .frame(width: 15, height: 15)
-                    .accessibilityLabel(Text("composer.back", tableName: composerTable, bundle: .module))
-                Text(title, tableName: composerTable, bundle: .module).font(.agentre(.headline))
-            }
-            .foregroundStyle(.token(.ink))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .hitTarget()
-    }
-
-    // MARK: 人话取值
-
-    /// 权限档位人话：表内已知档位取本地化名（非等宽），表外原样等宽（规格「04 更多面板」）。
-    private func permissionModeText(_ mode: String) -> (text: Text, mono: Bool) {
-        switch PermissionModeDisplay(mode) {
-        case .standard(.`default`): (Text("composer.permissionMode.default", tableName: composerTable, bundle: .module), false)
-        case .standard(.acceptEdits): (Text("composer.permissionMode.acceptEdits", tableName: composerTable, bundle: .module), false)
-        case .standard(.plan): (Text("composer.permissionMode.plan", tableName: composerTable, bundle: .module), false)
-        case .standard(.bypassPermissions): (Text("composer.permissionMode.bypassPermissions", tableName: composerTable, bundle: .module), false)
-        case .raw(let value): (Text(verbatim: value), true)
-        }
-    }
-
-    /// 思考档位人话：低/中/高非等宽，会话未设定时标「默认」，执行端报出的更高档原样等宽。
-    private func reasoningEffortText(_ effort: String) -> (text: Text, mono: Bool) {
-        guard !effort.isEmpty else { return (Text("composer.effort.default", tableName: composerTable, bundle: .module), false) }
-        switch ReasoningEffortDisplay(effort) {
-        case .standard(.low): return (Text("composer.effort.low", tableName: composerTable, bundle: .module), false)
-        case .standard(.medium): return (Text("composer.effort.medium", tableName: composerTable, bundle: .module), false)
-        case .standard(.high): return (Text("composer.effort.high", tableName: composerTable, bundle: .module), false)
-        case .raw(let value): return (Text(verbatim: value), true)
-        }
-    }
-}
-
-/// 选项页的一行：当前值打勾。外层由 `GroupedSection` 给背景、圆角与分隔线。
-private struct ComposerSelectionRow<Label: View>: View {
-    let selected: Bool
-    let action: () -> Void
-    @ViewBuilder let label: Label
-    @Environment(\.isOffline) private var isOffline
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 11) {
-                label.foregroundStyle(.token(.ink))
-                Spacer(minLength: 8)
-                if selected {
-                    Image(.check)
-                        .resizable()
-                        .frame(width: 16, height: 16)
-                        .foregroundStyle(.token(.primary))
-                }
-            }
-            .padding(EdgeInsets(top: 13, leading: 14, bottom: 13, trailing: 14))
-            .frame(maxWidth: .infinity)
-        }
-        .hitTarget()
-        .disabled(isOffline)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        SettingsPageBack(title: title) { page = .root }
     }
 }
 

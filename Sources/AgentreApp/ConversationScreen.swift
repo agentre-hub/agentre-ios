@@ -12,7 +12,6 @@ struct ConversationScreen: View {
     @State private var model: ConversationScreenModel?
     /// 项目树还没取到时是空白字形（我们此刻不知道它属于哪个项目）。
     @State private var glyph = IdentityGlyph.blank
-    @State private var machineName: String?
     @State private var showsInfo = false
     @Environment(\.isOffline) private var isOffline
 
@@ -50,7 +49,8 @@ struct ConversationScreen: View {
         .background(.token(.bg))
         .compactNavigationBar(
             title: Text(verbatim: title),
-            subtitle: model.flatMap { ConversationSubtitle.text($0.transcript.document.activity, machineName: machineName) },
+            // 承载机器名与更多面板「会话信息」一行同一份：输入区跟着身份目录补上、跟着改名。
+            subtitle: model.flatMap { ConversationSubtitle.text($0.transcript.document.activity, machineName: $0.composer.machineName) },
             leading: { AvatarGlyph(glyph, size: 34) },
             trailing: {
                 ChromeIconButton(.info, label: Text("composer.sessionInfo", tableName: "Composer", bundle: AgentreUIResources.bundle), size: 21) {
@@ -64,14 +64,12 @@ struct ConversationScreen: View {
             // 进来就是读过了（不论从消息列表还是机器详情进来）；离开时把开着期间到的活动一并记成已读。
             try? await services.store.markRead(key)
             guard let conversation = model?.conversation else { return }
-            // 目录晚到（冷启动时 REST 还没答、离线后才联网）时，空白字形与副标题里的机器名随之补上。
+            // 目录晚到（冷启动时 REST 还没答、离线后才联网）时，空白字形随之补上。
             let identity = services.identity
             let changes = await identity.changes()
             glyph = IdentityGlyph.project(conversation.projectSyncID, in: await identity.projects())
-            machineName = await identity.machineName(fingerprint: conversation.carrierFingerprint)
             for await _ in changes {
                 glyph = IdentityGlyph.project(conversation.projectSyncID, in: await identity.projects())
-                machineName = await identity.machineName(fingerprint: conversation.carrierFingerprint)
             }
         }
         .onDisappear {

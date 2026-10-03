@@ -41,7 +41,10 @@ public struct ComposerView: View {
         .padding(.bottom, 12)
         .background(.token(.bg))
         .overlay(alignment: .top) { Rectangle().fill(.token(.line)).frame(height: 1) }
-        .task { if model.settings == nil { await model.load() } }
+        .task {
+            if model.settings == nil { await model.load() }
+            await model.followIdentity()
+        }
         .onChange(of: locale, initial: true) { _, locale in model.locale = locale }
         .fittedSheet(item: $panel) { page in
             ComposerPanel(model: model, contextUsage: contextUsage, initialPage: page, onDeleted: onDeleted)

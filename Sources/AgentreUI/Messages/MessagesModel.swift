@@ -29,7 +29,7 @@ public final class MessagesModel {
     private var pendingReads: Set<ConversationKey> = []
     /// 账号的项目树，供头像字形与按项目名搜索；一次都没取到过时为 nil。
     private var projects: [WorkspaceProject]?
-    /// 承载机器指纹 → 呈现名，供按机器名搜索；查过一次答不出来的不再重查。
+    /// 承载机器指纹 → 呈现名，供按机器名搜索；每次刷新按目录重读（机器改了名跟着改），目录答不出时留着上次的。
     private var machineNames: [String: String] = [:]
 
     public init(store: any ConversationStore, identity: any IdentityDirectory = NullIdentityDirectory()) {
@@ -51,18 +51,18 @@ public final class MessagesModel {
 
     /// 跟着本地库与身份目录的变动刷新，直到所在任务被取消。项目树与机器名常常晚于列表到达，
     /// 库此时未必再变：不跟着目录，空白字形与按项目名 / 机器名的搜索会一直停在「还不知道」。
+    /// 先订上两路变动再补读一遍：读完列表到订上之间到达的那一次（目录常在这时取到）没有订阅者听见，不补就丢了。
     public func follow() async {
-        async let library: Void = followStore()
-        async let directory: Void = followIdentity()
-        _ = await (library, directory)
+        let library = await store.changes()
+        let directory = await identity.changes()
+        await load()
+        async let libraryChanges: Void = reload(on: library)
+        async let directoryChanges: Void = reload(on: directory)
+        _ = await (libraryChanges, directoryChanges)
     }
 
-    private func followStore() async {
-        for await _ in await store.changes() { await load() }
-    }
-
-    private func followIdentity() async {
-        for await _ in await identity.changes() { await load() }
+    private func reload(on changes: AsyncStream<Void>) async {
+        for await _ in changes { await load() }
     }
 
     /// 标记已读：这一行立刻读作已读，再让库记下；库没记下就退回库里的真值。
@@ -84,14 +84,14 @@ public final class MessagesModel {
         .project(conversation.projectSyncID, in: projects)
     }
 
-    /// 项目树取一遍；承载机器名逐个补（查过一次答不出来的不再重查——离线时不必每次刷新都再问一遍）。
+    /// 项目树与各承载机器名按目录此刻的答案取一遍（目录是本机缓存，不走网络）。
     private func refreshIdentity(for rows: [SavedConversation]) async {
         projects = await identity.projects()
-        for fingerprint in Set(rows.map(\.carrierFingerprint)) where !fingerprint.isEmpty && machineNames[fingerprint] == nil {
-            if let name = await identity.machineName(fingerprint: fingerprint) {
-                machineNames[fingerprint] = name
-            }
+        var names: [String: String] = [:]
+        for fingerprint in Set(rows.map(\.carrierFingerprint)) where !fingerprint.isEmpty {
+            names[fingerprint] = await identity.machineName(fingerprint: fingerprint) ?? machineNames[fingerprint]
         }
+        machineNames = names
     }
 
     private func matches(_ conversation: SavedConversation, _ needle: String) -> Bool {

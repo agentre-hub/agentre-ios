@@ -44,7 +44,8 @@ struct MessagesScreenTests {
 
     @Test("不进对话即可读：待批准的命令与待回答的问题在行上，连同尚未处理的请求条数；运行中的行读作「正在输入…」；等你处理的行在最上面")
     func rowsCarryTheFacts() async throws {
-        let labels = await HostedScreen(await screen()).labels().joined(separator: "\n")
+        let elements = await HostedScreen(await screen()).labels()
+        let labels = elements.joined(separator: "\n")
         #expect(labels.contains("rm -rf build"))
         #expect(labels.contains("用哪个分支？"))
         #expect(labels.contains(Self.text("messages.typing")))
@@ -54,7 +55,10 @@ struct MessagesScreenTests {
         // 没有标题的会话以会话 ID 认出。
         #expect(labels.contains("question"))
         // 行尾的琥珀计数：这条会话里尚未处理的请求条数。
-        #expect(labels.contains("3"))
+        // 读屏读的是计数那一枚的标签（「3 条待处理」，并进那一行的朗读），不是屏上随便哪个「3」。
+        let count = String.localizedStringWithFormat(Self.text("messages.pendingCount %lld"), 3)
+        #expect(labels.contains(count), "\(elements)")
+        #expect(labels.contains(String.localizedStringWithFormat(Self.text("messages.pendingCount %lld"), 1)), "只有一件待处理的那一行也标出计数")
         let order = ["用哪个分支？", "rm -rf build", "修构建", "整理文档", "跑测试"].compactMap { labels.range(of: $0)?.lowerBound }
         #expect(order.count == 5)
         #expect(order == order.sorted(), "\(labels)")

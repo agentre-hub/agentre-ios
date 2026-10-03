@@ -14,8 +14,15 @@ public struct AuthorizedDevicesScreen: View {
 
     public var body: some View {
         List {
+            // 列表一次都没取到：如实说没取到并给重试（失败事实在「我」页同一份），不是一张空列表。
+            if model.devices == nil, let failure = model.failure {
+                Section {
+                    FailureNotice(fact: failure) { Task { await model.load() } }
+                        .listRowBackground(Color.token(.surface))
+                }
+            }
             Section {
-                ForEach(model.devices) { device in
+                ForEach(model.devices ?? []) { device in
                     DeviceRow(device: device) { pendingRevoke = device }
                         .listRowBackground(Color.token(.surface))
                 }
@@ -27,9 +34,10 @@ public struct AuthorizedDevicesScreen: View {
         .confirmationDialog(
             Text("me.devices.revoke", tableName: "Me", bundle: .module), isPresented: isPresented($pendingRevoke), titleVisibility: .hidden,
             presenting: pendingRevoke
-        ) { device in
+        ) { _ in
+            // 撤销本机就是退出登录（决策 22）：其它设备那一行不给撤销按钮，到网页控制台撤。
             Button(role: .destructive) {
-                Task { await model.revoke(device) }
+                Task { await model.signOut() }
             } label: {
                 Text("me.devices.revoke", tableName: "Me", bundle: .module)
             }

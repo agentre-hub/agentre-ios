@@ -55,9 +55,22 @@ public enum DispatchFailure: Error, Sendable, Equatable {
     case updateRequired
 }
 
+/// 派发收尾把草稿上选的两项钉到会话行上，各自钉没钉住（对照控制台 dispatch.ts 的 modelPinned /
+/// reasoningEffortPinned）。没选的那一项无可钉，记作钉住了。
+public struct DispatchPins: Sendable, Equatable {
+    public var modelTarget: Bool
+    public var reasoningEffort: Bool
+
+    public init(modelTarget: Bool = true, reasoningEffort: Bool = true) {
+        self.modelTarget = modelTarget
+        self.reasoningEffort = reasoningEffort
+    }
+}
+
 /// 中继上的派发（适配器在装配层）。失败以 `DispatchFailure` 抛出；别的错误按 `rejected` 对待。
+/// 派发成功即交回收尾钉住的结果：钉不住不算派发失败。
 public protocol NewConversationDispatching: Sendable {
-    func dispatch(_ request: DispatchRequest) async throws
+    func dispatch(_ request: DispatchRequest) async throws -> DispatchPins
 }
 
 /// 已经在机器上跑起来的一条新对话：要落进本地库的那一份。
@@ -71,12 +84,14 @@ public struct StartedConversation: Sendable, Equatable {
     public var projectSyncID: String
     public var cwd: String
     public var backendType: String
-    /// 草稿上选的模型与思考档位：派发收尾已钉到机器的会话行上，本地这一行随之记下（空 = 没选）。
+    /// 草稿上选的模型与思考档位：派发收尾钉到了机器的会话行上的，本地这一行随之记下（空 = 没选，或没钉住）。
+    /// 钉不住的不记：本地这一行是输入区判断「别的端改过没有」的基准，记下机器上没有的值，下一次刷新就会读成
+    /// 别的端把它改回了不指定，面板与之后各轮随之悄悄换掉（本机切档也只在写成之后才记，见 `ComposerModel`）。
     public var providerKey: String
     public var modelKey: String
     public var reasoningEffort: String
 
-    public init(request: DispatchRequest) {
+    public init(request: DispatchRequest, pins: DispatchPins = DispatchPins()) {
         conversationID = request.conversationID
         machineFingerprint = request.target.deviceFingerprint
         machineName = request.target.deviceName
@@ -85,10 +100,11 @@ public struct StartedConversation: Sendable, Equatable {
         projectSyncID = request.projectSyncID ?? ""
         cwd = request.target.cwd
         backendType = request.target.backendType
-        providerKey = request.settings.providerKey
         // 与派发同一条规矩：没选供应商就不钉模型。
-        modelKey = request.settings.providerKey.isEmpty ? "" : request.settings.modelKey
-        reasoningEffort = request.settings.reasoningEffort
+        let pinsModel = pins.modelTarget && !request.settings.providerKey.isEmpty
+        providerKey = pinsModel ? request.settings.providerKey : ""
+        modelKey = pinsModel ? request.settings.modelKey : ""
+        reasoningEffort = pins.reasoningEffort ? request.settings.reasoningEffort : ""
     }
 }
 

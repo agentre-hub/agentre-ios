@@ -37,7 +37,7 @@ public struct DraftToolPanel: View {
     private var root: some View {
         GroupedSection(style: .sheet) {
             if model.offersPermissionMode {
-                let permission = model.permissionMode.map(permissionModeText)
+                let permission = model.permissionMode.map(SettingCopy.permissionMode)
                 GroupedRow(
                     .shieldCheck, title: Text("composer.permissionMode", tableName: composer, bundle: .module),
                     value: permission?.text ?? unset, monoValue: permission?.mono ?? false
@@ -47,7 +47,7 @@ public struct DraftToolPanel: View {
                 .cpu, title: Text("composer.model", tableName: composer, bundle: .module),
                 value: model.modelChoice.map { Text(verbatim: $0.displayName) } ?? unset, monoValue: model.modelChoice != nil
             ) { page = .model }
-            let effort = model.reasoningEffort.map(reasoningEffortText)
+            let effort = model.reasoningEffort.map(SettingCopy.reasoningEffort)
             GroupedRow(
                 .brain, title: Text("composer.effort", tableName: composer, bundle: .module),
                 value: effort?.text ?? unset, monoValue: effort?.mono ?? false
@@ -62,10 +62,10 @@ public struct DraftToolPanel: View {
     @ViewBuilder private var permissionPage: some View {
         back("composer.permissionMode")
         GroupedSection(style: .sheet) {
-            SelectionRow(selected: model.permissionMode == nil) { model.choosePermissionMode(nil) } label: { unsetLabel }
+            SettingSelectionRow(selected: model.permissionMode == nil) { model.choosePermissionMode(nil) } label: { unsetLabel }
             ForEach(model.toolOptions?.permissionModes ?? [], id: \.self) { mode in
-                SelectionRow(selected: model.permissionMode == mode) { model.choosePermissionMode(mode) } label: {
-                    optionLabel(permissionModeText(mode), raw: mode)
+                SettingSelectionRow(selected: model.permissionMode == mode) { model.choosePermissionMode(mode) } label: {
+                    SettingOptionLabel(display: SettingCopy.permissionMode(mode), raw: mode)
                 }
             }
         }
@@ -74,9 +74,9 @@ public struct DraftToolPanel: View {
     @ViewBuilder private var modelPage: some View {
         back("composer.model")
         GroupedSection(style: .sheet) {
-            SelectionRow(selected: model.modelChoice == nil) { model.chooseModel(nil) } label: { unsetLabel }
+            SettingSelectionRow(selected: model.modelChoice == nil) { model.chooseModel(nil) } label: { unsetLabel }
             ForEach(model.toolOptions?.models ?? [], id: \.self) { choice in
-                SelectionRow(selected: model.modelChoice == choice) { model.chooseModel(choice) } label: {
+                SettingSelectionRow(selected: model.modelChoice == choice) { model.chooseModel(choice) } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: choice.displayName).font(.agentre(.body))
                         // 两家供应商下同名的模型由供应商名区分。
@@ -92,10 +92,10 @@ public struct DraftToolPanel: View {
     @ViewBuilder private var effortPage: some View {
         back("composer.effort")
         GroupedSection(style: .sheet) {
-            SelectionRow(selected: model.reasoningEffort == nil) { model.chooseReasoningEffort(nil) } label: { unsetLabel }
+            SettingSelectionRow(selected: model.reasoningEffort == nil) { model.chooseReasoningEffort(nil) } label: { unsetLabel }
             ForEach(ComposerSettings.reasoningEffortLevels, id: \.self) { level in
-                SelectionRow(selected: model.reasoningEffort == level) { model.chooseReasoningEffort(level) } label: {
-                    optionLabel(reasoningEffortText(level), raw: level)
+                SettingSelectionRow(selected: model.reasoningEffort == level) { model.chooseReasoningEffort(level) } label: {
+                    SettingOptionLabel(display: SettingCopy.reasoningEffort(level), raw: level)
                 }
             }
         }
@@ -105,79 +105,7 @@ public struct DraftToolPanel: View {
         unset.font(.agentre(.body))
     }
 
-    /// 表内的档位是人话，下面等宽小字是原值；表外的原样等宽（与对话屏的面板同形）。
-    @ViewBuilder private func optionLabel(_ display: (text: Text, mono: Bool), raw: String) -> some View {
-        if display.mono {
-            display.text.font(.agentre(.body, mono: true))
-        } else {
-            VStack(alignment: .leading, spacing: 2) {
-                display.text.font(.agentre(.body))
-                Text(verbatim: raw).font(.agentre(.caption, mono: true)).foregroundStyle(.token(.ink2))
-            }
-        }
-    }
-
     private func back(_ title: LocalizedStringKey) -> some View {
-        Button {
-            page = .root
-        } label: {
-            HStack(spacing: 6) {
-                Image(.chevronLeft)
-                    .resizable()
-                    .frame(width: 15, height: 15)
-                    .accessibilityLabel(Text("composer.back", tableName: composer, bundle: .module))
-                Text(title, tableName: composer, bundle: .module).font(.agentre(.headline))
-            }
-            .foregroundStyle(.token(.ink))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .hitTarget()
-    }
-
-    // MARK: 人话取值（与对话屏的更多面板同一张表、同一份译文）
-
-    private func permissionModeText(_ mode: String) -> (text: Text, mono: Bool) {
-        switch PermissionModeDisplay(mode) {
-        case .standard(.`default`): (Text("composer.permissionMode.default", tableName: composer, bundle: .module), false)
-        case .standard(.acceptEdits): (Text("composer.permissionMode.acceptEdits", tableName: composer, bundle: .module), false)
-        case .standard(.plan): (Text("composer.permissionMode.plan", tableName: composer, bundle: .module), false)
-        case .standard(.bypassPermissions): (Text("composer.permissionMode.bypassPermissions", tableName: composer, bundle: .module), false)
-        case .raw(let value): (Text(verbatim: value), true)
-        }
-    }
-
-    private func reasoningEffortText(_ effort: String) -> (text: Text, mono: Bool) {
-        switch ReasoningEffortDisplay(effort) {
-        case .standard(.low): (Text("composer.effort.low", tableName: composer, bundle: .module), false)
-        case .standard(.medium): (Text("composer.effort.medium", tableName: composer, bundle: .module), false)
-        case .standard(.high): (Text("composer.effort.high", tableName: composer, bundle: .module), false)
-        case .raw(let value): (Text(verbatim: value), true)
-        }
-    }
-}
-
-/// 选项页的一行：当前值打勾。外层由 `GroupedSection` 给背景、圆角与分隔线。
-private struct SelectionRow<Label: View>: View {
-    let selected: Bool
-    let action: () -> Void
-    @ViewBuilder let label: Label
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 11) {
-                label.foregroundStyle(.token(.ink))
-                Spacer(minLength: 8)
-                if selected {
-                    Image(.check)
-                        .resizable()
-                        .frame(width: 16, height: 16)
-                        .foregroundStyle(.token(.primary))
-                }
-            }
-            .padding(EdgeInsets(top: 13, leading: 14, bottom: 13, trailing: 14))
-            .frame(maxWidth: .infinity)
-        }
-        .hitTarget()
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        SettingsPageBack(title: title) { page = .root }
     }
 }

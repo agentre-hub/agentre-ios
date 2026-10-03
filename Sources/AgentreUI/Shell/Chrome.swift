@@ -75,12 +75,6 @@ public struct TopLevelHeader<Actions: View>: View {
     }
 }
 
-extension TopLevelHeader where Actions == EmptyView {
-    public init(_ title: Text) {
-        self.init(title) { EmptyView() }
-    }
-}
-
 extension View {
     /// 作为顶层页：隐去系统导航栏，顶上是自绘的大字标题与行内动作。
     public func topLevelHeader(_ title: Text, @ViewBuilder actions: () -> some View) -> some View {

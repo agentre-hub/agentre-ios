@@ -16,12 +16,12 @@ struct MeModelTests {
         let session: AppSession
         let model: MeModel
 
-        init(server: ServerAddress = .production) {
+        init(server: ServerAddress = .production, sleeper: any Sleeping = NeverSleeper()) {
             servers = InMemoryServerAddressStore(server)
             session = AppSession(credentials: credentials)
             model = MeModel(
                 account: account, servers: servers, preferences: preferences,
-                signOut: SignOut(session: session, store: EmptyStore())
+                signOut: SignOut(session: session, store: EmptyStore()), sleeper: sleeper
             )
         }
     }
@@ -95,37 +95,6 @@ struct MeModelTests {
         #expect(offline.credentials.stored == nil)
     }
 
-    @Test("撤销另一台设备：它从列表里消失，本机仍在登录态")
-    func revokeOther() async throws {
-        let h = Harness()
-        await h.model.load()
-        await h.model.revoke(studioMac)
-        #expect(await h.account.revoked == [9])
-        #expect(h.model.devices == [thisPhone])
-        #expect(h.session.phase == .signedIn)
-    }
-
-    @Test("撤销本机：与退出登录是同一个动作，目标传 0（决策 22）")
-    func revokeThisDevice() async throws {
-        let h = Harness()
-        await h.model.load()
-        await h.model.revoke(thisPhone)
-        #expect(await h.account.revoked == [0])
-        #expect(h.session.phase == .signedOut)
-        #expect(h.credentials.stored == nil)
-    }
-
-    @Test("撤销被拒呈现为事实，设备仍在列表里，不给重试")
-    func revokeRefused() async throws {
-        let h = Harness()
-        await h.model.load()
-        await h.account.configure(revokeError: AccountError.revokeRefused)
-        await h.model.revoke(studioMac)
-        #expect(h.model.failure == .revokeNeedsConsole)
-        #expect(h.model.failure?.exit == FailureExit.none)
-        #expect(h.model.devices == [thisPhone, studioMac])
-    }
-
     @Test("语言与外观：改了就存下，重开读回同一份")
     func preferences() async throws {
         let h = Harness()
@@ -158,6 +127,51 @@ struct MeModelTests {
         #expect(h.credentials.stored == nil)
     }
 
+    @Test("撤销本机迟迟不答（网络在而服务器不答，要等系统一分钟的超时）：到了期限照样清本地、回到登录屏，挂着的撤销随之撤回")
+    func signOutDoesNotWaitOutAHangingRevoke() async throws {
+        let h = Harness(sleeper: ImmediateSleeper())
+        await h.account.holdRevokes()
+        let signingOut = Task { await h.model.signOut() }
+        let signedOut = await settles { h.session.phase == .signedOut }
+        await h.account.releaseRevokes()
+        await signingOut.value
+        #expect(signedOut, "撤销挂住时没有按期限收手")
+        #expect(h.credentials.stored == nil)
+        #expect(await h.account.revokeAttempts == 1)
+    }
+
+    @Test("换服务器时原来那台迟迟不答：到了期限照样换地址、清本地")
+    func serverSwitchDoesNotWaitOutAHangingRevoke() async throws {
+        let h = Harness(sleeper: ImmediateSleeper())
+        await h.account.holdRevokes()
+        let switching = Task { await h.model.setServerAddress("http://docker.local:8443") }
+        let signedOut = await settles { h.session.phase == .signedOut }
+        await h.account.releaseRevokes()
+        #expect(await switching.value)
+        #expect(signedOut, "撤销挂住时没有按期限收手")
+        #expect(h.servers.load() == ServerAddress(string: "http://docker.local:8443"))
+    }
+
+    @Test("退出登录在途时再点一次：不再撤销、不再登出一遍——晚到的那一遍会把此后新登录的账号一并登出")
+    func secondSignOutWhileInFlightIsIgnored() async throws {
+        let h = Harness()
+        await h.account.holdRevokes()
+        let first = Task { await h.model.signOut() }
+        #expect(await settles { await h.account.revokeAttempts == 1 })
+        let secondReturned = Flag()
+        let second = Task { await h.model.signOut(); secondReturned.on = true }
+        // 第二次要么当场返回，要么又发了一次撤销（挂住）——两者先到其一。
+        _ = await settles {
+            let attempts = await h.account.revokeAttempts
+            return secondReturned.on || attempts > 1
+        }
+        await h.account.releaseRevokes()
+        await first.value
+        await second.value
+        #expect(await h.account.revokeAttempts == 1, "第二次点按又撤销了一次")
+        #expect(h.session.phase == .signedOut)
+    }
+
     @Test("退出登录：撤销本机被拒或连不上，也照样清本地、回到登录屏——不把用户困在已登录状态")
     func signOutClearsEvenWhenRevokeFails() async throws {
         let h = Harness()
@@ -166,6 +180,11 @@ struct MeModelTests {
         #expect(h.session.phase == .signedOut)
         #expect(h.credentials.stored == nil)
     }
+}
+
+@MainActor
+final class Flag {
+    var on = false
 }
 
 /// 什么都没有的本地库。

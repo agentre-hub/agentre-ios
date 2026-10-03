@@ -75,11 +75,27 @@ actor FakeSessionSource: MachineSessionSource {
         return MachineSessionPage(sessions: page, cursor: more ? String(end) : "", hasMore: more, total: Int64(matching.count))
     }
 
+    /// 只问不到这几台的计数（其余照答）。
+    var failingMachines: Set<String> = []
+    func setFailing(machines: Set<String>) { failingMachines = machines }
+    /// 挂住下一次计数请求，直到 `releaseCounts`。
+    private var holdNextCounts = false
+    private var heldCounts: CheckedContinuation<Void, Never>?
+    func holdNextCountRequest() { holdNextCounts = true }
+    var isHoldingCounts: Bool { heldCounts != nil }
+    func releaseCounts() { heldCounts?.resume(); heldCounts = nil }
+
     func counts(on machine: String) async throws -> MachineSessionCounts {
         countRequests += 1
+        // 挂住时记下的是请求那一刻的答案：晚到的是「那时」的计数。
+        let answer = countsByMachine[machine] ?? counts
+        if holdNextCounts {
+            holdNextCounts = false
+            await withCheckedContinuation { heldCounts = $0 }
+        }
         if cancelling { throw CancellationError() }
-        if failing { throw URLError(.timedOut) }
-        return countsByMachine[machine] ?? counts
+        if failing || failingMachines.contains(machine) { throw URLError(.timedOut) }
+        return answer
     }
 }
 

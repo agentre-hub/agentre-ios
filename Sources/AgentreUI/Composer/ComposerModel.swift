@@ -170,6 +170,19 @@ public final class ComposerModel {
         machineName = await identity.machineName(fingerprint: conversation.carrierFingerprint)
     }
 
+    /// 跟着身份目录刷新承载机器名，直到所在任务被取消：冷启动时机器名册常晚于打开对话到达，会话信息一行与导航栏副标题
+    /// 随之补上，机器改了名也跟着改。先订上再读一遍：订上之前到的那一次不丢。
+    public func followIdentity() async {
+        let changes = await identity.changes()
+        await refreshMachineName()
+        for await _ in changes { await refreshMachineName() }
+    }
+
+    /// 目录答不出时留着已有的名字。
+    private func refreshMachineName() async {
+        if let name = await identity.machineName(fingerprint: conversation.carrierFingerprint) { machineName = name }
+    }
+
     // MARK: 发送与排队
 
     /// 空闲时开新一轮；一轮在跑时这句话排进队列（插话），输入框照常可用。

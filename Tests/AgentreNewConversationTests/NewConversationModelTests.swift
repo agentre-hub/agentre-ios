@@ -94,4 +94,37 @@ struct NewConversationModelTests {
         await model.loadLandings(in: "fe")
         #expect(model.landing(of: "Coder", in: "fe") == .failed)
     }
+
+    @Test("再进「从项目里挑」重问落点：上次问到「离线」的那台此刻上线了，这一行跟着可用（不沿用整段登录期的旧答案）")
+    func reenteringThePickerAsksAgain() async throws {
+        let offline: @Sendable (DispatchPlanQuery) -> DispatchPlan = { query in
+            DispatchPlan(agentSyncID: query.agentSyncID, tiers: [
+                DispatchTier(rank: 1, backendSyncID: "b1", deviceName: "mini", backendType: "claudecode", availability: .offline),
+            ], chosen: nil)
+        }
+        let workspace = FakeWorkspace(agents: agents, planner: offline)
+        let model = NewConversationModel(workspace: workspace, store: FakeConversationStore())
+        await model.load()
+        await model.enterProjectPicker()
+        #expect(model.selectedProjectID == "root")
+        #expect(model.landing(of: "reviewer", in: "root") == .resolved(.unavailable(device: "mini", reason: .offline)))
+
+        await workspace.set(planner: plan(for:))
+        await model.load()
+        await model.enterProjectPicker()
+        #expect(model.landing(of: "reviewer", in: "root") == .resolved(.landsOn(device: "mini", cwd: "/srv/root")))
+    }
+
+    @Test("上次选中的项目已在别处删掉：再进「从项目里挑」落回第一个项目，而不是一片空白")
+    func selectedProjectGoneFallsBackToFirst() async throws {
+        let workspace = FakeWorkspace(agents: agents)
+        let model = NewConversationModel(workspace: workspace, store: FakeConversationStore())
+        await model.load()
+        await model.enterProjectPicker()
+        await model.selectProject("deep")
+        await workspace.set(projects: projectTree.filter { $0.syncID != "deep" })
+        await model.load()
+        await model.enterProjectPicker()
+        #expect(model.selectedProjectID == "root")
+    }
 }

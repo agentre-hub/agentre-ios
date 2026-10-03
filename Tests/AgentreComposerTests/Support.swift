@@ -274,6 +274,26 @@ struct StubIdentityDirectory: IdentityDirectory {
     func changes() async -> AsyncStream<Void> { AsyncStream { $0.finish() } }
 }
 
+/// 机器名会变的身份目录：换名字即告诉订阅者「目录变了」，与真实目录取到一次新材料同形。
+actor ChangingIdentityDirectory: IdentityDirectory {
+    private var name: String?
+    private var observers: [AsyncStream<Void>.Continuation] = []
+
+    func set(name: String?) {
+        self.name = name
+        for observer in observers { observer.yield() }
+    }
+
+    func projects() -> [WorkspaceProject]? { nil }
+    func machineName(fingerprint: String) -> String? { name }
+
+    func changes() -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        observers.append(continuation)
+        return stream
+    }
+}
+
 struct FakeMentionSource: ComposerMentionSource {
     var sources = ComposerMentionSources(
         agents: [ComposerMentionAgent(id: 7, name: "reviewer"), ComposerMentionAgent(id: 8, name: "writer")],

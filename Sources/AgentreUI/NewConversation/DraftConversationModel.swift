@@ -206,15 +206,16 @@ public final class DraftConversationModel {
         )
         phase = .sending
         sentText = userText
+        let pins: DispatchPins
         do {
-            try await dispatcher.dispatch(request)
+            pins = try await dispatcher.dispatch(request)
         } catch {
             sentText = nil
             phase = .dispatchFailed(error as? DispatchFailure ?? .rejected, machine: target.deviceName)
             return
         }
         text = ""
-        await record(StartedConversation(request: request))
+        await record(StartedConversation(request: request, pins: pins))
     }
 
     /// 已开始但未入列时重试落库。不再派发：那台机器上已经有这条会话了。

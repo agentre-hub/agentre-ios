@@ -111,7 +111,6 @@ struct MessagesModelTests {
         let following = Task { await model.follow() }
         defer { following.cancel() }
         try await eventually("follow subscribed") { await store.observerCount > 0 }
-        try await Task.sleep(for: .milliseconds(20))
 
         await identity.set(machines: ["fp-a": "mac-studio"])
         await identity.set(projects: [WorkspaceProject(syncID: "proj-1", name: "agentre-server")])
@@ -121,6 +120,40 @@ struct MessagesModelTests {
         #expect(model.conversations.map(\.key.conversationID) == ["in-project"])
         model.query = "MAC-STUDIO"
         #expect(model.conversations.map(\.key.conversationID) == ["in-project"])
+    }
+
+    @Test("目录在列表读完之后、跟随订上之前到达：跟随订上后先补读一遍，不丢这一次")
+    func directoryBeforeFollowSubscribesIsNotLost() async throws {
+        var inProject = row("in-project", last: 200)
+        inProject.projectSyncID = "proj-1"
+        let identity = FakeIdentityDirectory()
+        let model = MessagesModel(store: FakeConversationStore([inProject]), identity: identity)
+        await model.load()
+        let conversation = try #require(model.conversations.first)
+        #expect(model.glyph(for: conversation) == .blank)
+        // 目录此刻取到了，订阅者还一个都没有：这一声没人听见。
+        await identity.set(projects: [WorkspaceProject(syncID: "proj-1", name: "agentre-server")])
+        let following = Task { await model.follow() }
+        defer { following.cancel() }
+        try await eventually("glyph resolved") { model.glyph(for: conversation) != .blank }
+    }
+
+    @Test("机器改了名：目录取到新名字后按新名字搜得到，旧名字搜不到")
+    func renamedMachineIsSearchedByItsNewName() async throws {
+        var carried = row("carried", last: 200)
+        carried.carrierFingerprint = "fp-a"
+        let identity = FakeIdentityDirectory(machines: ["fp-a": "old-box"])
+        let model = MessagesModel(store: FakeConversationStore([carried]), identity: identity)
+        await model.load()
+        model.query = "old-box"
+        #expect(model.conversations.map(\.key.conversationID) == ["carried"])
+        let following = Task { await model.follow() }
+        defer { following.cancel() }
+        await identity.set(machines: ["fp-a": "new-box"])
+        model.query = "new-box"
+        try await eventually("new name searchable") { model.conversations.map(\.key.conversationID) == ["carried"] }
+        model.query = "old-box"
+        #expect(model.conversations.isEmpty)
     }
 
     @Test("冷启动、没有任何中继：真实本地库里已保存的会话直接出现在列表上")

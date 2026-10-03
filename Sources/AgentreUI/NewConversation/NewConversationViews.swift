@@ -270,10 +270,7 @@ public struct NewConversationProjectPicker: View {
             .newConversationList()
         }
         .background(.token(.bg))
-        .task {
-            guard model.selectedProjectID == nil, let first = model.projectRows.first else { return }
-            await model.selectProject(first.id)
-        }
+        .task { await model.enterProjectPicker() }
     }
 
     private var pills: some View {

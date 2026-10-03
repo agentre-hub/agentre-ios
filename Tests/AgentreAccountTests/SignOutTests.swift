@@ -108,7 +108,7 @@ struct SignOutTests {
             account: account, servers: InMemoryServerAddressStore(), preferences: InMemoryDisplayPreferencesStore(), signOut: signOut
         )
 
-        await model.revoke(thisPhone)
+        await model.signOut()
 
         #expect(await wire.requests.map(\.url.path).filter { $0 == "/v1/oauth/token/refresh" }.isEmpty)
         #expect(rejections.value == 0)

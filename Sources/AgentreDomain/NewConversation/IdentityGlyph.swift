@@ -17,10 +17,9 @@ public enum IdentityColor: Sendable, Equatable {
         self = .slot(n)
     }
 
+    /// 与宿主同一判据：词汇表全集逐字认（`agent-01`、`agent-+3` 不是词汇表里的 token，宿主画中性）。
     private static func slotNumber(in token: String) -> Int? {
-        guard token.hasPrefix("agent-") else { return nil }
-        guard let n = Int(token.dropFirst("agent-".count)), (1...16).contains(n) else { return nil }
-        return n
+        (1...16).first { "agent-\($0)" == token }
     }
 }
 

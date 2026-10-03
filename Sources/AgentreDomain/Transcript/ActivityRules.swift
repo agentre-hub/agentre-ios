@@ -116,7 +116,6 @@ extension ActivityStep {
             let command = result.flatMap { CommandResult(parsing: $0.text) }
             facts.resultText = command?.output ?? result?.text ?? ""
             facts.pending = result == nil ? pendingOutcome : nil
-            if let code = command?.exitCode, code != 0 { facts.exitCode = code }
             facts.failed = ActivityRules.isFailed(self, unresolvedFailed: pendingOutcome == .failed)
             if ActivityRules.isBackgroundRunning(use) {
                 facts.backgroundRunning = true

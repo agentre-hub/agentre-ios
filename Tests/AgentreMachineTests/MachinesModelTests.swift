@@ -49,13 +49,35 @@ struct MachinesModelTests {
         ]))
         let sessions = FakeSessionSource([])
         await sessions.setCounts(MachineSessionCounts(total: 5, running: 1, waiting: 2))
+        await sessions.setFailing(machines: ["online-fails"])
         let model = MachinesModel(roster: roster, sessions: sessions)
         await model.load()
         #expect(model.counts["online-ok"] == MachineSessionCounts(total: 5, running: 1, waiting: 2))
+        #expect(model.counts["online-fails"] == nil, "这一台问不到：没有这一项，不是零，也不连累别的机器")
         #expect(model.counts["offline"] == nil)
+        await sessions.setFailing(machines: [])
 
         await sessions.setFailing(true)
         await model.load()
         #expect(model.counts["online-ok"] == nil, "问不到：没有这一项，不是零")
+    }
+
+    @Test("先发的那次载入晚到：不盖掉后发那次已经落下的名册与计数（下拉刷新与进屏载入叠在一起）")
+    func staleLoadDoesNotOverwrite() async throws {
+        let roster = FakeRoster(.success([Machine(id: 1, fingerprint: "box", name: "box", online: true)]))
+        let sessions = FakeSessionSource([])
+        await sessions.setCounts(MachineSessionCounts(total: 1, running: 0, waiting: 0), for: "box")
+        await sessions.holdNextCountRequest()
+        let model = MachinesModel(roster: roster, sessions: sessions)
+        let first = Task { await model.load() }
+        try await eventually("first load's count in flight") { await sessions.isHoldingCounts }
+
+        await sessions.setCounts(MachineSessionCounts(total: 7, running: 2, waiting: 1), for: "box")
+        await model.load()
+        #expect(model.counts["box"] == MachineSessionCounts(total: 7, running: 2, waiting: 1))
+
+        await sessions.releaseCounts()
+        await first.value
+        #expect(model.counts["box"] == MachineSessionCounts(total: 7, running: 2, waiting: 1), "先发的那次晚到，把计数退回了旧值")
     }
 }

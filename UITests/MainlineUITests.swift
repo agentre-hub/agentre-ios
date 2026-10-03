@@ -56,6 +56,8 @@ final class MainlineUITests: XCTestCase {
                 .hold
             )
         }
+        // 种下的帧按挂钟盖时刻，App 也按挂钟分日：跨过午夜时日期胶囊如实写「昨天」。
+        let seededAt = Date()
 
         let app = launch(against: server, language: language, locale: locale)
         let screen = Screen(app: app, test: self, prefix: "\(language)-\(appearance.rawValue)")
@@ -63,6 +65,16 @@ final class MainlineUITests: XCTestCase {
         /// 标签含 `text` 的任意元素（合并朗读的一行、按钮或静态文字）。
         func element(containing text: String) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+        }
+        /// 那一天的日期胶囊：按查看这一刻与等待窗口末尾各自该写的那一种认（今天 / 昨天），不按种下那一刻定死「今天」。
+        func dayCapsule(stampedAt stamp: Date) -> XCUIElement {
+            let calendar = Calendar.current
+            let prefixes = Set([Date(), Date().addingTimeInterval(Screen.timeout)].map { now in
+                let key = calendar.isDate(stamp, inSameDayAs: now) ? "transcript.day.today %@" : "transcript.day.yesterday %@"
+                return String(format: copy("Conversation", key), "")
+            })
+            let predicates = prefixes.map { NSPredicate(format: "label CONTAINS %@", $0) }
+            return app.descendants(matching: .any).matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
         }
         signIn(app, screen, copy, server)
 
@@ -127,7 +139,7 @@ final class MainlineUITests: XCTestCase {
         // 署名是后端显示名加这一轮收场报的模型；组头耗时「分:秒」；Subagent 一行；展开后每步行尾按种类写结果。
         screen.tap(screen.text(Self.savedTitle), "the saved conversation")
         screen.expect(screen.text(FakeAgentred.boxName), "carrier machine name as the subtitle")
-        screen.expect(element(containing: String(format: copy("Conversation", "transcript.day.today %@"), "")), "today's date capsule")
+        screen.expect(dayCapsule(stampedAt: seededAt), "the seeded day's date capsule")
         screen.expect(element(containing: FakeAgentred.model), "the model in the reply signature")
         screen.expect(element(containing: String(format: copy("Conversation", "subagent.title %@"), Self.activitySubagent)), "one-line Subagent")
         let header = app.buttons.matching(NSPredicate(

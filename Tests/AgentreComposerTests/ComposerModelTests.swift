@@ -6,6 +6,20 @@ import Testing
 @MainActor
 @Suite("输入区模型")
 struct ComposerModelTests {
+    @Test("承载机器名晚到（冷启动时机器名册还没答）：输入区跟着身份目录补上，会话信息与导航栏副标题同一个名字")
+    func machineNameFollowsTheDirectory() async throws {
+        let identity = ChangingIdentityDirectory()
+        let model = composer(identity: identity)
+        await model.load()
+        #expect(model.machineName == nil)
+        let following = Task { await model.followIdentity() }
+        defer { following.cancel() }
+        await identity.set(name: "mac-studio")
+        try await eventually("machine name arrives") { model.machineName == "mac-studio" }
+        await identity.set(name: "mac-renamed")
+        try await eventually("machine name follows a rename") { model.machineName == "mac-renamed" }
+    }
+
     // MARK: 发送与排队
 
     @Test("空闲时发送：开新一轮，输入框清空")

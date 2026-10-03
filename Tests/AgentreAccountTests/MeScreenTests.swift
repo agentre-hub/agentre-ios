@@ -51,8 +51,11 @@ struct MeScreenTests {
         let report = await hitTargetReport(of: view(model), size: Self.tall)
         #expect(report.targets.count == Self.placedTargets + 1, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
-        let labels = await HostedScreen(view(model), size: Self.tall).labels().joined(separator: "\n")
+        let elements = await HostedScreen(view(model), size: Self.tall).labels()
+        let labels = elements.joined(separator: "\n")
         #expect(labels.contains(Self.text("failure.timedOut")), "\(labels)")
+        // 设备列表一次都没取到：条数不知道，不写成 0（本机自己就是一台已授权设备）。
+        #expect(!elements.contains { $0.hasPrefix(Self.text("me.devices")) && $0.hasSuffix("0") }, "\(elements)")
     }
 
     @Test("屏上读得到：账号卡（显示名、邮箱）、主机名、已授权设备条数、语言与外观的当前取值、关于版本、退出登录")

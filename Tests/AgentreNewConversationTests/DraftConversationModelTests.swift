@@ -241,6 +241,34 @@ struct DraftConversationModelTests {
         ))
     }
 
+    @Test("派发收尾钉住的才记进本地那一行：钉不住的那一项记作没选——机器的会话行上没有它，记下了下一次刷新就读成别的端改回了不指定")
+    func onlyPinnedChoicesAreRecorded() async throws {
+        let dispatcher = FakeDispatcher()
+        await dispatcher.setPins(DispatchPins(modelTarget: false, reasoningEffort: true))
+        let recorder = FakeRecorder()
+        let model = draft(dispatcher: dispatcher, recorder: recorder, options: FakeToolOptions())
+        await model.loadPlan()
+        model.chooseModel(sampleToolOptions.models[1])
+        model.chooseReasoningEffort("high")
+        model.text = "hi"
+        await model.send()
+        let started = try #require(await recorder.recorded.first)
+        #expect(started.providerKey.isEmpty)
+        #expect(started.modelKey.isEmpty)
+        #expect(started.reasoningEffort == "high")
+
+        let pinned = FakeDispatcher()
+        let pinnedRecorder = FakeRecorder()
+        let both = draft(dispatcher: pinned, recorder: pinnedRecorder, options: FakeToolOptions())
+        await both.loadPlan()
+        both.chooseModel(sampleToolOptions.models[1])
+        both.text = "hi"
+        await both.send()
+        let recorded = try #require(await pinnedRecorder.recorded.first)
+        #expect(recorded.providerKey == "anthropic")
+        #expect(recorded.modelKey == "opus")
+    }
+
     @Test("一项都不选：三格留空，按 Agent 与后端的既有配置跑")
     func noToolChoicesLeaveFieldsEmpty() async throws {
         let dispatcher = FakeDispatcher()
@@ -289,6 +317,22 @@ struct DraftConversationModelTests {
         model.text = "hi"
         await model.send()
         #expect(await dispatcher.requests.first?.settings == ComposerRunSettings())
+    }
+
+    @Test("换了机器之后才到的上一台的候选不落：工具行只列此刻选中那一台的")
+    func staleToolOptionsAreDropped() async throws {
+        let options = FakeToolOptions()
+        let boxOptions = DraftToolOptions(permissionModes: ["default"], models: [])
+        await options.set(boxOptions, for: "box")
+        await options.holdNextQuery()
+        let model = draft(options: options)
+        let first = Task { await model.loadPlan() }
+        try await eventually("mini's options in flight") { await options.isHolding }
+        await model.pick(tiers[4])
+        #expect(model.toolOptions == boxOptions)
+        await options.release()
+        await first.value
+        #expect(model.toolOptions == boxOptions, "mini 的候选晚到，盖掉了 box 的")
     }
 
     @Test("Pi 后端不提供权限模式这一项：选不上，派发也不带")

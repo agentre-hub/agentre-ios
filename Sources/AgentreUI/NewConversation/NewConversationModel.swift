@@ -72,6 +72,17 @@ public final class NewConversationModel {
         landings[projectSyncID]?[agentSyncID]
     }
 
+    /// 进「从项目里挑」：上次选中的项目还在就留着它，不在了（别处删掉了）或没选过就取第一个；落点重问一遍——
+    /// 模型跟登录期同寿，上次问到的「离线」「没配路径」此刻未必还成立。
+    public func enterProjectPicker() async {
+        let current = selectedProjectID.flatMap { id in projectRows.first { $0.id == id } } ?? projectRows.first
+        guard let current else {
+            selectedProjectID = nil
+            return
+        }
+        await selectProject(current.id)
+    }
+
     /// 选中一个项目并问它的落点。
     public func selectProject(_ projectSyncID: String) async {
         selectedProjectID = projectSyncID
@@ -79,14 +90,10 @@ public final class NewConversationModel {
     }
 
     /// 项目下的每个 Agent 各带这个项目问一次派发计划：落点（机器与工作目录）只有它说得准——清单里的
-    /// `current` 不看项目。问到过的不再问；没问到的下次选中时重问。
+    /// `current` 不看项目。每次选中都重问（机器会上线下线）；新答复到之前那一行留着上次的。
     public func loadLandings(in projectSyncID: String) async {
         let membership = membership(of: projectSyncID)
-        let known = landings[projectSyncID] ?? [:]
-        let pending = (membership.direct + membership.inherited.flatMap(\.agents)).map(\.syncID).filter {
-            if case .resolved = known[$0] { return false }
-            return true
-        }
+        let pending = (membership.direct + membership.inherited.flatMap(\.agents)).map(\.syncID)
         guard !pending.isEmpty else { return }
         let workspace = workspace
         await withTaskGroup(of: (String, ProjectLandingState).self) { group in

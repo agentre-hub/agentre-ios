@@ -19,7 +19,6 @@ public struct MachineDetailView: View {
     public var body: some View {
         content
             .background(.token(.bg))
-            .navigationTitle(Text(verbatim: model.machine.name))
             .task {
                 await model.load()
                 await model.follow()

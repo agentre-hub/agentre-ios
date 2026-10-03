@@ -151,8 +151,10 @@ struct Screen {
     /// tab 栏在界面上：栏本身与三枚按钮都在。
     func expectTabBar(_ step: String, file: StaticString = #filePath, line: UInt = #line) {
         expect(tabBar, "tab bar on \(step)", file: file, line: line)
+        // 不用 2 秒的短窗口：满载下一次无障碍查询就要好几秒（见 `expectGone`），栏在而按钮被判「没出现」。
+        // 栏在时按钮当场就在，窗口长短只影响失败时等多久。
         for item in ShellTab.allCases {
-            expect(tab(item), "\(item.rawValue) on \(step)", timeout: 2, file: file, line: line)
+            expect(tab(item), "\(item.rawValue) on \(step)", file: file, line: line)
         }
     }
 

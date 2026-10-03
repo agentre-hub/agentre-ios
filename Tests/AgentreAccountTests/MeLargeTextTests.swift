@@ -57,7 +57,7 @@ struct MeLargeTextTests {
     @Test("accessibility-extra-large 下 iPhone 17 宽度：每台设备的名字完整显示、不被挤成窄条；平台单行完整、不逐字折行")
     func deviceRowsReadableAtAccessibilitySize() async throws {
         let model = await loadedModel()
-        #expect(model.devices.count == Self.devices.count)
+        #expect(model.devices?.count == Self.devices.count)
         let screen = HostedScreen(
             AuthorizedDevicesScreen(model: model).environment(\.dynamicTypeSize, .accessibility3),
             size: Self.iPhone17
