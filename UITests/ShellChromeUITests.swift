@@ -10,6 +10,78 @@ final class ShellChromeUITests: XCTestCase {
 
     private static let firstMessage = "Sketch the relay handshake"
 
+    // 键盘开着时离开二级页（规格「全局框架」：键盘弹起时 tab 栏也不从键盘后面透出）：回到顶层后栏回到冷启动时
+    // 的同一组帧，三项完整可见；切 tab 后仍在原位。只断言「在」会放过半截掉出屏外的栏（report-17 G2）。
+    func testTabBarStaysPutAfterLeavingMachineDetailWithKeyboardUp() throws {
+        continueAfterFailure = false
+        let copy = Copy(language: "zh-Hans")
+        let server = try FakeAgentreServer(machines: [FakeAgentred()])
+        defer { server.stop() }
+        let app = launch(against: server, language: "zh-Hans", locale: "zh_CN")
+        let screen = Screen(app: app, test: self, prefix: "tabbar-machine-detail")
+        signIn(app, screen, copy, server)
+        screen.expectTabBar("the message list at cold start")
+        let home = screen.tabBarFrames()
+
+        screen.tap(screen.tab(.machines), "Machines tab")
+        let machineRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", FakeAgentred.boxName)).firstMatch
+        screen.tap(machineRow, "machine row")
+        screen.tap(screen.input(copy("Machines", "machines.detail.search")), "machine detail search field")
+        screen.expect(app.keyboards.firstMatch, "keyboard on machine detail")
+        screen.expectNoTabBar("machine detail with the keyboard up")
+        screen.tap(screen.back, "back from machine detail with the keyboard up")
+        screen.expectGone(screen.back, "machine detail")
+        screen.expectTabBar(at: home, "the machine roster after leaving machine detail with the keyboard up")
+        screen.shot("machines after leaving detail with the keyboard up")
+        screen.tap(screen.tab(.messages), "Messages tab")
+        screen.expectTabBar(at: home, "the message list after switching tabs")
+        screen.tap(screen.tab(.me), "Me tab")
+        screen.expectTabBar(at: home, "Me after switching tabs")
+    }
+
+    func testTabBarStaysPutAfterLeavingConversationWithKeyboardUp() throws {
+        continueAfterFailure = false
+        let copy = Copy(language: "zh-Hans")
+        let server = try FakeAgentreServer(machines: [FakeAgentred()])
+        defer { server.stop() }
+        let app = launch(against: server, language: "zh-Hans", locale: "zh_CN")
+        let screen = Screen(app: app, test: self, prefix: "tabbar-conversation")
+        signIn(app, screen, copy, server)
+        screen.expectTabBar("the message list at cold start")
+        let home = screen.tabBarFrames()
+
+        // 新建一条对话：首条发出后它在消息页的栈上打开。
+        screen.tap(screen.button(copy("NewConversation", "newconv.title")), "new conversation")
+        let agentRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", FakeAgentreServer.agentName)).firstMatch
+        screen.tap(agentRow, "agent row")
+        screen.type(Self.firstMessage, into: screen.input(copy("NewConversation", "newconv.message")), "draft message field")
+        screen.tap(screen.button(copy("NewConversation", "newconv.send")), "send the first message")
+        screen.expectOnScreen(screen.text(Self.firstMessage), "the first message in the conversation")
+
+        // 输入框聚焦后点返回。
+        screen.tap(screen.input(copy("Composer", "composer.message")), "composer field")
+        screen.expect(app.keyboards.firstMatch, "keyboard on the conversation")
+        screen.tap(screen.back, "back from the conversation with the keyboard up")
+        screen.expectGone(screen.back, "the conversation after tapping back")
+        screen.expectTabBar(at: home, "the message list after tapping back with the keyboard up")
+        screen.tap(screen.tab(.machines), "Machines tab")
+        screen.expectTabBar(at: home, "the machine roster after switching tabs")
+        screen.tap(screen.tab(.messages), "Messages tab")
+        screen.expectTabBar(at: home, "the message list after switching back")
+
+        // 输入框聚焦后边缘右滑。
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", Self.firstMessage)).firstMatch
+        screen.tap(row, "the conversation row")
+        screen.tap(screen.input(copy("Composer", "composer.message")), "composer field again")
+        screen.expect(app.keyboards.firstMatch, "keyboard on the conversation again")
+        screen.swipeBackFromEdge()
+        screen.expectGone(screen.back, "the conversation after the edge swipe")
+        screen.expectTabBar(at: home, "the message list after the edge swipe with the keyboard up")
+        screen.shot("messages after the edge swipe with the keyboard up")
+        screen.tap(screen.tab(.me), "Me tab")
+        screen.expectTabBar(at: home, "Me after switching tabs")
+    }
+
     private func shellChrome(language: String, locale: String, dark: Bool) throws {
         continueAfterFailure = false
         let copy = Copy(language: language)

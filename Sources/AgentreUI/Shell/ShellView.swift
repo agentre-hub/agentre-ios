@@ -85,8 +85,9 @@ public struct ShellView<Messages: View, Machines: View, Me: View>: View {
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottom in
-            // 键盘弹起时底部安全区算进了键盘；那时栏不在，只记收起时（主屏指示条）的那一段。
-            if !keyboardVisible { bottomSafeArea = bottom }
+            // 每次都记下最新值：键盘弹起时它算进了键盘，但那时栏不在；键盘收起时它变回主屏指示条那一段，
+            // 而这次变化先于 keyboardWillHide 到达——按键盘状态挑着记，就会把键盘那段永远留下（report-17 G2）。
+            bottomSafeArea = bottom
         }
         .onChange(of: selection, initial: true) { _, tab in mounted.insert(tab) }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in

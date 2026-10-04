@@ -158,6 +158,28 @@ struct Screen {
         }
     }
 
+    /// tab 栏与三枚按钮此刻在屏上的帧（栏本身在前）。
+    func tabBarFrames() -> [CGRect] {
+        [tabBar.frame] + ShellTab.allCases.map { tab($0).frame }
+    }
+
+    /// tab 栏回到 `expected` 那一组帧（冷启动时量下的位置），且整条栏落在窗口里。栏可能还在入场动画里：
+    /// 轮询到相等为止，过了 `timeout` 仍不等即失败并报出当时的帧。
+    func expectTabBar(at expected: [CGRect], _ step: String, file: StaticString = #filePath, line: UInt = #line) {
+        expectTabBar(step, file: file, line: line)
+        let deadline = Date().addingTimeInterval(Screen.timeout)
+        var actual = tabBarFrames()
+        while actual != expected, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            actual = tabBarFrames()
+        }
+        let window = app.windows.firstMatch.frame
+        if actual != expected || !window.contains(actual[0]) {
+            attachState("tab bar moved on \(step)")
+            XCTFail("\(prefix): tab bar on \(step) sits at \(actual), expected \(expected) inside \(window)", file: file, line: line)
+        }
+    }
+
     /// 界面上不存在任何 tab 栏元素（不是被盖住，是不在）。
     func expectNoTabBar(_ step: String, file: StaticString = #filePath, line: UInt = #line) {
         expectGone(tabBar, "tab bar on \(step)", timeout: 5, file: file, line: line)
