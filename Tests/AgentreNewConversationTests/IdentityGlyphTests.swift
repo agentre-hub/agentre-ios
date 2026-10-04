@@ -73,6 +73,11 @@ struct IdentityGlyphTests {
         #expect(IdentityGlyph.project("", in: []) == .neutral)
     }
 
+    @Test("没挂项目（空 syncID）且项目树还没取到：仍是中性字形——空白只给挂着项目的会话")
+    func projectGlyphNoneBeforeDirectoryLoadsIsNeutral() {
+        #expect(IdentityGlyph.project("", in: nil) == .neutral)
+    }
+
     @Test("项目树已经取到，但这个 syncID 不在其中：中性字形")
     func projectGlyphMissingFromLoadedListIsNeutral() {
         let project = WorkspaceProject(syncID: "other", name: "X")

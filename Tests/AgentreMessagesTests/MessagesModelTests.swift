@@ -122,6 +122,31 @@ struct MessagesModelTests {
         #expect(model.conversations.map(\.key.conversationID) == ["in-project"])
     }
 
+    @Test("不属于任何项目的会话：目录取到之前与之后都是中性字形；同一列表里挂着项目的会话先空白、后解出身份")
+    func projectlessConversationIsNeutralBeforeAndAfterDirectoryLoads() async throws {
+        let projectless = row("projectless", last: 300)
+        var inProject = row("in-project", last: 200)
+        inProject.projectSyncID = "proj-1"
+        let store = FakeConversationStore([projectless, inProject])
+        let identity = FakeIdentityDirectory()
+        let model = MessagesModel(store: store, identity: identity)
+        await model.load()
+        let none = try #require(model.conversations.first { $0.key.conversationID == "projectless" })
+        let attached = try #require(model.conversations.first { $0.key.conversationID == "in-project" })
+        #expect(model.glyph(for: none) == .neutral)
+        #expect(model.glyph(for: attached) == .blank)
+
+        let following = Task { await model.follow() }
+        defer { following.cancel() }
+        try await eventually("follow subscribed") { await store.observerCount > 0 }
+        var project = WorkspaceProject(syncID: "proj-1", name: "agentre-server")
+        project.color = .slot(5)
+        await identity.set(projects: [project])
+        try await eventually("glyph resolved") { model.glyph(for: attached) != .blank }
+        #expect(model.glyph(for: attached) == .identity(letter: "a", color: .slot(5)))
+        #expect(model.glyph(for: none) == .neutral)
+    }
+
     @Test("目录在列表读完之后、跟随订上之前到达：跟随订上后先补读一遍，不丢这一次")
     func directoryBeforeFollowSubscribesIsNotLost() async throws {
         var inProject = row("in-project", last: 200)

@@ -27,6 +27,17 @@ struct AvatarGlyphTests {
         #expect(appearance.letter == nil)
     }
 
+    @Test("中性字形填的是 agent-neutral，不是空白字形那样的底色（report-17 G4：无项目会话画成了 surface-2）")
+    func neutralFillsAgentNeutral() {
+        #expect(AvatarGlyphAppearance(.neutral).fill.token == .agentNeutral)
+    }
+
+    @Test("身份档填它自己的 token；空白不填任何色")
+    func identityAndBlankFillTokens() {
+        #expect(AvatarGlyphAppearance(.identity(letter: "F", color: .slot(4))).fill.token == .agent4)
+        #expect(AvatarGlyphAppearance(.blank).fill.token == nil)
+    }
+
     @Test("空白字形：不填任何身份色（只描边），不带字——不能与中性字形混淆")
     func blankIsNotNeutral() {
         let appearance = AvatarGlyphAppearance(.blank)

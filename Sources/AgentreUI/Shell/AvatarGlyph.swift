@@ -27,10 +27,19 @@ struct AvatarGlyphAppearance: Equatable {
     enum Fill: Equatable {
         /// 项目或 Agent 解出来了：填它的身份色。
         case identity(ColorToken)
-        /// 不属于任何项目：中性填色。
+        /// 不属于任何项目：填 `agent-neutral`，与身份色解析不出时的兜底同一枚。
         case neutral
         /// 项目已挂但项目树还没取到：不填色，只描边——空白不是中性，是「此刻不知道」。
         case blank
+
+        /// 实际填的那一枚 token；空白不填色，为 nil。
+        var token: ColorToken? {
+            switch self {
+            case .identity(let token): token
+            case .neutral: IdentityColor.neutral.token
+            case .blank: nil
+            }
+        }
     }
 
     let fill: Fill
@@ -96,12 +105,9 @@ public struct AvatarGlyph: View {
 
     @ViewBuilder private var shape: some View {
         let corner = metrics.cornerRadius
-        switch appearance.fill {
-        case .identity(let token):
+        if let token = appearance.fill.token {
             RoundedRectangle(cornerRadius: corner).fill(.token(token))
-        case .neutral:
-            RoundedRectangle(cornerRadius: corner).fill(.token(.surface2))
-        case .blank:
+        } else {
             RoundedRectangle(cornerRadius: corner).strokeBorder(.token(.line))
         }
     }

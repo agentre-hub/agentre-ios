@@ -10,8 +10,8 @@ struct ConversationScreen: View {
     let key: ConversationKey
     let onDeleted: () -> Void
     @State private var model: ConversationScreenModel?
-    /// 项目树还没取到时是空白字形（我们此刻不知道它属于哪个项目）。
-    @State private var glyph = IdentityGlyph.blank
+    /// 账号的项目树；一次都没取到过时为 nil。
+    @State private var projects: [WorkspaceProject]?
     @State private var showsInfo = false
     @Environment(\.isOffline) private var isOffline
 
@@ -19,6 +19,13 @@ struct ConversationScreen: View {
     private var title: String {
         guard let model else { return "" }
         return model.conversation.title.isEmpty ? key.conversationID : model.conversation.title
+    }
+
+    /// 没挂项目的会话不必等项目树，一开始就是中性字形；挂着项目而项目树还没取到时才是空白
+    /// （此刻不知道它属于哪个项目）。会话本身还没读出来时同样不知道，也是空白。
+    private var glyph: IdentityGlyph {
+        guard let model else { return .blank }
+        return .project(model.conversation.projectSyncID, in: projects)
     }
 
     var body: some View {
@@ -63,13 +70,13 @@ struct ConversationScreen: View {
             if model == nil { model = await services.conversationModel(for: key) }
             // 进来就是读过了（不论从消息列表还是机器详情进来）；离开时把开着期间到的活动一并记成已读。
             try? await services.store.markRead(key)
-            guard let conversation = model?.conversation else { return }
+            guard model != nil else { return }
             // 目录晚到（冷启动时 REST 还没答、离线后才联网）时，空白字形随之补上。
             let identity = services.identity
             let changes = await identity.changes()
-            glyph = IdentityGlyph.project(conversation.projectSyncID, in: await identity.projects())
+            projects = await identity.projects()
             for await _ in changes {
-                glyph = IdentityGlyph.project(conversation.projectSyncID, in: await identity.projects())
+                projects = await identity.projects()
             }
         }
         .onDisappear {
