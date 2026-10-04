@@ -1,3 +1,4 @@
+import AgentreDesign
 import AgentreDomain
 import AgentreTestSupport
 import Foundation
@@ -181,7 +182,7 @@ struct MachineScreensTests {
         #expect(labels.contains(Self.text("machines.detail.search")))
     }
 
-    @Test("详情：会话的状态不只靠颜色——运行中与等你处理的行各带一枚写明状态的图标，闲着的行不带")
+    @Test("详情：会话的状态不只靠颜色——每行的状态点读出状态名，闲着的行不读成运行中或等你处理")
     func detailStatusIsNotColourOnly() async throws {
         let model = await detail()
         let labels = await HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) }).labels()
@@ -191,8 +192,30 @@ struct MachineScreensTests {
         #expect(running.contains(status("messages.status.running")), "\(running)")
         let idle = try #require(labels.first { $0.contains("Refactor relay") }, "\(labels)")
         #expect(!idle.contains(status("messages.status.running")) && !idle.contains(status("messages.status.waiting")), "\(idle)")
-        // 未保存的行不是按钮，状态图标自成一个元素；顶上计数的「等你处理」是另一个。
+        // 未保存的行不是按钮，状态点自成一个元素；顶上计数的「等你处理」是另一个。
         #expect(labels.filter { $0 == status("messages.status.waiting") }.count == 2, "\(labels)")
+    }
+
+    @Test("详情：闲着（含中断）的行也有状态点，不留一块空白；点在行首、标题之前")
+    func idleRowsHaveStatusDot() async throws {
+        let source = FakeSessionSource([
+            session("c-interrupted", title: "Interrupted run", lifecycle: "interrupted"),
+            session("c-idle", title: "Idle chat"),
+        ])
+        let model = MachineDetailModel(machine: onlineMachine(), sessions: source, store: FakeSavingStore(), transfer: FakeTransfer(), pageSize: 10)
+        await model.load()
+        let screen = HostedScreen(NavigationStack { MachineDetailView(model: model, onOpen: { _ in }) })
+        let idle = Self.text("machines.detail.status.idle")
+        let labels = await screen.labels()
+        // 未保存的行不是按钮：每行的状态点自成一个元素。
+        #expect(labels.filter { $0 == idle }.count == 2, "\(labels)")
+        let dot = try #require(await screen.frame(of: idle), "闲着的行没有状态点")
+        let title = try #require(await screen.frame(of: "Interrupted run"))
+        #expect(dot.width > 0 && dot.height > 0, "\(dot)")
+        #expect(dot.maxX <= title.minX, "状态点 \(dot) 应在标题 \(title) 之前")
+        // 点的颜色（规格「06」与稿子）：运行中 run、等你处理 amber，其余一律 idle。
+        let activities: [ConversationActivity] = [.typing, .waiting, .failed, .idle]
+        #expect(activities.map(MachineSessionStatusDot.token(for:)) == [ColorToken.run, .amber, .idle, .idle])
     }
 
     @Test("详情离线：呈现「这台机器不在线」，没有计数也没有会话")

@@ -6,6 +6,8 @@ import SwiftUI
 public struct MachinesView: View {
     private let model: MachinesModel
     private let onOpen: (Machine) -> Void
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isSelectedShellPage) private var isSelectedPage
 
     /// - Parameter onOpen: 进入一台机器的详情。导航归宿主。
     public init(model: MachinesModel, onOpen: @escaping (Machine) -> Void) {
@@ -19,14 +21,18 @@ public struct MachinesView: View {
             if let failure = model.failure {
                 FailureNotice(fact: failure) { Task { await model.load() } }
                     .machinesRow()
-            } else if let reason = model.unavailable {
-                FailureNotice(fact: .noMachineAvailable(reason)) {}
-                    .machinesRow()
-            } else if !model.machines.isEmpty {
-                Text("machines.subtitle \(model.machines.count) \(model.machines.filter(\.online).count)", tableName: "Machines", bundle: .module)
-                    .font(.agentre(.subheadline))
-                    .foregroundStyle(.token(.ink2))
-                    .machinesRow()
+            } else {
+                // 副标题照数名册：一台都不在线时也写「N 台已配对 · 0 台在线」，与下面的「没有可用的机器」并存。
+                if !model.machines.isEmpty {
+                    Text("machines.subtitle \(model.machines.count) \(model.machines.filter(\.online).count)", tableName: "Machines", bundle: .module)
+                        .font(.agentre(.subheadline))
+                        .foregroundStyle(.token(.ink2))
+                        .machinesRow()
+                }
+                if let reason = model.unavailable {
+                    FailureNotice(fact: .noMachineAvailable(reason)) {}
+                        .machinesRow()
+                }
             }
             ForEach(model.machines) { machine in
                 Button {
@@ -43,6 +49,14 @@ public struct MachinesView: View {
         .background(.token(.bg))
         .task { await model.load() }
         .refreshable { await model.load() }
+        // 回到前台：退到后台期间机器可能上线或下线了，按服务端此刻的名册重排（report-17 08c）。
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await model.load() } }
+        }
+        // 回到机器 tab：页一直挂着，进屏载入只跑过第一次；重新选中时同样按服务端此刻的名册重排。
+        .onChange(of: isSelectedPage) { _, selected in
+            if selected { Task { await model.load() } }
+        }
     }
 }
 

@@ -25,6 +25,21 @@ struct MachinesModelTests {
         #expect(!model.loadFailed)
     }
 
+    @Test("两次载入之间机器上线又下线：每次重新载入都按名册此刻的在线态重排，「没有可用的机器」随之出现或消失")
+    func reloadFollowsPresence() async throws {
+        let roster = FakeRoster(.success([Machine(id: 1, fingerprint: "a", name: "box", online: false)]))
+        let model = MachinesModel(roster: roster, sessions: FakeSessionSource([]))
+        await model.load()
+        #expect(model.unavailable == .offline)
+        await roster.set(.success([Machine(id: 1, fingerprint: "a", name: "box", online: true)]))
+        await model.load()
+        #expect(model.machines.map(\.online) == [true])
+        #expect(model.unavailable == nil)
+        await roster.set(.success([Machine(id: 1, fingerprint: "a", name: "box", online: false)]))
+        await model.load()
+        #expect(model.unavailable == .offline)
+    }
+
     @Test("刷新失败时保留已有的名册；从没取到过才算取失败")
     func keepsRosterOnFailure() async throws {
         let roster = FakeRoster(.failure(CancellationError()))

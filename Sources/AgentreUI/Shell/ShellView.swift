@@ -105,8 +105,15 @@ public struct ShellView<Messages: View, Machines: View, Me: View>: View {
                 .opacity(selected ? 1 : 0)
                 .allowsHitTesting(selected)
                 .accessibilityHidden(!selected)
+                .environment(\.isSelectedShellPage, selected)
         }
     }
+}
+
+public extension EnvironmentValues {
+    /// 这一页此刻是否是外壳选中的那一页。页建了就一直挂着，切回来时不会再出现、进屏载入不会再跑；
+    /// 要在重新选中时取新数据的页看它（如机器页按服务端此刻的在线态重排）。不在外壳里的视图恒为 true。
+    @Entry var isSelectedShellPage = true
 }
 
 /// 稿子的浮动圆角栏：`glass` 底、描边与柔影，三项线性图标加文字，选中项为 `primary-dim` 胶囊。

@@ -188,7 +188,7 @@ private struct MachineSessionRowView: View {
     /// 状态点、标题叠等宽工作目录、行尾相对时间，再是进入指示或保存入口；行下一条 `line` 分隔线，避开状态点。
     private func card(@ViewBuilder trailing: () -> some View) -> some View {
         HStack(spacing: 12) {
-            ConversationStatusGlyph(activity: row.session.activity)
+            MachineSessionStatusDot(activity: row.session.activity)
             VStack(alignment: .leading, spacing: 3) {
                 title
                 if !row.session.cwd.isEmpty {
@@ -217,8 +217,8 @@ private struct MachineSessionRowView: View {
         }
     }
 
-    /// 状态图标列（14）加间距（12）：分隔线与标题对齐。
-    private static let dividerInset: CGFloat = 14 + 12
+    /// 状态点列（14）加间距（12）：分隔线与标题对齐。
+    private static let dividerInset: CGFloat = MachineSessionStatusDot.column + 12
 
     @ViewBuilder private var title: some View {
         if row.session.title.isEmpty {
@@ -232,6 +232,41 @@ private struct MachineSessionRowView: View {
                 .font(.agentre(.body))
                 .foregroundStyle(.token(.ink))
                 .lineLimit(1)
+        }
+    }
+}
+
+/// 行首的状态点（规格「06」：每行都有）：运行中 `run`、等你处理 `amber`，其余一律 `idle`。
+/// 点与点只有颜色之别，所以每一枚都读出状态名——状态不只靠颜色。
+struct MachineSessionStatusDot: View {
+    let activity: ConversationActivity
+
+    /// 点所在的那一列宽：行内的分隔线据此与标题对齐。
+    static let column: CGFloat = 14
+
+    static func token(for activity: ConversationActivity) -> ColorToken {
+        switch activity {
+        case .typing: .run
+        case .waiting: .amber
+        case .failed, .idle: .idle
+        }
+    }
+
+    var body: some View {
+        Circle()
+            .fill(.token(Self.token(for: activity)))
+            .frame(width: 8, height: 8)
+            .frame(width: Self.column, height: Self.column)
+            .accessibilityElement()
+            .accessibilityLabel(label)
+    }
+
+    private var label: Text {
+        switch activity {
+        case .typing: Text("messages.status.running", tableName: "Messages", bundle: .module)
+        case .waiting: Text("messages.status.waiting", tableName: "Messages", bundle: .module)
+        case .failed: Text("messages.status.failed", tableName: "Messages", bundle: .module)
+        case .idle: Text("machines.detail.status.idle", tableName: "Machines", bundle: .module)
         }
     }
 }
