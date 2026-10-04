@@ -101,7 +101,7 @@ public struct ComposerPanel: View {
                 SettingSelectionRow(selected: mode == current, disabledWhenOffline: true) {
                     Task { await model.setPermissionMode(mode) }
                 } label: {
-                    SettingOptionLabel(display: display, raw: mode)
+                    SettingOptionLabel(display: display)
                 }
             }
         }
@@ -159,7 +159,7 @@ public struct ComposerPanel: View {
                     if level.isEmpty {
                         Text("composer.effort.followBackend", tableName: composerTable, bundle: .module).font(.agentre(.body))
                     } else {
-                        SettingOptionLabel(display: SettingCopy.reasoningEffort(level), raw: level)
+                        SettingOptionLabel(display: SettingCopy.reasoningEffort(level))
                     }
                 }
             }

@@ -256,12 +256,39 @@ struct ComposerScreenTests {
         await model.load()
         let view = ComposerPanel(model: model, contextUsage: usage, initialPage: .permissionMode, onDeleted: {})
         let labels = await HostedScreen(view).labels()
-        for mode in ["default", "acceptEdits", "plan"] { #expect(labels.contains { $0.contains(mode) }, "\(mode)") }
-        // 每一档同时给出人话名（表内已知档位，规格「04 更多面板」）。
-        #expect(labels.contains { $0.contains(text("composer.permissionMode.acceptEdits")) }, "\(labels)")
+        // 表内已知档位只写人话名，不附原串（规格「04 更多面板」）。
+        for key in ["default", "acceptEdits", "plan"] {
+            let human = text("composer.permissionMode.\(key)")
+            #expect(labels.contains(human), "\(key) 人话 in \(labels)")
+            #expect(!labels.contains { $0.contains(key) && !$0.contains("xhigh") }, "\(key) 不带原串：\(labels)")
+        }
         let report = await hitTargetReport(of: view)
         #expect(report.targets.count == 4, "\(report.targets)")
         #expect(report.violations.isEmpty, "\(report.violations)")
+    }
+
+    @Test("权限模式一页：表外取值才原样（等宽）显示，表内已知档位不带原串")
+    func permissionPageUnknownMode() async throws {
+        var settings = FakeSettingsSource()
+        settings.settings.permissionModes = ["default", "sudo"]
+        let model = composer(settings: settings)
+        await model.load()
+        let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, initialPage: .permissionMode, onDeleted: {})).labels()
+        #expect(labels.contains("sudo"), "\(labels)")
+        #expect(labels.contains(text("composer.permissionMode.default")), "\(labels)")
+        #expect(!labels.contains { $0.contains("default") && $0.contains(text("composer.permissionMode.default")) }, "\(labels)")
+    }
+
+    @Test("思考档位一页：低/中/高只写人话，不附原串；更高档原样")
+    func effortPageNoRawStrings() async throws {
+        let model = composer()
+        await model.load()
+        let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, initialPage: .effort, onDeleted: {})).labels()
+        for key in ["low", "medium", "high"] {
+            #expect(labels.contains(text("composer.effort.\(key)")), "\(key) in \(labels)")
+            #expect(!labels.contains { $0.contains(key) && !$0.contains("xhigh") }, "\(key) 不带原串：\(labels)")
+        }
+        #expect(labels.contains("xhigh") && labels.contains("max"), "\(labels)")
     }
 
     @Test("会话信息一页：标题、机器指纹、工作目录、后端（机器产出的以原样呈现）")
