@@ -574,9 +574,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Composer/, agentre-ios/Tests/AgentreComposerTests/]
     model: cheap
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 966fa09
+    note: "隔离工作树提交 fb22937，主会话核验路径全在 files 内后摘到分支为 966fa09。RED：-only-testing:AgentreComposerTests/ComposerScreenTests exit 65（行的读屏标签拼着原串「默认、default」，权限页、表外档、思考档三条断言失败）。GREEN：同命令 exit 0，20 条过——permissionPage 要求 默认/接受编辑/计划模式 原样标签且无 default/acceptEdits/plan；effortPageNoRawStrings 要求 低/中/高 且无 low/medium/high，xhigh/max 原样；permissionPageUnknownMode（[default, sudo]）要求 sudo 原样、默认为人话。等宽字体未断言（标签不暴露字体），SettingOptionLabel 对 display.mono 用等宽。关切：Sources/AgentreUI/NewConversation/DraftToolPanel.swift（不在本任务 files）调用 SettingOptionLabel(display:raw:)，保留 raw 为可选且忽略的参数以免越界改文件，草稿工具行随之一并修好；该参数留待拥有者删除。全量待本批结束后跑（任务 52 占用主模拟器）。"
   - id: 55
     goal: "不属于任何项目的会话（含草稿选「不指定项目」新建的）在消息列表行与对话导航栏画 agent-neutral 中性字形；只有会话挂着项目而项目列表尚未取到时才画空白字形（report-17 G4：实测无项目会话画了 #E3E5EA 空白字形）"
     deps: [52]
