@@ -556,9 +556,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Shell/, agentre-ios/Sources/AgentreApp/, agentre-ios/UITests/, agentre-ios/Tests/AgentreAuthTests/Hosted/]
     model: strong
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: cf41e36
+    note: "隔离工作树提交 ce08ae3，路径全在 files 内，摘到分支为 cf41e36。根因：底部安全区先于键盘通知变化，ShellView 记下键盘撑大的 329 后因「键盘仍在」标记忽略回落的 34，栏的偏移卡在 -317，切 tab 也不再变；改为每次都记最新安全区（键盘弹起时栏本就隐藏）。RED：-only-testing 两条新 UI 用例 testTabBarStaysPutAfterLeavingMachineDetailWithKeyboardUp / …ConversationWithKeyboardUp exit 65，tab 按钮 y=846（栏 y=840）而冷启动为 810（804）。GREEN：全新构建同命令 exit 0——机器详情搜索键盘弹起后返回、对话输入框聚焦后点返回与边缘右滑返回，三处栏与三枚按钮帧都等于冷启动并在窗口内，切 消息/机器/我 后仍相等（Screen.expectTabBar(at:)）。回归：AgentreHostedTests/ShellChromeTests 7/7 + testShellChromeSimplifiedChineseLight exit 0；testShellChromeEnglishDark exit 0。"
   - id: 53
     goal: "机器页如实反映在线状态：App 运行中机器上下线后，回到机器 tab、App 回前台、下拉刷新任一动作都让列表与副标题按服务端最新状态显示（report-17 08c）；全部离线时副标题照样写「N 台已配对 · 0 台在线」，与「没有可用的机器」并存（08b）；机器详情每一行都有状态点，运行中 run、等你处理 amber、其余 idle（06b）"
     deps: []
@@ -583,7 +583,7 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Sources/AgentreUI/Shell/AvatarGlyph.swift, agentre-ios/Sources/AgentreApp/ConversationScreen.swift, agentre-ios/Tests/AgentreNewConversationTests/, agentre-ios/Tests/AgentreMessagesTests/, agentre-ios/Tests/AgentreDesignTests/AvatarGlyphTests.swift]
     model: mid
     interfaces: null
-    status: todo
+    status: doing
     commit: null
     note: null
   - id: 54
