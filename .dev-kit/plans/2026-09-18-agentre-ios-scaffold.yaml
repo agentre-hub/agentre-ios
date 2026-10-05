@@ -565,9 +565,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Sources/AgentreUI/Shell/ShellView.swift]
     model: mid
     interfaces: null
-    status: doing
-    commit: null
-    note: "首次返回 missing context：回前台、下拉、全离线副标题、详情状态点四项已在工作树提交 6c11ff2（RED exit 65 三条失败；GREEN -only-testing:AgentreMachineTests exit 0，48 条；下拉刷新 RED 系测试自身——sendActions 不触发 SwiftUI refresh，改调控件注册的动作后既有 .refreshable 即重取，仅加回归测试）；「回到机器 tab 刷新」需 ShellView 告诉各页是否被选中。用户批准扩大 files（原话选项）：「允许加 ShellView.swift（推荐）」。关切：Sources/AgentreUI/Messages/MessagesView.swift 的 ConversationStatusGlyph、statusPresentation 因详情改用自有状态点而无人使用，不在本任务 files 内未删。"
+    status: done
+    commit: b3314b8
+    note: "首次返回 missing context：回前台、下拉、全离线副标题、详情状态点四项已在工作树提交 6c11ff2（RED exit 65 三条失败；GREEN -only-testing:AgentreMachineTests exit 0，48 条；下拉刷新 RED 系测试自身——sendActions 不触发 SwiftUI refresh，改调控件注册的动作后既有 .refreshable 即重取，仅加回归测试）；「回到机器 tab 刷新」需 ShellView 告诉各页是否被选中。用户批准扩大 files（原话选项）：「允许加 ShellView.swift（推荐）」。关切：Sources/AgentreUI/Messages/MessagesView.swift 的 ConversationStatusGlyph、statusPresentation 因详情改用自有状态点而无人使用，不在本任务 files 内未删。 续派后：变基到 415fa7e 无冲突，单提交 74e1603，路径全在扩大后的 files 内，摘到分支为 b3314b8。RED（本项）：-only-testing:AgentreMachineTests/MachinesFreshnessTests exit 65「timed out waiting for roster refreshed on re-selecting the Machines tab」。修法：ShellView 经环境值 isSelectedShellPage 告诉各页是否被选中，MachinesView 再次被选中时重载（首访仍只载一次）。五项各以 -only-testing:AgentreMachineTests exit 0（49 条）定：回到机器 tab（宿主 ShellView 切到消息、机器上线、切回机器→重取名册、显示在线、无「没有可用的机器」）；回前台（.background→.active 重取，先红）；下拉（触发 refresh 重取、显示「1 台已配对 · 1 台在线」，无代码改动、未先红）；全离线副标题「2 台已配对 · 0 台在线」与横幅并存；详情 interrupted/空闲行有 idle 点。ShellChromeTests 7 条过；同批 testShellChromeSimplifiedChineseLight 一次「machine detail after the edge swipe did not go away」（负载约 200+，边缘右滑合成约 7 秒），同代码单跑 exit 0——记为负载偶发，交全量判定。关切：report-17 08c 下拉无效的现象仍未解释（宿主测试里既有 .refreshable 生效）。"
   - id: 56
     goal: "权限模式与思考档位的选择页只以人话呈现表内取值（默认 / 接受编辑 / 计划模式 / 跳过权限确认；低 / 中 / 高等），不再在每档下附原串；执行端报出表外值时该档才原样等宽显示（report-17 04b）"
     deps: []
