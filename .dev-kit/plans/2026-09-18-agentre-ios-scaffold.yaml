@@ -562,12 +562,12 @@ tasks:
   - id: 53
     goal: "机器页如实反映在线状态：App 运行中机器上下线后，回到机器 tab、App 回前台、下拉刷新任一动作都让列表与副标题按服务端最新状态显示（report-17 08c）；全部离线时副标题照样写「N 台已配对 · 0 台在线」，与「没有可用的机器」并存（08b）；机器详情每一行都有状态点，运行中 run、等你处理 amber、其余 idle（06b）"
     deps: []
-    files: [agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Tests/AgentreMachineTests/]
+    files: [agentre-ios/Sources/AgentreUI/Machines/, agentre-ios/Sources/AgentreDomain/Machine/, agentre-ios/Tests/AgentreMachineTests/, agentre-ios/Sources/AgentreUI/Shell/ShellView.swift]
     model: mid
     interfaces: null
     status: doing
     commit: null
-    note: null
+    note: "首次返回 missing context：回前台、下拉、全离线副标题、详情状态点四项已在工作树提交 6c11ff2（RED exit 65 三条失败；GREEN -only-testing:AgentreMachineTests exit 0，48 条；下拉刷新 RED 系测试自身——sendActions 不触发 SwiftUI refresh，改调控件注册的动作后既有 .refreshable 即重取，仅加回归测试）；「回到机器 tab 刷新」需 ShellView 告诉各页是否被选中。用户批准扩大 files（原话选项）：「允许加 ShellView.swift（推荐）」。关切：Sources/AgentreUI/Messages/MessagesView.swift 的 ConversationStatusGlyph、statusPresentation 因详情改用自有状态点而无人使用，不在本任务 files 内未删。"
   - id: 56
     goal: "权限模式与思考档位的选择页只以人话呈现表内取值（默认 / 接受编辑 / 计划模式 / 跳过权限确认；低 / 中 / 高等），不再在每档下附原串；执行端报出表外值时该档才原样等宽显示（report-17 04b）"
     deps: []
@@ -583,16 +583,16 @@ tasks:
     files: [agentre-ios/Sources/AgentreDomain/NewConversation/, agentre-ios/Sources/AgentreUI/Messages/, agentre-ios/Sources/AgentreUI/Shell/AvatarGlyph.swift, agentre-ios/Sources/AgentreApp/ConversationScreen.swift, agentre-ios/Tests/AgentreNewConversationTests/, agentre-ios/Tests/AgentreMessagesTests/, agentre-ios/Tests/AgentreDesignTests/AvatarGlyphTests.swift]
     model: mid
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: 610818a
+    note: "隔离工作树提交 8a1bea3，路径全在 files 内，摘到分支为 610818a。根因：无项目会话本就得到 .neutral，但 AvatarGlyph 把 .neutral 填成 surface-2（#E3E5EA），与空白字形看着一样；真正的空白字形只描 line 边、不填色。RED：-only-testing:AgentreDesignTests/AgentreMessagesTests/AgentreNewConversationTests exit 65，唯一失败 AvatarGlyphTests.swift:32 neutral 的填色 token 应为 .agentNeutral。GREEN：同三组 exit 0（44 + 34 + 93），App 目标含 ConversationScreen 编译通过。projectlessConversationIsNeutralBeforeAndAfterDirectoryLoads、projectGlyphUnresolvedIsBlank、identityAndBlankFillTokens 过；ConversationScreen 改为按 projects 状态推字形，不再以硬编码 .blank 起步，无项目会话一建模型即为中性——该屏只由领域测试与编译覆盖，无界面级用例。"
   - id: 54
     goal: "英文下 05B「从项目里挑」导航栏的返回文字与标题不重叠：标题完整居中可读，返回文字放不下时截断或只留箭头，中文不变（report-17 05B：「New Conversation」压在「Pick from a project」上，浅深两种都是）"
     deps: [52, 55]
     files: [agentre-ios/Sources/AgentreUI/NewConversation/, agentre-ios/Sources/AgentreUI/Shell/Chrome.swift, agentre-ios/Tests/AgentreNewConversationTests/, agentre-ios/UITests/]
     model: mid
     interfaces: null
-    status: todo
+    status: doing
     commit: null
     note: null
 
