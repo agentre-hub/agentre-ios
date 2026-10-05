@@ -592,9 +592,9 @@ tasks:
     files: [agentre-ios/Sources/AgentreUI/NewConversation/, agentre-ios/Sources/AgentreUI/Shell/Chrome.swift, agentre-ios/Tests/AgentreNewConversationTests/, agentre-ios/UITests/]
     model: mid
     interfaces: null
-    status: doing
-    commit: null
-    note: null
+    status: done
+    commit: beaa445
+    note: "隔离工作树提交 70b7351，路径全在 files 内，摘到分支为 beaa445。根因：Chrome.swift 的 ModalNavigationBar 把标题与返回控件叠放，二者无互斥约束；改为标题按理想宽度布局、两侧均分余宽以保持居中，返回控件只占左侧，放不下「‹ New Conversation」时只留箭头（读屏仍念 New Conversation，shell.back 标识不变）。RED：-only-testing:AgentreNewConversationTests/NewConversationScreenTests exit 65，新测试（402pt 宿主真实挑选页 + modalNavigationBar）en 浅/深在 NewConversationScreenTests.swift:147 !back.intersects(title) 失败——back (10,66,154.3×44) 与 title (128.5,78.2,145×19.7) 相交；zh 两例过。GREEN：同命令加 AgentreHostedTests/ShellChromeTests exit 0，8 组 94 条——en 不相交、标题中心距屏中 ≤1pt、宽度与 1000pt 参照差 ≤1pt；zh 返回标签宽度与参照差 ≤1pt（「‹ 新建对话」完整）。根栏（取消）同布局，触控区测试过。界面主线 XCUITest 留给全量。"
 
 review:
   status: pending
