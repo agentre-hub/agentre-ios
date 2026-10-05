@@ -254,12 +254,16 @@ final class MainlineUITests: XCTestCase {
         let conversationID = server.read { _ in box.runs.last?.conversationID ?? "" }
         XCTAssertEqual(server.read { _ in box.effectivePermissionMode(conversationID) }, "default", "the first turn's executor mode")
         screen.tap(screen.button(copy("Composer", "composer.permissionMode")), "permission mode")
-        // 表内已知档位的朗读是「人话、原串」（原串在后，规格「04 更多面板」）：按原串找，语言无关。
-        let plan = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "plan")).firstMatch
+        // 表内已知档位只读人话，不带原串（规格「04 更多面板」）：按当前语言的人话标签找，并断言没有原串。
+        let planLabel = copy("Composer", "composer.permissionMode.plan")
+        let defaultLabel = copy("Composer", "composer.permissionMode.default")
+        let plan = app.buttons.matching(NSPredicate(format: "label == %@", planLabel)).firstMatch
+        let defaultMode = app.buttons.matching(NSPredicate(format: "label == %@", defaultLabel)).firstMatch
         screen.expect(plan, "plan mode option")
-        screen.expectSelected(
-            app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "default")).firstMatch, "default mode (the executor's default)"
-        )
+        screen.expectSelected(defaultMode, "default mode (the executor's default)")
+        for (option, raw) in [(plan, "plan"), (defaultMode, "default")] {
+            XCTAssertFalse(option.label.contains(raw), "option label \"\(option.label)\" shows the raw string \"\(raw)\"")
+        }
         screen.tap(plan, "plan mode")
         screen.expectSelected(plan, "plan mode")
         // 失败是改档调用应答之后才出现的：等一会儿再断言它没出现，而不是点完当场看。
