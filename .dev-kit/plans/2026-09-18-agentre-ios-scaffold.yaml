@@ -602,9 +602,9 @@ tasks:
     files: [agentre-ios/UITests/]
     model: cheap
     interfaces: null
-    status: doing
-    commit: null
-    note: "用户选择（原话选项）：「新增任务 57 修测试（推荐）」。"
+    status: done
+    commit: 45b1a9d
+    note: "用户选择（原话选项）：「新增任务 57 修测试（推荐）」。 RED：test-without-building -only-testing:AgentreUITests/MainlineUITests/testMainlineEnglishLight 失败于 :259「plan mode option never appeared」（** TEST EXECUTE FAILED **）。改为 copy(\"Composer\", \"composer.permissionMode.plan\") / …default 按 label == 找档，更新过时注释，并断言两档标签不含原串 plan/default。四组合 testMainlineEnglishLight / EnglishDark / SimplifiedChineseLight / SimplifiedChineseDark 各 exit 0（约 210 秒）。提交只含 UITests/MainlineUITests.swift。"
 
 review:
   status: pending
