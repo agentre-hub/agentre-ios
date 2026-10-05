@@ -33,8 +33,6 @@ enum SettingCopy {
 /// 选项页一行的文字：表内的档位只写人话，不附原串；表外的原样等宽（规格「04 更多面板」）。
 struct SettingOptionLabel: View {
     let display: (text: Text, mono: Bool)
-    /// 不再显示：草稿工具行（Composer 目录之外）仍按旧签名传入，由它的所有者收掉。
-    var raw: String?
 
     var body: some View {
         display.text.font(.agentre(.body, mono: display.mono))

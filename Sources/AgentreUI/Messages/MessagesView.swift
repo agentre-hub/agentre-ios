@@ -187,32 +187,8 @@ struct MessageRow: View {
     }
 }
 
-/// 会话的状态：颜色之外还有一枚各不相同的图标，读屏读出状态名——状态不只靠颜色区分。
-/// 闲着的会话不画，只留出位置。机器详情用它做行首的状态图标（消息列表改用头像角标，见 `MessageRow`）。
-struct ConversationStatusGlyph: View {
-    let activity: ConversationActivity
-
-    var body: some View {
-        Group {
-            if let presentation = activity.statusPresentation {
-                Image(systemName: presentation.symbol)
-                    .foregroundStyle(.token(presentation.token))
-                    .accessibilityLabel(Text(presentation.label, tableName: "Messages", bundle: .module))
-            } else {
-                // 同一字号下一枚图标的宽度，不多占：Color.clear 会吃掉 HStack 分出来的富余宽度，
-                // 与标题对半分行宽，把标题挤到行中右。
-                Image(systemName: "circle")
-                    .hidden()
-                    .accessibilityHidden(true)
-            }
-        }
-        .font(.agentre(.caption))
-        .frame(minWidth: 14, minHeight: 14)
-    }
-}
-
 extension ConversationActivity {
-    /// 状态的图标、颜色与读屏名；闲着时为 nil。
+    /// 状态的图标、颜色与读屏名；闲着时为 nil（机器详情行首的状态标记据此画，见 `MachineSessionStatusDot`）。
     var statusPresentation: (symbol: String, token: ColorToken, label: LocalizedStringKey)? {
         switch self {
         case .waiting: ("hand.raised.fill", .amber, "messages.status.waiting")

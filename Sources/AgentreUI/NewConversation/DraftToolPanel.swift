@@ -65,7 +65,7 @@ public struct DraftToolPanel: View {
             SettingSelectionRow(selected: model.permissionMode == nil) { model.choosePermissionMode(nil) } label: { unsetLabel }
             ForEach(model.toolOptions?.permissionModes ?? [], id: \.self) { mode in
                 SettingSelectionRow(selected: model.permissionMode == mode) { model.choosePermissionMode(mode) } label: {
-                    SettingOptionLabel(display: SettingCopy.permissionMode(mode), raw: mode)
+                    SettingOptionLabel(display: SettingCopy.permissionMode(mode))
                 }
             }
         }
@@ -95,7 +95,7 @@ public struct DraftToolPanel: View {
             SettingSelectionRow(selected: model.reasoningEffort == nil) { model.chooseReasoningEffort(nil) } label: { unsetLabel }
             ForEach(ComposerSettings.reasoningEffortLevels, id: \.self) { level in
                 SettingSelectionRow(selected: model.reasoningEffort == level) { model.chooseReasoningEffort(level) } label: {
-                    SettingOptionLabel(display: SettingCopy.reasoningEffort(level), raw: level)
+                    SettingOptionLabel(display: SettingCopy.reasoningEffort(level))
                 }
             }
         }

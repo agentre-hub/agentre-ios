@@ -236,37 +236,44 @@ private struct MachineSessionRowView: View {
     }
 }
 
-/// 行首的状态点（规格「06」：每行都有）：运行中 `run`、等你处理 `amber`，其余一律 `idle`。
-/// 点与点只有颜色之别，所以每一枚都读出状态名——状态不只靠颜色。
+/// 行首的状态标记（规格「06」：每行都有）。闲着的行是稿子的 `idle` 灰点；运行中、等你处理、失败
+/// 各画一枚形状不同的图标（`run` / `amber` / `coral`）——状态不只靠颜色区分，每一枚也都读出状态名。
 struct MachineSessionStatusDot: View {
     let activity: ConversationActivity
 
-    /// 点所在的那一列宽：行内的分隔线据此与标题对齐。
+    /// 标记所在的那一列宽：行内的分隔线据此与标题对齐。
     static let column: CGFloat = 14
 
+    enum Mark: Equatable { case dot, symbol(String) }
+
+    static func mark(for activity: ConversationActivity) -> Mark {
+        activity.statusPresentation.map { .symbol($0.symbol) } ?? .dot
+    }
+
     static func token(for activity: ConversationActivity) -> ColorToken {
-        switch activity {
-        case .typing: .run
-        case .waiting: .amber
-        case .failed, .idle: .idle
-        }
+        activity.statusPresentation?.token ?? .idle
     }
 
     var body: some View {
-        Circle()
-            .fill(.token(Self.token(for: activity)))
-            .frame(width: 8, height: 8)
-            .frame(width: Self.column, height: Self.column)
-            .accessibilityElement()
-            .accessibilityLabel(label)
+        Group {
+            switch Self.mark(for: activity) {
+            case .dot:
+                Circle().frame(width: 8, height: 8)
+            case .symbol(let name):
+                Image(systemName: name).font(.agentre(.caption))
+            }
+        }
+        .foregroundStyle(.token(Self.token(for: activity)))
+        .frame(width: Self.column, height: Self.column)
+        .accessibilityElement()
+        .accessibilityLabel(label)
     }
 
     private var label: Text {
-        switch activity {
-        case .typing: Text("messages.status.running", tableName: "Messages", bundle: .module)
-        case .waiting: Text("messages.status.waiting", tableName: "Messages", bundle: .module)
-        case .failed: Text("messages.status.failed", tableName: "Messages", bundle: .module)
-        case .idle: Text("machines.detail.status.idle", tableName: "Machines", bundle: .module)
+        if let presentation = activity.statusPresentation {
+            Text(presentation.label, tableName: "Messages", bundle: .module)
+        } else {
+            Text("machines.detail.status.idle", tableName: "Machines", bundle: .module)
         }
     }
 }

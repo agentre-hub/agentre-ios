@@ -213,9 +213,20 @@ struct MachineScreensTests {
         let title = try #require(await screen.frame(of: "Interrupted run"))
         #expect(dot.width > 0 && dot.height > 0, "\(dot)")
         #expect(dot.maxX <= title.minX, "状态点 \(dot) 应在标题 \(title) 之前")
-        // 点的颜色（规格「06」与稿子）：运行中 run、等你处理 amber，其余一律 idle。
+        // 点的颜色：运行中 run、等你处理 amber、失败 coral（「红表失败」），闲着 idle（稿子的灰点）。
         let activities: [ConversationActivity] = [.typing, .waiting, .failed, .idle]
-        #expect(activities.map(MachineSessionStatusDot.token(for:)) == [ColorToken.run, .amber, .idle, .idle])
+        #expect(activities.map(MachineSessionStatusDot.token(for:)) == [ColorToken.run, .amber, .coral, .idle])
+    }
+
+    @Test("详情：状态不只靠颜色——闲着的行是稿子的灰点，运行中、等你处理、失败各是一枚形状不同的图标")
+    func detailStatusMarksDifferByShape() {
+        let activities: [ConversationActivity] = [.typing, .waiting, .failed, .idle]
+        let marks = activities.map(MachineSessionStatusDot.mark(for:))
+        #expect(marks.last == .dot, "\(marks)")
+        let symbols = marks.dropLast().compactMap { mark -> String? in
+            if case .symbol(let name) = mark { name } else { nil }
+        }
+        #expect(symbols.count == 3 && Set(symbols).count == 3, "\(marks)")
     }
 
     @Test("详情离线：呈现「这台机器不在线」，没有计数也没有会话")
