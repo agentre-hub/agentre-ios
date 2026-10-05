@@ -188,16 +188,6 @@ struct MessageRow: View {
 }
 
 extension ConversationActivity {
-    /// 状态的图标、颜色与读屏名；闲着时为 nil（机器详情行首的状态标记据此画，见 `MachineSessionStatusDot`）。
-    var statusPresentation: (symbol: String, token: ColorToken, label: LocalizedStringKey)? {
-        switch self {
-        case .waiting: ("hand.raised.fill", .amber, "messages.status.waiting")
-        case .typing: ("ellipsis.circle.fill", .run, "messages.status.running")
-        case .failed: ("exclamationmark.triangle.fill", .coral, "messages.status.failed")
-        case .idle: nil
-        }
-    }
-
     /// 头像角标的颜色：琥珀表等你处理，绿表运行中，其余不挂（规格「01 消息」）。
     var avatarBadgeToken: ColorToken? {
         switch self {

@@ -19,7 +19,10 @@ public struct MachineDetailView: View {
     public var body: some View {
         content
             .background(.token(.bg))
-            .task {
+            // 详情开着时名册重取、这台机器变了（上线、下线），装配层会在同一处换进一个新模型：按模型重跑。
+            // 搜索框写的是这个模型的搜索词（同一台机器再进来，清单仍按上次的词收窄）。
+            .task(id: ObjectIdentifier(model)) {
+                query = model.keyword
                 await model.load()
                 await model.follow()
             }
@@ -260,7 +263,8 @@ struct MachineSessionStatusDot: View {
             case .dot:
                 Circle().frame(width: 8, height: 8)
             case .symbol(let name):
-                Image(systemName: name).font(.agentre(.caption))
+                // 定长画在列里：随系统字号放大的图标会伸出这一列、压到标题上（列宽与分隔线对齐都按 14 排）。
+                Image(systemName: name).resizable().scaledToFit().frame(width: 12, height: 12)
             }
         }
         .foregroundStyle(.token(Self.token(for: activity)))
@@ -274,6 +278,18 @@ struct MachineSessionStatusDot: View {
             Text(presentation.label, tableName: "Messages", bundle: .module)
         } else {
             Text("machines.detail.status.idle", tableName: "Machines", bundle: .module)
+        }
+    }
+}
+
+private extension ConversationActivity {
+    /// 状态的图标、颜色与读屏名（读屏名与消息列表的状态同一份文案）；闲着时为 nil。
+    var statusPresentation: (symbol: String, token: ColorToken, label: LocalizedStringKey)? {
+        switch self {
+        case .waiting: ("hand.raised.fill", .amber, "messages.status.waiting")
+        case .typing: ("ellipsis.circle.fill", .run, "messages.status.running")
+        case .failed: ("exclamationmark.triangle.fill", .coral, "messages.status.failed")
+        case .idle: nil
         }
     }
 }

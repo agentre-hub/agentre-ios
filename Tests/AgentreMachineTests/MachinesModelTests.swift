@@ -95,4 +95,23 @@ struct MachinesModelTests {
         await first.value
         #expect(model.counts["box"] == MachineSessionCounts(total: 7, running: 2, waiting: 1), "先发的那次晚到，把计数退回了旧值")
     }
+
+    @Test("载入随屏上的任务取消（点进一台机器的详情、名册页退场）：问到一半的计数不落下，已有的计数照旧")
+    func cancelledLoadKeepsCounts() async throws {
+        let roster = FakeRoster(.success([Machine(id: 1, fingerprint: "box", name: "box", online: true)]))
+        let sessions = FakeSessionSource([])
+        await sessions.setCounts(MachineSessionCounts(total: 7, running: 2, waiting: 1), for: "box")
+        let model = MachinesModel(roster: roster, sessions: sessions)
+        await model.load()
+        #expect(model.counts["box"] == MachineSessionCounts(total: 7, running: 2, waiting: 1))
+
+        await sessions.holdNextCountRequest()
+        await sessions.setCancelling(true)
+        let load = Task { await model.load() }
+        try await eventually("count in flight") { await sessions.isHoldingCounts }
+        load.cancel()
+        await sessions.releaseCounts()
+        await load.value
+        #expect(model.counts["box"] == MachineSessionCounts(total: 7, running: 2, waiting: 1), "取消的那次把计数清掉了")
+    }
 }

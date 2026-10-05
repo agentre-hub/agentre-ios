@@ -50,6 +50,15 @@ struct MachinesFreshnessTests {
 
         isolated deinit { window.isHidden = true }
 
+        /// 屏上 UIKit 文本框此刻的文字。
+        func textFieldTexts() -> [String] {
+            controller.view.layoutIfNeeded()
+            func find(_ view: UIView) -> [String] {
+                ((view as? UITextField).map { [$0.text ?? ""] } ?? []) + view.subviews.flatMap(find)
+            }
+            return find(controller.view)
+        }
+
         /// 列表的下拉刷新控件；没挂 `.refreshable` 时为 nil。
         func refreshControl() async -> UIRefreshControl? {
             for _ in 0..<5 {
@@ -153,6 +162,78 @@ struct MachinesFreshnessTests {
         try await eventually("roster refreshed on returning to the foreground") { model.machines.first?.online == true }
         #expect(model.unavailable == nil)
         _ = host
+    }
+
+    struct PhasedShellHost: View {
+        let phase: Phase
+        let selection: Selection
+        let machines: MachinesView
+        var body: some View {
+            ShellHost(selection: selection, machines: machines).environment(\.scenePhase, phase.value)
+        }
+    }
+
+    @Test("回到前台时停在别的 tab：机器页不重取（不白把每台在线机器的计数问一遍），等选中机器 tab 时再取")
+    func foregroundOnAnotherTabWaitsForSelection() async throws {
+        let roster = ChangingRoster([Self.wentOffline])
+        let model = MachinesModel(roster: roster, sessions: FakeSessionSource([]))
+        let selection = Selection()
+        let phase = Phase()
+        let host = Window(PhasedShellHost(phase: phase, selection: selection, machines: MachinesView(model: model, onOpen: { _ in })))
+        try await eventually("cold load") { model.unavailable == .offline }
+
+        selection.tab = .messages
+        try await Task.sleep(for: .milliseconds(100))
+        phase.value = .background
+        try await Task.sleep(for: .milliseconds(100))
+        await roster.set([Self.cameOnline])
+        phase.value = .active
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(await roster.fetches == 1, "机器 tab 不在前面，回到前台不该重取")
+
+        selection.tab = .machines
+        try await eventually("roster refreshed on selecting the Machines tab") { model.machines.first?.online == true }
+        #expect(await roster.fetches == 2)
+        _ = host
+    }
+
+    /// 机器详情的宿主：真机上名册重取后这台机器的在线态变了，装配层就换一个详情模型给同一处的详情屏。
+    @Observable
+    final class DetailHolder {
+        var model: MachineDetailModel
+        init(_ model: MachineDetailModel) { self.model = model }
+    }
+
+    struct DetailHost: View {
+        let holder: DetailHolder
+        var body: some View {
+            NavigationStack { MachineDetailView(model: holder.model, onOpen: { _ in }) }
+        }
+    }
+
+    @Test("详情开着时名册重取、这台机器上线了：换进来的新详情模型照样问机器要会话与计数，而不是一片空白")
+    func swappedDetailModelLoads() async throws {
+        let source = FakeSessionSource([session("c-1", title: "Fix build")])
+        await source.setCounts(MachineSessionCounts(total: 1, running: 0, waiting: 0))
+        let offline = MachineDetailModel(machine: offlineMachine(), sessions: source, store: FakeSavingStore(), transfer: FakeTransfer())
+        let holder = DetailHolder(offline)
+        let host = Window(DetailHost(holder: holder))
+        try await Task.sleep(for: .milliseconds(200))
+
+        let online = MachineDetailModel(machine: onlineMachine(), sessions: source, store: FakeSavingStore(), transfer: FakeTransfer())
+        holder.model = online
+        try await eventually("the swapped-in detail model loads") { online.rows.map(\.key.conversationID) == ["c-1"] && online.counts != nil }
+        _ = host
+    }
+
+    @Test("详情的搜索框写的是它所驱动的那个模型的搜索词（同一台机器再进来，清单仍按上次的词收窄）")
+    func detailSearchFieldMirrorsModelKeyword() async throws {
+        let source = FakeSessionSource([session("c-1", title: "Fix build"), session("c-2", title: "Write docs")])
+        let model = MachineDetailModel(machine: onlineMachine(), sessions: source, store: FakeSavingStore(), transfer: FakeTransfer())
+        await model.search("fix")
+        let host = Window(DetailHost(holder: DetailHolder(model)))
+        try await eventually("search field shows the model's keyword") { host.textFieldTexts() == ["fix"] }
+        #expect(model.rows.map(\.key.conversationID) == ["c-1"])
     }
 
     @Test("全部离线：副标题照样写「N 台已配对 · 0 台在线」，与「没有可用的机器」并存")

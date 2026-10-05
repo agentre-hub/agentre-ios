@@ -50,8 +50,9 @@ public struct MachinesView: View {
         .task { await model.load() }
         .refreshable { await model.load() }
         // 回到前台：退到后台期间机器可能上线或下线了，按服务端此刻的名册重排（report-17 08c）。
+        // 停在别的 tab 时不取：重新选中机器 tab 时会取，不必先把每台在线机器的计数白问一遍。
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await model.load() } }
+            if phase == .active, isSelectedPage { Task { await model.load() } }
         }
         // 回到机器 tab：页一直挂着，进屏载入只跑过第一次；重新选中时同样按服务端此刻的名册重排。
         .onChange(of: isSelectedPage) { _, selected in

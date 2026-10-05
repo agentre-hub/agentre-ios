@@ -68,7 +68,8 @@ public final class MachinesModel {
                 updated[fingerprint] = counts
             }
         }
-        guard generation == loadGeneration else { return }
+        // 屏上的任务被取消（点进了详情）时各台的计数都以取消收场：问到一半的不落下，已有的照旧。
+        guard generation == loadGeneration, !Task.isCancelled else { return }
         counts = updated
     }
 }

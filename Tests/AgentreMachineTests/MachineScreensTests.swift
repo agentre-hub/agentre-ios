@@ -229,6 +229,37 @@ struct MachineScreensTests {
         #expect(symbols.count == 3 && Set(symbols).count == 3, "\(marks)")
     }
 
+    @Test("详情：系统字号调到最大时，运行中、等你处理、失败的图标仍画在行首那一列里，不伸进标题")
+    func statusMarksStayInTheirColumnAtLargestType() throws {
+        let margin = 24
+        let column = Int(MachineSessionStatusDot.column)
+        for activity in [ConversationActivity.typing, .waiting, .failed] {
+            let renderer = ImageRenderer(
+                content: MachineSessionStatusDot(activity: activity)
+                    .padding(CGFloat(margin))
+                    .environment(\.dynamicTypeSize, .accessibility5)
+            )
+            renderer.scale = 1
+            let image = try #require(renderer.cgImage)
+            let width = image.width, height = image.height
+            var pixels = [UInt8](repeating: 0, count: width * height * 4)
+            let context = try #require(CGContext(
+                data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            // 那一列（留 1 像素抗锯齿）之外画上的像素：图标伸出了自己的列。
+            let inColumn = (margin - 1)...(margin + column)
+            var outside = 0
+            for y in 0..<height {
+                for x in 0..<width where !(inColumn.contains(x) && inColumn.contains(y)) && pixels[(y * width + x) * 4 + 3] > 0 {
+                    outside += 1
+                }
+            }
+            #expect(outside == 0, "\(activity)：\(outside) 个像素画在 \(column)pt 状态列之外")
+        }
+    }
+
     @Test("详情离线：呈现「这台机器不在线」，没有计数也没有会话")
     func detailOffline() async throws {
         let model = await detail(machine: offlineMachine())
