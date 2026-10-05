@@ -233,9 +233,9 @@ func text(_ key: String, _ arguments: CVarArg...) -> String {
 }
 
 /// 某语言下的译文（直接读那一份 lproj）。
-func text(_ key: String, language: String) throws -> String {
+func text(_ key: String, table: String = "NewConversation", language: String) throws -> String {
     let path = try #require(AgentreUIResources.bundle.path(forResource: language, ofType: "lproj"))
-    return try #require(Bundle(path: path)).localizedString(forKey: key, value: "⟨missing⟩", table: "NewConversation")
+    return try #require(Bundle(path: path)).localizedString(forKey: key, value: "⟨missing⟩", table: table)
 }
 
 /// 等一个条件成立（真实时间上限 3 秒）。

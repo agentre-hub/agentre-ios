@@ -115,6 +115,43 @@ struct NewConversationScreenTests {
         #expect(report.violations.isEmpty, "\(report.violations)")
     }
 
+    @Test(
+        "从项目里挑的导航栏：标题完整、居中，与「< 新建对话」互不相压；返回文字放不下时让位给标题，中文照旧整句写出",
+        arguments: ["en", "zh-Hans"], [ColorScheme.light, .dark]
+    )
+    func projectPickerNavigationBar(language: String, scheme: ColorScheme) async throws {
+        let (view, _) = await picker(selecting: "fe")
+        let titleLabel = try text("newconv.fromProject", language: language)
+        let backLabel = try text("shell.newConversation", table: "Shell", language: language)
+        /// 与 App 里同一个装法（AppRootView 的模态栈），托管在 `width` 宽的屏上，量标题与返回的框。
+        func measure(width: CGFloat) async throws -> (title: CGRect, back: CGRect) {
+            let screen = HostedScreen(
+                NavigationStack {
+                    view.modalNavigationBar(
+                        title: Text("newconv.fromProject", tableName: "NewConversation", bundle: AgentreUIResources.bundle),
+                        backTitle: Text("shell.newConversation", tableName: "Shell", bundle: AgentreUIResources.bundle)
+                    ) {}
+                }
+                .environment(\.locale, Locale(identifier: language))
+                .preferredColorScheme(scheme),
+                size: CGSize(width: width, height: 874)
+            )
+            let title = try #require(await screen.frame(of: titleLabel), "找不到标题 \(titleLabel)")
+            let back = try #require(await screen.frame(of: backLabel), "找不到返回 \(backLabel)")
+            return (title, back)
+        }
+        // iPhone 17 的宽度；宽屏上什么都放得下，作为「完整写出」的参照。
+        let phoneWidth: CGFloat = 402
+        let phone = try await measure(width: phoneWidth)
+        let roomy = try await measure(width: 1000)
+        #expect(!phone.back.intersects(phone.title), "返回 \(phone.back) 压在标题 \(phone.title) 上")
+        #expect(abs(phone.title.midX - phoneWidth / 2) <= 1, "标题不居中：\(phone.title)")
+        #expect(abs(phone.title.width - roomy.title.width) <= 1, "标题被截：\(phone.title.width) / 完整 \(roomy.title.width)")
+        if language == "zh-Hans" {
+            #expect(abs(phone.back.width - roomy.back.width) <= 1, "中文返回文字不该让位：\(phone.back.width) / 完整 \(roomy.back.width)")
+        }
+    }
+
     // MARK: 草稿
 
     func loadedDraft(recorder: FakeRecorder = FakeRecorder()) async -> DraftConversationModel {

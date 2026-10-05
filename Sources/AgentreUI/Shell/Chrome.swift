@@ -231,7 +231,8 @@ private final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
 // MARK: 模态导航栏
 
 /// 模态（新建对话）里的导航栏：标题居中，底边一条 `line`。根屏左上是「取消」；模态内推入的一屏左上是
-/// 返回箭头连同写着回到哪的文字（「< 新建对话」，规格「05B」），两者是同一个去处、同一个命中区。
+/// 返回箭头连同写着回到哪的文字（「< 新建对话」，规格「05B」），两者是同一个去处、同一个命中区；
+/// 标题始终完整居中，那段文字在标题左侧放不下时（如英文）只留箭头。
 public struct ModalNavigationBar: View {
     private let title: Text
     private let backTitle: Text?
@@ -251,48 +252,62 @@ public struct ModalNavigationBar: View {
     }
 
     public var body: some View {
-        ZStack {
+        // 标题先取足自己的宽度；两侧各一栏平分余下的，标题因此居中，左上的去处只在左栏里排，压不到标题。
+        HStack(spacing: 8) {
+            leadingControl
+                .frame(maxWidth: .infinity, alignment: .leading)
             title
                 .font(.agentre(FontRole(size: 16, weight: .semibold, relativeTo: .headline)))
                 .foregroundStyle(.token(.ink))
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("shell.title")
-                // 两侧给「取消」留位，长标题不压到它。
-                .padding(.horizontal, 72)
-            HStack {
-                if let backTitle {
-                    Button(action: onCancel) {
-                        HStack(spacing: 2) {
-                            Image(.chevronLeft)
-                                .resizable()
-                                .frame(width: 22, height: 22)
-                                .accessibilityHidden(true)
-                            backTitle
-                                .font(.agentre(.body))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(.token(.primary))
-                    }
-                    .hitTarget()
-                    .accessibilityIdentifier("shell.back")
-                    .padding(.leading, -8)
-                } else {
-                    Button(action: onCancel) {
-                        Text("shell.cancel", tableName: "Shell", bundle: .module)
-                            .font(.agentre(.body))
-                            .foregroundStyle(.token(.primary))
-                    }
-                    .hitTarget()
-                    .accessibilityIdentifier("shell.cancel")
-                }
-                Spacer(minLength: 0)
-            }
+                .layoutPriority(1)
+            Color.clear
+                .frame(height: 0)
+                .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 18)
         .frame(minHeight: 52)
         .background(.token(.bg))
         .overlay(alignment: .bottom) { Rectangle().fill(.token(.line)).frame(height: 1) }
+    }
+
+    @ViewBuilder private var leadingControl: some View {
+        if let backTitle {
+            Button(action: onCancel) {
+                // 左栏放不下「< 新建对话」（英文）时只留返回箭头，读屏标签照旧写回到哪。
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 2) {
+                        backArrow
+                        backTitle
+                            .font(.agentre(.body))
+                            .lineLimit(1)
+                    }
+                    backArrow
+                }
+                .foregroundStyle(.token(.primary))
+            }
+            .hitTarget()
+            .accessibilityLabel(backTitle)
+            .accessibilityIdentifier("shell.back")
+            .padding(.leading, -8)
+        } else {
+            Button(action: onCancel) {
+                Text("shell.cancel", tableName: "Shell", bundle: .module)
+                    .font(.agentre(.body))
+                    .foregroundStyle(.token(.primary))
+            }
+            .hitTarget()
+            .accessibilityIdentifier("shell.cancel")
+        }
+    }
+
+    private var backArrow: some View {
+        Image(.chevronLeft)
+            .resizable()
+            .frame(width: 22, height: 22)
+            .accessibilityHidden(true)
     }
 }
 
