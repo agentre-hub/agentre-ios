@@ -1,0 +1,51 @@
+# 全仓测试：与 README「Full test suite」是同一条命令，只是固定了 Xcode、模拟器系统与 XcodeGen 版本。
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      # Vendor/agentre 用的是 SSH 地址；没给 ssh-key 时 checkout 会改走 HTTPS，它是公开仓库，无需额外凭据。
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Select Xcode 27.0
+        run: sudo xcode-select -s /Applications/Xcode_27.0.app && xcodebuild -version
+
+      - name: Install XcodeGen 2.46.0
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate project
+        run: xcodegen --version && xcodegen generate
+
+      - name: Full test suite
+        run: >-
+          xcodebuild test -project Agentre.xcodeproj -scheme Agentre
+          -derivedDataPath "$RUNNER_TEMP/agentre-dd"
+          -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0'
+          -resultBundlePath "$RUNNER_TEMP/agentre.xcresult"
+          -collect-test-diagnostics never
+          DIAGNOSE_MISSING_TARGET_DEPENDENCIES=YES_ERROR
+
+      # 失败时留下结果包：UI 流程每一步的截图与失败时的无障碍树都在里面。
+      - name: Upload result bundle
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agentre-xcresult
+          path: ${{ runner.temp }}/agentre.xcresult
+          retention-days: 7
