@@ -1,0 +1,3 @@
+[submodule "Vendor/agentre"]
+	path = Vendor/agentre
+	url = git@github.com:agentre-hub/agentre.git

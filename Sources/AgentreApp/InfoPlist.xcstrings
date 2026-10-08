@@ -1,0 +1,24 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "应用名不译；这张表的用处是让主包声明它支持的两种语言——主包一种语言都不声明时，系统只按开发语言（en）运行，各功能资源包里的中文永远选不上。",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agentre"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agentre"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

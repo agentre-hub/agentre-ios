@@ -1,0 +1,194 @@
+import AgentreDesign
+import AgentreDomain
+import AgentreTestSupport
+@testable import AgentreUI
+import SwiftUI
+import Testing
+
+/// 转录屏的视图层断言：命中区（发现数 = 放置数，零即失败）与折叠态读得到的事实。
+@MainActor
+@Suite("转录屏")
+struct TranscriptScreenTests {
+    let decoder = FakeDecoder()
+
+    static func format(_ key: String, _ args: any CVarArg...) -> String {
+        let format = AgentreUIResources.bundle.localizedString(forKey: key, value: "⟨missing⟩", table: "Conversation")
+        return String(format: format, locale: Locale.current, arguments: args)
+    }
+
+    /// 一轮已落定的对话：一个 3 步的活动块、一个 Subagent、一步单独成行、一张待批准卡。
+    func settledModel(tall: Bool = false) async -> TranscriptModel {
+        let spawn = use("sp", "Task", input: ["prompt": "go"], canonical: Canonical(kind: "agent.spawn", fields: ["taskDescription": "查日志"]))
+        var events: [TranscriptEvent] = [
+            .userMessage("修一下构建"), .turnStarted, .textDelta("先看看。"),
+            .toolCall(readUse("r1")), .toolResult(result("r1", "a\nb")),
+            .toolCall(use("c1", input: ["command": "pnpm test"])), .toolResult(result("c1", #"{"exitCode":1,"output":"boom"}"#)),
+            .toolCall(readUse("r2")), .toolResult(result("r2")),
+            .textDelta("派一个 Subagent。"),
+            .toolCall(spawn),
+            .subagent(SubagentUpdate(toolCallID: "sp", phase: .started, info: SubagentState(taskID: "task-1", status: "running"))),
+        ]
+        for i in 0..<3 {
+            events.append(.toolCall(use("k\(i)", input: ["command": "ls"], parent: "sp")))
+            events.append(.toolResult(ToolResult(toolCallID: "k\(i)", text: "ok", isError: false, parentID: "sp")))
+        }
+        events += [
+            .subagent(SubagentUpdate(toolCallID: "sp", phase: .done, info: SubagentState(taskID: "task-1", status: "completed", durationMs: 12_300))),
+            .toolResult(result("sp", "report")),
+            .textDelta("再读一个文件。"),
+            .toolCall(readUse("r3", path: "/repo/go.mod")), .toolResult(result("r3", "module x")),
+            .permissionRequest(PermissionRequest(requestID: "p1", toolCallID: "", toolName: "Bash", input: ["command": "rm -rf build"])),
+            .turnDone(TurnDone(durationMs: 6600, model: "opus-5")),
+        ]
+        if tall {
+            // 内容高过一屏：视口停在顶上、不在底部，「不跟随」才是真实可达的状态。
+            events += (1...20).map { .userMessage("补充说明 \($0)") }
+        }
+        let frames = events.enumerated().map { stored(decoder, Int64($0.offset + 1), $0.element) }
+        let model = TranscriptModel(
+            conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"),
+            store: FakeStore(frames), relay: FakeRelay(), decoder: decoder, pageSize: 10
+        )
+        await model.load()
+        return model
+    }
+
+    @Test("失败的 Subagent 不只靠红色：折叠行上同时有「失败」；成功的没有")
+    func failedSubagentIsNotColourOnly() async {
+        let failed = SubagentRow(key: "s", name: "explorer", stepCount: 3, durationMs: 1_200, running: false, failed: true, expanded: false)
+        let labels = await HostedScreen(SubagentLineView(subagent: failed, toggle: {})).labels().joined(separator: "\n")
+        #expect(labels.contains(Self.format("activity.row.failed")), "\(labels)")
+        var succeeded = failed
+        succeeded.failed = false
+        let fine = await HostedScreen(SubagentLineView(subagent: succeeded, toggle: {})).labels().joined(separator: "\n")
+        #expect(!fine.contains(Self.format("activity.row.failed")), "\(fine)")
+    }
+
+    @Test("每个可点元素都是补满 44×44 且互不重叠的按钮；检查器发现的数目等于放置的数目")
+    func hitTargets() async throws {
+        let model = await settledModel(tall: true)
+        // 上滚离开底部且其间来了新内容：回到最新的入口出现。
+        model.userScrolledAway()
+        await model.merge(live: [liveFrame(decoder, 1000, .userMessage("又一句"))])
+        #expect(model.follow.unseen == 1)
+
+        let placed = model.rows.count { row in
+            switch row.content {
+            case .activityHeader, .step, .elided, .subagent: true
+            default: false
+            }
+        } + 1 // 回到最新
+        #expect(placed == 4, "组头、Subagent、单独成行的一步、回到最新")
+
+        let report = await hitTargetReport(of: TranscriptView(model: model, agentName: "Claude Code"))
+        #expect(report.targets.count == placed, "\(report.targets)")
+        #expect(report.violations.isEmpty, "\(report.violations)")
+        // 回到最新的入口写「N 条新内容」。
+        let labels = await HostedScreen(TranscriptView(model: model, agentName: "Claude Code")).labels().joined(separator: "\n")
+        #expect(labels.contains(Self.format("transcript.jumpToLatest %lld", 1)), "\(labels)")
+    }
+
+    @Test("折叠态读得到：步数、固定顺序的汇总、红色失败数、耗时；Subagent 只一行：名称、步数、耗时，不带分类汇总")
+    func collapsedFacts() async throws {
+        let model = await settledModel()
+        let labels = await HostedScreen(TranscriptView(model: model, agentName: "Claude Code")).labels().joined(separator: "\n")
+        #expect(labels.contains("修一下构建"))
+        #expect(labels.contains("Claude Code"))
+        #expect(labels.contains(Self.format("activity.steps %lld", 3)))
+        #expect(labels.contains(Self.format("activity.summary.read %lld", 2)))
+        #expect(labels.contains(Self.format("activity.summary.command %lld", 1)))
+        #expect(labels.contains(Self.format("activity.summary.failures %lld", 1)))
+        // 耗时写成「分:秒」：组头 6.6 秒、Subagent 12.3 秒。
+        #expect(labels.contains("0:07"), "\(labels)")
+        #expect(labels.contains(Self.format("subagent.title %@", "查日志")))
+        #expect(labels.contains("0:12"), "\(labels)")
+        // Subagent 的内层汇总不出现在折叠行上（「命令 3」只在展开后的它自己的块里）。
+        #expect(!labels.contains(Self.format("activity.summary.command %lld", 3)))
+        // 单独成行的那一步：名字与相对路径就在转录里，行尾是读到的行数。
+        #expect(labels.contains("/repo/go.mod"))
+        #expect(labels.contains(Self.format("activity.row.lines %lld", 1)), "\(labels)")
+        // 署名：后端显示名，后接这一轮收场时报的模型。
+        #expect(labels.contains("opus-5"), "\(labels)")
+    }
+
+    @Test("展开的组头：每步行尾按种类写「N 处 / N 行 / 失败」，成功命令的原文不上行尾")
+    func expandedStepResults() async throws {
+        let model = await settledModel()
+        let header = try #require(model.rows.first { if case .activityHeader = $0.content { true } else { false } })
+        guard case .activityHeader(let row) = header.content else { return }
+        model.toggle(row.blockKey, current: row.expanded)
+        let labels = await HostedScreen(TranscriptView(model: model, agentName: "Claude Code")).labels().joined(separator: "\n")
+        #expect(labels.contains(Self.format("activity.row.lines %lld", 2)), "\(labels)")
+        #expect(labels.contains(Self.format("activity.row.failed")), "\(labels)")
+        #expect(!labels.contains("exit 1"), "\(labels)")
+    }
+
+    @Test("导航栏副标题：运行中写「正在输入…」、等你处理写「等你回复」，其余写承载机器名；机器名不知道时不写")
+    func subtitle() async throws {
+        let typing = try #require(ConversationSubtitle.text(.typing, machineName: "mac-studio"))
+        #expect(await HostedScreen(typing).labels() == [Self.format("conversation.subtitle.typing")])
+        let waiting = try #require(ConversationSubtitle.text(.waiting, machineName: "mac-studio"))
+        #expect(await HostedScreen(waiting).labels() == [Self.format("conversation.subtitle.waiting")])
+        let idle = try #require(ConversationSubtitle.text(.idle, machineName: "mac-studio"))
+        #expect(await HostedScreen(idle).labels() == ["mac-studio"])
+        #expect(ConversationSubtitle.text(.idle, machineName: nil) == nil)
+    }
+
+    @Test("运行中的组头只留「执行中 · N 步」，不出耗时")
+    func runningHeader() async throws {
+        let frames = [
+            stored(decoder, 1, .userMessage("跑一下")), stored(decoder, 2, .turnStarted),
+            stored(decoder, 3, .toolCall(readUse("a"))), stored(decoder, 4, .toolResult(result("a"))),
+            stored(decoder, 5, .toolCall(use("b", input: ["command": "make test"]))),
+        ]
+        let model = TranscriptModel(conversation: SavedConversation(key: conversationKey, lifecycleState: "running"), store: FakeStore(frames), relay: FakeRelay(), decoder: decoder)
+        await model.load()
+        let elements = await HostedScreen(TranscriptView(model: model, agentName: "Codex")).labels()
+        let labels = elements.joined(separator: "\n")
+        #expect(labels.contains(Self.format("activity.running %lld", 2)))
+        // 运行态的组头不放分类汇总（耗时的留空由「转录行」的用例钉住）。
+        let header = try #require(elements.first { $0.contains(Self.format("activity.running %lld", 2)) })
+        #expect(!header.contains(Self.format("activity.summary.read %lld", 1)))
+        #expect(labels.contains("make test"))
+        #expect(labels.contains(Self.format("activity.row.running")))
+    }
+
+    @Test("上下文环：窗口不为正时整块不渲染；有值时是一枚补满命中区的按钮，读得到百分比")
+    func contextRing() async throws {
+        let none = await hitTargetReport(of: ContextRingView(usage: nil))
+        #expect(none.targets.isEmpty)
+        #expect(await HostedScreen(ContextRingView(usage: nil)).labels().isEmpty)
+
+        let report = await hitTargetReport(of: ContextRingView(usage: ContextUsage(used: 45_000, max: 100_000)))
+        #expect(report.targets.count == 1)
+        #expect(report.violations.isEmpty, "\(report.violations)")
+        let labels = await HostedScreen(ContextRingView(usage: ContextUsage(used: 45_000, max: 100_000))).labels().joined(separator: "\n")
+        #expect(labels.contains("45%"))
+    }
+
+    @Test("上下文环按用量三档着色：正常/告警/危急分别取 ctx-ok/ctx-warn/ctx-danger，而不是 primary/amber/coral")
+    func contextRingColorTiers() {
+        guard case .ctxOk = ContextRingView.token(for: .ok) else { Issue.record("正常档应取 ctxOk"); return }
+        guard case .ctxWarn = ContextRingView.token(for: .warn) else { Issue.record("告警档应取 ctxWarn"); return }
+        guard case .ctxDanger = ContextRingView.token(for: .danger) else { Issue.record("危急档应取 ctxDanger"); return }
+    }
+
+    @Test("上下文浮层只读：只给已用与上限的绝对值，没有任何可点元素")
+    func contextDetailIsReadOnly() async throws {
+        let detail = ContextUsageDetail(usage: ContextUsage(used: 45_000, max: 200_000))
+        let report = await hitTargetReport(of: detail)
+        #expect(report.targets.isEmpty)
+        let labels = await HostedScreen(detail).labels().joined(separator: "\n")
+        #expect(labels.contains(45_000.formatted()))
+        #expect(labels.contains(200_000.formatted()))
+    }
+
+    @Test("出错的一轮没带原话：给出通用的一句，而不是一行空白")
+    func emptyErrorReadsAsFailure() async throws {
+        let frames = [stored(decoder, 1, .userMessage("修一下构建")), stored(decoder, 2, .turnStarted), stored(decoder, 3, .error(""))]
+        let model = TranscriptModel(conversation: SavedConversation(key: conversationKey, lifecycleState: "idle"), store: FakeStore(frames), relay: FakeRelay(), decoder: decoder)
+        await model.load()
+        let labels = await HostedScreen(TranscriptView(model: model, agentName: "Codex")).labels()
+        #expect(labels.contains(Self.format("transcript.error.unknown")), "\(labels)")
+    }
+}

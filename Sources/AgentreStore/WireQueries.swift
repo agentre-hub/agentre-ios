@@ -1,0 +1,81 @@
+import AgentreDomain
+import AgentreWire
+import Foundation
+import SwiftProtobuf
+
+// 应用目标只装配、链接不到 AgentreWire 的符号：它要从帧里读的、要经通道问的那几样 wire 形状，
+// 由认得 wire 的这一层给出。通道由调用方经 `WireCalling` 递进来（本模块不认识中继）。
+
+/// 能在一条通道上发一次 wire RPC 的东西（中继通道即是）。
+public protocol WireCalling: Sendable {
+    func call<Response: SwiftProtobuf.Message>(
+        _ method: Agentre_Wire_RpcMethod, _ request: some SwiftProtobuf.Message, as type: Response.Type, deadline: Duration
+    ) async throws -> Response
+}
+
+/// 执行端报的权限档位（RuntimeCapabilitiesResponse.permission_mode）。
+public struct PermissionModes: Sendable, Equatable {
+    /// 空 = 这个后端没有权限门。
+    public var allowed: [String]
+    public var defaultMode: String
+
+    public init(allowed: [String], defaultMode: String) {
+        self.allowed = allowed
+        self.defaultMode = defaultMode
+    }
+
+    /// 问 `caller` 那一头的执行端。对端没报这一格（太老 / 答不出来）时抛错：那是「没答」，
+    /// 不是「没有权限门」。
+    public static func query(backendType: String, via caller: some WireCalling, deadline: Duration = .seconds(30)) async throws -> PermissionModes {
+        var request = Agentre_Wire_RuntimeCapabilitiesRequest()
+        request.backendType = backendType
+        let response = try await caller.call(.runtimeCapabilities, request, as: Agentre_Wire_RuntimeCapabilitiesResponse.self, deadline: deadline)
+        guard response.hasPermissionMode else { throw WireQueryError.notAnswered }
+        return PermissionModes(allowed: response.permissionMode.allowedModes, defaultMode: response.permissionMode.defaultMode)
+    }
+}
+
+public enum WireQueryError: Error, Equatable {
+    case notAnswered
+}
+
+/// 一帧对输入区说了什么（宿主从转录事件里递给输入区的几件事：回合起止、插话被取走、执行端报的档位）。
+public enum TurnSignal: Sendable, Equatable {
+    case started
+    /// 正常收场 = 没有停止文案；出错与用户中断都不是正常收场。
+    case ended(normally: Bool)
+    case steersConsumed([ComposerConsumedSteer])
+    /// 执行端报了它此刻的权限档位（permission_mode_changed，例如退出计划模式后）。
+    case permissionModeReported(String)
+
+    /// `payload` 是一帧 `RpcNotification` 的字节；与回合无关的帧为 nil。
+    public init?(payload: Data) {
+        guard let notification = try? Agentre_Wire_RpcNotification(serializedBytes: payload) else { return nil }
+        switch notification.payload {
+        case .turnStarted, .autonomousTurnStarted:
+            self = .started
+        case .runResultDone(let done), .autonomousTurnDone(let done):
+            self = .ended(normally: done.stopErrorMessage.isEmpty)
+        case .runtimeEvent(let event), .autonomousTurnEvent(let event):
+            switch event.event {
+            case .steerConsumed(let consumed):
+                self = .steersConsumed(consumed.steers.map { ComposerConsumedSteer(queuedID: $0.queuedID, text: $0.text) })
+            case .permissionModeChanged(let changed) where !changed.mode.isEmpty:
+                self = .permissionModeReported(changed.mode)
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    /// 转录里执行端最后一次报的当前权限档位（permission_mode_changed，空档不算）；没报过为 nil。
+    /// 与控制台 reduceSessionState 的 permissionMode 同一取法；逐帧的判读就是上面这一处。
+    public static func lastReportedPermissionMode(in frames: [TranscriptFrame]) -> String? {
+        frames.reversed().lazy.compactMap { frame -> String? in
+            guard case .permissionModeReported(let mode) = TurnSignal(payload: frame.payload) else { return nil }
+            return mode
+        }.first
+    }
+}
