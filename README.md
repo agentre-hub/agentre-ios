@@ -29,6 +29,11 @@ rm -rf /tmp/agentre-dd && git submodule update --init && xcodegen generate && xc
   Without it, an incremental Xcode build can quietly resolve an undeclared module that happens to be built already.
 - `-collect-test-diagnostics never` matters because, on a test failure, xcodebuild otherwise runs `simctl diagnose` for up to ten minutes before exiting.
 
+CI (`.github/workflows/test.yml`) runs this command in two halves on GitHub's `xcode-27` runner:
+the `unit` job (`-skip-testing:AgentreUITests`, about 6 minutes) on every pull request and every push to `main`,
+and the `ui` job (`-only-testing:AgentreUITests`, about 23 minutes) only on pushes to `main` and on manual runs (`gh workflow run test --ref <branch>`).
+The runner's simulator is set to English (United States), so a test that passes on a Chinese-language Mac can still fail there.
+
 ## Mainline UI flow (`AgentreUITests`)
 
 An XCUITest target drives the real Debug build of the app against a fake agentre-server and a fake relay that the test process itself serves on `127.0.0.1`, on a port the system picks.

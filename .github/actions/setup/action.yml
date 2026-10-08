@@ -1,0 +1,20 @@
+# 两个测试 job 共用的准备：固定 Xcode 与 XcodeGen 版本，生成工程。
+name: setup
+description: Select Xcode 27.0, install XcodeGen 2.46.0 and generate Agentre.xcodeproj
+runs:
+  using: composite
+  steps:
+    - name: Select Xcode 27.0
+      shell: bash
+      run: sudo xcode-select -s /Applications/Xcode_27.0.app && xcodebuild -version
+
+    - name: Install XcodeGen 2.46.0
+      shell: bash
+      run: |
+        curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+        unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+    - name: Generate project
+      shell: bash
+      run: xcodegen --version && xcodegen generate
