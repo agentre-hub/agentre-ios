@@ -322,13 +322,17 @@ struct MachineScreensTests {
         #expect(model.rows.count == 4)
         let phoneWidth: CGFloat = 402, rowInset: CGFloat = 16
         let screen = HostedScreen(MachineDetailView(model: model, onOpen: { _ in }), size: CGSize(width: phoneWidth, height: 874))
-        let rowWidth = phoneWidth - 2 * rowInset
         for session in sessions {
             let title = try #require(await screen.frame(of: session.title), "找不到标题 \(session.title)")
             // 行内留白加一枚状态图标的位置：标题不得再往右。
             #expect(title.minX - rowInset <= 44, "\(session.conversationID)：标题起于 \(title.minX)")
-            // 相对时间与保存入口排在同一行的行尾（稿子 06）：标题占去其余的大半，与消息列表同一判据。
-            #expect(title.width >= rowWidth * 0.5, "\(session.conversationID)：标题宽 \(title.width) / 行宽 \(rowWidth)")
+            // 相对时间与保存入口排在同一行的行尾（稿子 06）：标题占满其余的位置，一直排到相对时间前的留白
+            // （两侧间距各 12 加 Spacer 的最小 8；截断按整字退，最多再空出约一个正文字宽，按 20 算）。
+            // 行尾文字的宽度随语言与地区变，所以比的是这道缝，不是比例。
+            let time = Date(timeIntervalSince1970: TimeInterval(session.lastMessageAt) / 1000).formatted(.relative(presentation: .named))
+            let labels = await screen.labels()
+            let timeFrame = try #require(await screen.frame(of: time), "找不到相对时间「\(time)」：\(labels)")
+            #expect(timeFrame.minX - title.maxX <= 12 + 8 + 12 + 20, "\(session.conversationID)：标题止于 \(title.maxX)，相对时间起于 \(timeFrame.minX)")
         }
     }
 }
