@@ -8,9 +8,13 @@
 .swiftpm/
 DerivedData/
 
-# dev-kit 轮次工作区
-.dev-kit/worktrees/
+# Xcode 用户状态与测试结果包
+xcuserdata/
+*.xcresult
 
-# dev-kit 收尾：审查回执与运行验证证据只留本地
-.dev-kit/reviews/
+# 本地运行配置（可能含凭据）
+.env
+
+# dev-kit 的计划、审查回执与运行验证证据只留本地
+.dev-kit/
 e2e/scratch/
