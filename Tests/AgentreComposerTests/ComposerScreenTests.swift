@@ -260,7 +260,7 @@ struct ComposerScreenTests {
         for key in ["default", "acceptEdits", "plan"] {
             let human = text("composer.permissionMode.\(key)")
             #expect(labels.contains(human), "\(key) 人话 in \(labels)")
-            #expect(!labels.contains { $0.contains(key) && !$0.contains("xhigh") }, "\(key) 不带原串：\(labels)")
+            #expect(!labels.contains { carriesRawValue($0, key) }, "\(key) 不带原串：\(labels)")
         }
         let report = await hitTargetReport(of: view)
         #expect(report.targets.count == 4, "\(report.targets)")
@@ -286,7 +286,7 @@ struct ComposerScreenTests {
         let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, initialPage: .effort, onDeleted: {})).labels()
         for key in ["low", "medium", "high"] {
             #expect(labels.contains(text("composer.effort.\(key)")), "\(key) in \(labels)")
-            #expect(!labels.contains { $0.contains(key) && !$0.contains("xhigh") }, "\(key) 不带原串：\(labels)")
+            #expect(!labels.contains { carriesRawValue($0, key) }, "\(key) 不带原串：\(labels)")
         }
         #expect(labels.contains("xhigh") && labels.contains("max"), "\(labels)")
     }
@@ -307,5 +307,10 @@ struct ComposerScreenTests {
         let model = composer()
         let labels = await HostedScreen(ComposerPanel(model: model, contextUsage: usage, initialPage: .context, onDeleted: {})).labels()
         #expect(labels.contains(40_000.formatted()) && labels.contains(100_000.formatted()), "\(labels)")
+    }
+
+    /// 文案里是否带着原串：按整词比，英文人话里碰巧含这几个字母（Follows 里的 low、xhigh 里的 high）不算。
+    private func carriesRawValue(_ label: String, _ raw: String) -> Bool {
+        label.split { !$0.isLetter && !$0.isNumber }.contains { $0 == raw }
     }
 }
