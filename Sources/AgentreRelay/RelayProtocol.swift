@@ -3,7 +3,7 @@ public enum RelayProtocol {
     /// 本端的协议版本。主人是 wire.proto 的 `(agentre.wire.protocol_version)` 文件选项；
     /// SwiftProtobuf 不把文件选项编进产物，所以这里持一份，由 ProtocolVersionGuardTests
     /// 逐字对照 schema 钉住。兼容判据是逐字相等。
-    public static let version = "0.3.0"
+    public static let version = "0.4.0"
     /// 对端因协议版本不等拒绝握手的错误码（rpcerror.CodeProtocolVersion）。
     public static let errorCodeProtocolVersion: Int32 = -32006
     /// 会话没有在跑的那一轮可接（rpcerror.CodeRuntimeNoActiveTurn）：attach 一条已中断的会话时对端这样答。
